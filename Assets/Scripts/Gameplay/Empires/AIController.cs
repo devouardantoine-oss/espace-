@@ -1,5 +1,6 @@
 using Espace.Core;
 using Espace.Gameplay.Diplomacy;
+using Espace.Gameplay.Economy;
 using Espace.Gameplay.Espionage;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Espace.Data;
 using UnityEngine;
+using Random = System.Random;
 
 namespace Espace.Gameplay.Galaxy
 {
