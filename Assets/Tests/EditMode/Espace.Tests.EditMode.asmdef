@@ -5,6 +5,7 @@
         "Espace.Core",
         "Espace.Data",
         "Espace.Managers",
+        "Espace.Gameplay",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
