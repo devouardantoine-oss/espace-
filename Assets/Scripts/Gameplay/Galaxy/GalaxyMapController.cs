@@ -48,6 +48,14 @@ namespace Espace.Gameplay.Galaxy
             _map = GalaxyGenerator.Generate(config.ToGenerationParameters());
             GameLog.Info($"[GalaxyMap] Galaxie generee : {_map.Systems.Count} systemes, {_map.Links.Count} routes hyperspatiales.");
 
+            // Publiee sous son type concret (comme GameManager en Phase 1) : d'autres
+            // systemes de la meme scene (l'economie, Phase 4) doivent pouvoir la lire sans
+            // detenir de reference directe vers ce composant.
+            if (!ServiceLocator.IsRegistered<GalaxyMap>())
+            {
+                ServiceLocator.Register(_map);
+            }
+
             Dictionary<StarSystemId, Vector3> worldPositions = BuildMarkers(_map);
             BuildLinkRenderer(_map, worldPositions);
             SetupCamera();

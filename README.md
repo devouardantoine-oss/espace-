@@ -14,9 +14,10 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 3 terminée** — carte galactique (100 systèmes) et horloge de jeu (temps
-> continu, pause, vitesses). Économie, diplomatie, recherche, espionnage et armées ne sont
-> pas encore implémentés.
+> **Statut : Phase 4 terminée** — carte galactique (100 systèmes), horloge de jeu (temps
+> continu, pause, vitesses) et économie (production automatique, impôts, construction,
+> investissement). Empires/IA, diplomatie, recherche, espionnage et armées ne sont pas
+> encore implémentés.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -80,18 +81,20 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : carte galactique + horloge (Phases 2-3)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie (Phases 2-4)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
 │   ├── GameClockConfig.asset
-│   └── GalaxyConfig.asset
+│   ├── GalaxyConfig.asset
+│   └── Buildings/                # 5 types de bâtiments (1 par ressource)
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
 │   ├── Data/                     # → Espace.Data     (ScriptableObjects et types génériques)
 │   ├── Managers/                 # → Espace.Managers (composition de l'application)
 │   ├── Gameplay/                 # → Espace.Gameplay (référence Core + Data)
-│   │   └── Galaxy/               #     carte galactique, génération, caméra, sélection
+│   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection
+│   │   └── Economy/              #     production, bâtiments, impôts, investissement
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -110,11 +113,19 @@ Les *Assembly Definitions* rendent cette direction **vérifiée par le compilate
 secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 
 > `Espace.Data` ne référence jamais `Espace.Gameplay` (cela créerait une dépendance
-> circulaire) : les ScriptableObjects propres à un système de gameplay (ex. `GalaxyConfig`)
-> vivent dans `Espace.Gameplay`, pas dans `Espace.Data`. Seuls les types véritablement
-> transverses (`ResourceType`, `GameConfig`) restent dans `Espace.Data`.
+> circulaire) : les ScriptableObjects propres à un système de gameplay (ex. `GalaxyConfig`,
+> `BuildingType`) vivent dans `Espace.Gameplay`, pas dans `Espace.Data`. Seuls les types
+> véritablement transverses (`ResourceType`, `ResourceBundle`, `GameConfig`) restent dans
+> `Espace.Data`.
 >
 > L'assembly `Espace.UI` sera ajoutée avec ses premiers scripts (Phase 11).
+
+> **Un seul trésor pour l'instant :** `StarSystemState.OwnerId` existe depuis la Phase 2,
+> mais jusqu'à la Phase 4 aucun système n'était possédé. `EconomyController` attribue
+> maintenant au joueur (`EconomyService.PlayerOwnerId = 0`) le système le plus proche du
+> centre de la galaxie, pour avoir un propriétaire concret à simuler. C'est une solution
+> minimale, pas le cadre complet des empires : la Phase 5 généralisera `OwnerId` à plusieurs
+> empires dotés d'une IA, sans avoir à retoucher l'API de `EconomyService`.
 
 ### Briques du socle (Phase 1)
 
@@ -164,6 +175,36 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 > geler l'application ou de publier des centaines d'événements d'un coup — un vrai scénario
 > mobile, pas une précaution théorique.
 
+### Briques de l'économie (Phase 4)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `ResourceBundle` | quantité des 5 ressources | 5 champs `float` nommés plutôt qu'un tableau interne : un `readonly struct` contenant un tableau ne serait pas réellement immuable (copier la struct copierait la *référence* au tableau, pas son contenu) |
+| `BuildingType` | définition d'un bâtiment | ScriptableObject (5 assets fournis, un par ressource) : ressource produite, coût en Credits, durée de construction, développement minimal requis |
+| `BuildingInstance` | bâtiment construit/en construction | classe (pas struct) : possède un cycle de vie (`UnderConstruction` → `Completed`) muté par `EconomyService` au fil des jours |
+| `IEconomyService` / `EconomyService` | trésor et actions économiques | s'abonne à `DayAdvancedEvent` (Phase 3) ; production quotidienne calculée depuis les stats déjà posées en Phase 2 (population, richesse, développement, stabilité, gisements) |
+| `EconomyController` | composition dans la scène | résout ses dépendances (`IEventBus`, `IGameClock`, `GalaxyMap`) dans `Start`, pas `Awake` : Unity garantit que tous les `Awake` sont terminés avant le premier `Start`, ce qui évite toute course avec `GalaxyMapController` sans fixer d'ordre d'exécution explicite |
+| `EconomyDebugPanel` | contrôle temporaire | trésor + impôts en bas à gauche, construction/investissement du système sélectionné en bas à droite — outil de mise au point, pas l'écran final (Phase 11) |
+
+**Formule de production journalière** (par système possédé par le joueur, voir le commentaire
+de `EconomyService.ComputeSystemProduction`) :
+
+```
+Credits    = Richesse   × 0.05 × Impôts  × (×2 si gisement de Credits)
+Minerais   = Population × 0.01           × (×2 si gisement de Minerais)
+Énergie    = Population × 0.008          × (×2 si gisement d'Énergie)
+Nourriture = Population × 0.012          × (×2 si gisement de Nourriture)
+Influence  = Développement × 0.4         × (×2 si gisement d'Influence)
+
+  ... le tout × Stabilité (un système instable produit moins de tout)
+  + la production des bâtiments achevés (mise à l'échelle par la stabilité, pas par le gisement)
+```
+
+Valeurs de départ raisonnables, explicitement destinées à être affinées en Phase 12
+(équilibrage) — le principe (population → ressources physiques, richesse → Credits,
+développement → Influence, gisement = bonus ×2, instabilité = pénalité globale) est ce qui
+compte pour l'instant.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -180,14 +221,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (117 tests, tous packages confondus).
+Voir §5 pour le compte total (155 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-3 — carte galactique et horloge
+## 5. Tester les Phases 2-4 — galaxie, horloge et économie
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -199,6 +240,8 @@ sans erreur ni warning :
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
 [GalaxyMap] Galaxie generee : 100 systemes, ~125 routes hyperspatiales.
+[Economy] Systeme d'origine attribue au joueur : <nom du systeme>.
+[Economy] Demarree avec 5 types de batiments disponibles.
 ```
 
 Dans la fenêtre Game :
@@ -208,38 +251,46 @@ Dans la fenêtre Game :
   (éditeur) ou **pincement à deux doigts** (mobile) zoome, avec des bornes qui empêchent de
   sortir de la galaxie ou de zoomer à l'infini.
 - **Toucher un système** (tap bref, sans glisser) affiche son détail dans l'encart en haut à
-  gauche : nom, population, richesse, développement, stabilité, propriétaire (« Independant »
-  pour tous en Phase 2, les empires arrivent en Phase 5), gisements, nombre de routes.
-  Toucher le fond vide referme l'encart.
+  gauche : nom, population, richesse, développement, stabilité, propriétaire (« 0 » pour le
+  système d'origine du joueur, « Independant » pour tous les autres — les empires IA arrivent
+  en Phase 5), gisements, nombre de routes. Toucher le fond vide referme l'encart.
 - **En haut à droite**, un second encart affiche la date courante (format `0001-01-02`) et
   la vitesse. Avec des réglages par défaut, un jour de jeu s'écoule toutes les 2 secondes
   réelles. Boutons : **Pause/Lecture**, **Normal**, **Rapide** (x2), **Très rapide** (x4),
-  **Maximum** (x8) — la date doit s'incrémenter plus vite à mesure qu'on augmente la vitesse,
-  et s'arrêter net sur Pause.
+  **Maximum** (x8).
+- **En bas à gauche**, le trésor du joueur (5 ressources) et le taux d'imposition courant
+  (25% par défaut), avec des boutons **-10%/+10%**. Les 5 valeurs doivent augmenter chaque
+  jour de jeu écoulé (visible en accélérant la vitesse).
+- **Touchez le système d'origine du joueur** (le seul avec propriétaire « 0 ») : un troisième
+  encart apparaît en bas à droite avec un bouton **Investir** (augmente le développement,
+  coût croissant) et un bouton par type de bâtiment (Extracteur de Minerai, Centrale
+  Énergétique, Complexe Agricole, Place de Marché, Centre Culturel). Un bâtiment déjà
+  construit affiche « (construit) » et devient inactif ; sa production doit apparaître dans
+  le trésor une fois sa durée de construction écoulée.
 
-> Ces deux encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
-> finaux (Phase 11) — voir les commentaires de `GalaxyMapController` et `GameClockDebugPanel`.
+> Ces trois encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`
+> et `EconomyDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 117 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 155 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
-(Phase 2 — déterminisme, connexité, unicité des noms) ; `GameDateTests` (arithmétique de
-calendrier, franchissements de mois/année), `GameClockSettingsTests` (validation des
-multiplicateurs), `GameClockTests` (Phase 3 — seuils de jour, pause/reprise, événements
-publiés une fois par jour même à vitesse élevée, plafond de rattrapage sur `deltaTime`
-extrême, vérifié avec `LogAssert.Expect`).
+(Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
+`ResourceBundleTests` (arithmétique de ressources), `EconomyServiceTests` (Phase 4 — formule
+de production vérifiée valeur par valeur, effet des gisements et de la stabilité, cycle
+complet construction → achèvement → production, impôts, investissement, tous les cas
+d'erreur des actions joueur).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons `GameClockDebugPanel` répondent bien au tactile (IMGUI traduit le tactile
-  en événements de pointeur automatiquement sur Android/iOS, mais c'est un point à confirmer
-  sur appareil).
+- que les boutons des trois panneaux IMGUI répondent bien au tactile (traduit automatiquement
+  par Unity sur Android/iOS, mais un point à confirmer sur appareil).
 
-La logique de génération de galaxie et celle de l'horloge/calendrier ont chacune été
-recoupées indépendamment par un script Python qui reproduit l'algorithme (déterminisme,
-connexité, franchissements de mois/année, plafond de rattrapage) : voir les commentaires de
-`GalaxyGenerator` et `GameClock` pour le détail.
+La logique de génération de galaxie, celle de l'horloge/calendrier, et la formule de
+production économique (y compris le cycle construction → achèvement) ont chacune été
+recoupées indépendamment par un script Python qui reproduit l'algorithme : voir les
+commentaires de `GalaxyGenerator`, `GameClock` et `EconomyService` pour le détail.
 
 ---
 
@@ -250,7 +301,7 @@ connexité, franchissements de mois/année, plafond de rattrapage) : voir les co
 | 1 | Socle technique : services, événements, machine à états, configuration | ✅ terminée |
 | 2 | Carte galactique : 100 systèmes, génération procédurale, caméra tactile, sélection | ✅ terminée |
 | 3 | Horloge de jeu : temps continu, pause, vitesses | ✅ terminée |
-| 4 | Économie : Crédits, Minerais, Énergie, Nourriture, Influence | à venir |
+| 4 | Économie : production, bâtiments, impôts, investissement | ✅ terminée |
 | 5 | Empires et IA de base (personnalités, colonisation) | à venir |
 | 6 | Armées et résolution automatique des combats | à venir |
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | à venir |
@@ -261,8 +312,9 @@ connexité, franchissements de mois/année, plafond de rattrapage) : voir les co
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul
-système complexe à la fois (consigne du brief) : la Phase 3 n'a touché ni l'économie, ni les
-empires, ni aucun autre système — seule l'horloge existe, rien ne la consomme encore.
+système complexe à la fois (consigne du brief) : la Phase 4 n'a touché ni la diplomatie, ni
+la recherche, ni les armées — l'économie ne connaît qu'un seul propriétaire (le joueur), en
+attendant que la Phase 5 généralise `OwnerId` à des empires IA.
 
 ---
 
