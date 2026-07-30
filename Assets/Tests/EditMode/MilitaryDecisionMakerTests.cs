@@ -35,6 +35,7 @@ namespace Espace.Tests.EditMode
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
             public void SetDate(GameDate date) => CurrentDate = date;
+            public void ResetToStart() { }
         }
 
         /// <summary>Meme role que dans <c>MilitaryServiceTests</c> : seul le statut guerre/paix compte ici, directement pilotable.</summary>

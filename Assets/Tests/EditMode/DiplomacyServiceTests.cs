@@ -36,6 +36,7 @@ namespace Espace.Tests.EditMode
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
             public void SetDate(GameDate date) => CurrentDate = date;
+            public void ResetToStart() { }
         }
 
         /// <summary>Puissance controlee : chaque empire a une garnison fixe sur son unique systeme, puissance = nombre d'unites.</summary>

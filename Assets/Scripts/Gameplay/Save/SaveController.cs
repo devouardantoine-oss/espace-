@@ -1,4 +1,3 @@
-using System.IO;
 using Espace.Core;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
@@ -34,8 +33,6 @@ namespace Espace.Gameplay.Save
     /// </summary>
     public sealed class SaveController : MonoBehaviour
     {
-        private const string SaveFileName = "savegame.json";
-
         private SaveService _saveService;
         private IEventBus _eventBus;
         private bool _initialized;
@@ -64,7 +61,7 @@ namespace Espace.Gameplay.Save
                 return;
             }
 
-            string filePath = Path.Combine(Application.persistentDataPath, SaveFileName);
+            string filePath = SaveFileLocator.FilePath;
             _saveService = new SaveService(map, clock, economy, military, diplomacy, research, empireRegistry, filePath);
 
             if (!ServiceLocator.IsRegistered<ISaveService>())

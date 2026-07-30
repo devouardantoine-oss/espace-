@@ -50,5 +50,15 @@ namespace Espace.Core
         /// autrement qu'en le laissant s'ecouler.
         /// </summary>
         void SetDate(GameDate date);
+
+        /// <summary>
+        /// Remet l'horloge a la date et a la vitesse de debut de partie (voir
+        /// <see cref="GameClockSettings.StartDate"/>). Reserve au menu principal (Phase 11) :
+        /// cette horloge vit dans le service de demarrage, marque <c>DontDestroyOnLoad</c>, donc
+        /// elle n'est jamais recreee lors d'un retour au menu ; « Nouvelle partie » doit
+        /// explicitement lui redemander de repartir de zero plutot que de laisser la date/vitesse
+        /// de la partie precedente subsister dans la nouvelle.
+        /// </summary>
+        void ResetToStart();
     }
 }

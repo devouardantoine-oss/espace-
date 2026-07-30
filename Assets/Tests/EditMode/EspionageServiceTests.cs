@@ -37,6 +37,7 @@ namespace Espace.Tests.EditMode
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
             public void SetDate(GameDate date) => CurrentDate = date;
+            public void ResetToStart() { }
         }
 
         /// <summary>Espionne les appels a <see cref="ApplyOpinionShift"/> sans avoir a construire un vrai <see cref="DiplomacyService"/> (qui exigerait un EmpireRegistry).</summary>

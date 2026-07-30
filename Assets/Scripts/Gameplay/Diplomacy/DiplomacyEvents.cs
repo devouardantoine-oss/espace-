@@ -52,7 +52,8 @@ namespace Espace.Gameplay.Diplomacy
     /// <summary>
     /// Publie uniquement quand une proposition cible le joueur (les propositions entre IA se
     /// resolvent instantanement, voir <see cref="DiplomacyService"/>) : c'est le signal que
-    /// <c>DiplomacyDebugPanel</c> attend pour afficher un bouton accepter/refuser.
+    /// l'onglet Diplomatie de <c>Espace.UI.ManagementWindowController</c> attend pour afficher
+    /// un bouton accepter/refuser.
     /// </summary>
     public readonly struct ProposalReceivedEvent : IGameEvent
     {

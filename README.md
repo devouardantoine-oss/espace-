@@ -14,16 +14,18 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 10 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 11 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
 > colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
 > commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
 > (7 domaines, 3 paliers chacun, bonus sur la production, le combat, la vitesse des flottes et
 > les gains d'opinion), espionnage (cinq missions déterministes selon un rapport de puissance),
-> et désormais une sauvegarde JSON automatique : la partie reprend exactement où elle en était
-> après une fermeture ou une mise en arrière-plan, sur un seul fichier local. La génération de
-> la galaxie est devenue déterministe (graine fixe) pour que la même galaxie réapparaisse d'une
-> session à l'autre.
+> une sauvegarde JSON automatique (la partie reprend exactement où elle en était après une
+> fermeture ou une mise en arrière-plan, sur un seul fichier local), et désormais une
+> interface complète : menu principal, barre d'état permanente, panneau de système contextuel,
+> fenêtre de gestion à onglets et menu pause — le jeu se pilote enfin de bout en bout sans
+> dérouler la console. La génération de la galaxie est déterministe (graine fixe) pour que la
+> même galaxie réapparaisse d'une session à l'autre.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -110,7 +112,7 @@ Assets/
 │   │   ├── Research/             #     domaines, paliers, points, bonus par domaine
 │   │   ├── Espionage/            #     missions déterministes, puissance/contre-espionnage
 │   │   └── Save/                 #     capture/restauration JSON de l'état mutable
-│   ├── UI/                       # Phase 11
+│   ├── UI/                       # → Espace.UI       (HUD, fenêtre de gestion, menus — Phase 11)
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
 ```
@@ -133,7 +135,8 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 > Seuls les types véritablement transverses (`ResourceType`, `ResourceBundle`, `GameConfig`)
 > restent dans `Espace.Data`.
 >
-> L'assembly `Espace.UI` sera ajoutée avec ses premiers scripts (Phase 11).
+> L'assembly `Espace.UI` (Phase 11) référence `Espace.Gameplay` mais jamais l'inverse : l'UI
+> lit et pilote les services de gameplay, aucun service de gameplay ne connaît l'UI.
 
 > **Empires vs. personnalités : donnée contre comportement.** `EmpireDefinition` (nom,
 > couleur, personnalité, joueur ou non) est un `ScriptableObject` — du contenu qu'un game
@@ -183,7 +186,7 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 | `IGameClock` / `GameClock` | horloge | temps continu accumulé (`deltaTime × multiplicateur`) avec seuil de jour ; `Tick` n'est **pas** sur l'interface publique — seul `GameBootstrap` fait avancer le temps, tout le reste ne fait que le lire ou le piloter |
 | événements (`DayAdvancedEvent`, `MonthAdvancedEvent`, `YearAdvancedEvent`, `GameSpeedChangedEvent`) | notifications | un `DayAdvancedEvent` **par jour réellement franchi**, même si plusieurs jours s'écoulent dans une frame — l'économie (Phase 4) ne doit jamais sauter une production |
 | `GameClockConfig` | réglages éditables | ScriptableObject ; convertit vers `GameClockSettings`, même pattern que `GalaxyConfig` |
-| `GameClockDebugPanel` | contrôle temporaire | boutons tactiles Pause/Normal/Rapide/Très rapide/Maximum en IMGUI, pilotant le vrai `IGameClock` — outil de mise au point, pas l'écran Paramètres final (Phase 11) |
+| `GameClockDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | boutons tactiles Pause/Normal/Rapide/Très rapide/Maximum en IMGUI — remplacé par la barre `HudController`, qui pilote le même `IGameClock` |
 
 > **Plafond de rattrapage :** si l'application est relancée après une longue mise en veille
 > (deltaTime extrême), `GameClock` plafonne l'avance à 30 jours par frame plutôt que de
@@ -199,7 +202,7 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 | `BuildingInstance` | bâtiment construit/en construction | classe (pas struct) : possède un cycle de vie (`UnderConstruction` → `Completed`) muté par `EconomyService` au fil des jours |
 | `IEconomyService` / `EconomyService` | trésor et actions économiques | s'abonne à `DayAdvancedEvent` (Phase 3) ; production quotidienne calculée depuis les stats déjà posées en Phase 2 (population, richesse, développement, stabilité, gisements) |
 | `EconomyController` | composition dans la scène | résout ses dépendances (`IEventBus`, `IGameClock`, `GalaxyMap`) dans `Start`, pas `Awake` : Unity garantit que tous les `Awake` sont terminés avant le premier `Start`, ce qui évite toute course avec `GalaxyMapController` sans fixer d'ordre d'exécution explicite |
-| `EconomyDebugPanel` | contrôle temporaire | trésor + impôts en bas à gauche, construction/investissement du système sélectionné en bas à droite — outil de mise au point, pas l'écran final (Phase 11) |
+| `EconomyDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | trésor + impôts en bas à gauche, construction/investissement du système sélectionné en bas à droite — remplacé par `HudController` (trésor/impôts) et `SystemInfoPanelController` (construction/investissement) |
 
 **Formule de production journalière** (par système possédé par le joueur, voir le commentaire
 de `EconomyService.ComputeSystemProduction`) :
@@ -232,7 +235,7 @@ compte pour l'instant.
 | `EmpirePersonalityProfile` | comportement | table **dans le code**, pas un asset (voir l'encart plus haut) : taux d'imposition préféré, ordre de priorité de construction par ressource, marge de prudence avant investissement — l'Opportuniste déroge à l'ordre fixe et choisit le moins cher disponible |
 | `AIDecisionMaker` | décision IA | fonction statique testable sans `ServiceLocator` : impôts réaffirmés, puis **une seule** action par appel (une construction, sinon un investissement) — jamais les deux, jamais plusieurs bâtiments d'un coup |
 | `EmpireController` / `AIController` | orchestration | fils minces ; `AIController` résout `EmpireRegistry`/`IEconomyService` **paresseusement dans son gestionnaire d'événement** plutôt que dans `Start`, pour éviter toute course avec `EmpireController.Start` (deux `Start` sans ordre garanti entre eux) |
-| `EmpireDebugPanel` | contrôle temporaire | liste les 6 empires (nom, personnalité, systèmes, Credits) en haut de l'écran — seul moyen d'observer l'IA sans dérouler la console |
+| `EmpireDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | liste les 6 empires (nom, personnalité, systèmes, Credits) — remplacé par l'onglet Empires de `ManagementWindowController` |
 
 **`EconomyService` généralisé à plusieurs trésors.** Depuis la Phase 4, la classe était déjà
 écrite pour retrouver le propriétaire d'un système plutôt que de coder « le joueur » en dur.
@@ -258,7 +261,7 @@ meilleure preuve que la généralisation est correcte.
 | `IMilitaryService` / `MilitaryService` | armées de tous les empires | même architecture que `EconomyService` : recrutement en file (mirroring `BuildingInstance`), entretien journalier prélevé via `IEconomyService.TrySpend` (nouvelle méthode générique, réutilisée aussi par la construction/l'investissement pour éviter de dupliquer la logique de dépense) |
 | `MilitaryDecisionMaker` | décision militaire IA | même séparation que `AIDecisionMaker` : recrutement jusqu'à la garnison cible, puis colonisation d'un voisin libre, puis — seulement pour les personnalités qui s'y autorisent — une attaque ; **une seule action par appel**, toujours au moins 2 unités gardées à domicile |
 | `MilitaryController` | orchestration | seul composant Phase 6 à dépendre d'un autre `Start()` non garanti (`EmpireRegistry`, `IEconomyService`) : initialisation différée à `Update` plutôt qu'à un événement, faute d'événement naturel à attendre pour un service qui doit exister avant que d'autres ne le cherchent |
-| `MilitaryDebugPanel` | contrôle temporaire | recrutement et envoi de la garnison entière vers un voisin, empilé au-dessus de l'encart de construction économique |
+| `MilitaryDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | recrutement et envoi de la garnison entière vers un voisin — remplacé par la section Armée de `SystemInfoPanelController` |
 
 **Agressivité de l'IA — décision produit assumée.** Sans état de guerre/paix (Phase 7), une
 attaque IA n'a pas de justification diplomatique ; le choix a été fait malgré tout de
@@ -304,14 +307,14 @@ plutôt que définitivement punitive pour une IA qui aurait mal évalué ses cha
 | `ProposalEvaluator` | acceptation d'une proposition | fonction pure, même esprit que `CombatResolver` : une IA cible accepte selon l'opinion qu'elle a du proposeur (pactes), le rapport de puissance (paix, ultimatum), ou l'équité de l'échange (ressources) |
 | `DiplomacyDecisionMaker` | décision diplomatique IA | même séparation que `MilitaryDecisionMaker` : propose la paix si le rapport de force devient défavorable, sinon déclare la guerre à un voisin écrasé (personnalités agressives uniquement), sinon propose un pacte de non-agression (ou une alliance) à un voisin apprécié ; **une seule action par appel** |
 | `DiplomacyController` | orchestration | s'initialise **avant** `MilitaryController` (qui dépend désormais de `IDiplomacyService`) sans jamais dépendre en retour de `IMilitaryService` au constructeur — `DiplomacyService` le résout paresseusement via `ServiceLocator` pour éviter un cycle d'attente mutuelle entre les deux contrôleurs |
-| `DiplomacyDebugPanel` | contrôle temporaire | statut/opinion envers chaque IA avec boutons d'action (guerre, pacte, alliance, paix, rupture), et les propositions reçues en attente (accepter/refuser) ; échanges de ressources/territoires et ultimatums non exposés en bouton (charge utile numérique peu adaptée à l'IMGUI tactile) mais entièrement implémentés et testés au niveau du service |
+| `DiplomacyDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | statut/opinion envers chaque IA avec boutons d'action (guerre, pacte, alliance, paix, rupture), et les propositions reçues en attente (accepter/refuser) ; échanges de ressources/territoires et ultimatums non exposés en bouton (charge utile numérique peu adaptée à l'IMGUI tactile) mais entièrement implémentés et testés au niveau du service — remplacé par l'onglet Diplomatie de `ManagementWindowController` |
 
 **Résolution des propositions : instantanée pour l'IA, en attente pour le joueur.** Une
 proposition dont la cible est une IA est évaluée et résolue au moment même où elle est
 soumise (`ProposalEvaluator`, appelé par `DiplomacyService`) — pas de file d'attente pour des
 décisions qui n'ont pas besoin d'attendre une saisie humaine. Une proposition qui cible le
 joueur est mise en attente et publiée via `ProposalReceivedEvent`, jusqu'à ce que
-`TryRespondToProposal` soit appelée (bouton du `DiplomacyDebugPanel`).
+`TryRespondToProposal` soit appelée (bouton de l'onglet Diplomatie, `ManagementWindowController`).
 
 **Le combat conditionné à la guerre.** `MilitaryService.TryMoveFleet` refuse désormais tout
 déplacement vers un système possédé par un autre empire tant qu'un état de
@@ -345,7 +348,7 @@ journalière : échanges de ressources, tribut d'ultimatum, revenu commercial).
 | `IResearchService` / `ResearchService` | recherche de tous les empires | même architecture que `EconomyService`/`MilitaryService` ; génère des points chaque jour (population et développement des systèmes possédés, même forme que la production d'Influence) crédités au **domaine actif** choisi par l'empire — un seul à la fois, changer de domaine ne fait perdre aucune progression déjà acquise |
 | `ResearchDecisionMaker` | décision de recherche IA | même séparation que les autres : si le domaine actif est encore en cours, ne change rien ; sinon, choisit le premier domaine non maximal dans l'ordre de préférence de la personnalité (`EmpirePersonalityProfileData.ResearchPriority`) |
 | `ResearchController` | orchestration | seul contrôleur de Phase 7-8 à s'initialiser dans `Start` plutôt qu'`Update` : aucune dépendance à un autre `Start` de la scène (juste `GalaxyMap` et `IEventBus`, disponibles dès l'`Awake`) |
-| `ResearchDebugPanel` | contrôle temporaire | domaine actif, palier et bonus courants des 7 domaines, bouton pour rediriger le focus — empilé en bas à gauche, au-dessus du trésor |
+| `ResearchDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | domaine actif, palier et bonus courants des 7 domaines, bouton pour rediriger le focus — remplacé par l'onglet Recherche de `ManagementWindowController` |
 
 **Bonus appliqués sans dépendance de construction, par résolution paresseuse.** `EconomyService`,
 `MilitaryService` et `DiplomacyService` résolvent `IResearchService` via `ServiceLocator` au
@@ -381,7 +384,7 @@ Nourriture et Influence n'ont volontairement aucun domaine associé : le brief n
 | `IEspionageService` / `EspionageService` | espionnage de tous les empires | **déterministe, sans hasard**, même philosophie que `CombatResolver` : une mission réussit si et seulement si la puissance d'espionnage du proposeur dépasse strictement le contre-espionnage de la cible (égalité stricte → échec) ; aucune adjacence requise (l'espionnage est distant, à la différence des flottes) |
 | `EspionageDecisionMaker` | décision d'espionnage IA | même séparation que les autres : seuil de puissance et mission préférée propres à chaque personnalité, une seule mission réussie par appel |
 | `EspionageController` | orchestration | comme `ResearchController`, s'initialise dans `Start` sans dépendance à un autre contrôleur — `EspionageService` résout lui-même, paresseusement, l'économie, l'armée, la diplomatie et la recherche au moment où une mission en a besoin |
-| `EspionageDebugPanel` | contrôle temporaire | puissance d'espionnage du joueur, un bouton par mission pour chaque IA, dernier résultat de découverte d'armées — empilé en haut à droite, sous `DiplomacyDebugPanel` |
+| `EspionageDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | puissance d'espionnage du joueur, un bouton par mission pour chaque IA, dernier résultat de découverte d'armées — remplacé par l'onglet Espionnage de `ManagementWindowController` |
 
 **Le risque vient de la découverte, pas du hasard.** Une mission réussie est invisible pour la
 cible ; une mission ratée est toujours découverte et inflige une pénalité d'opinion au
@@ -415,7 +418,7 @@ les gouvernements — le moyen le plus discret.
 | `GameSaveData` | contenu | arbre de classes `[Serializable]` **à plat**, compatible `JsonUtility` (qui ne sérialise ni dictionnaires, ni `Nullable`, ni références de `ScriptableObject`) — construit et lu uniquement par `SaveService`, jamais par les services eux-mêmes |
 | `ISaveService` / `SaveService` | sauvegarde de toute la partie | capture l'état via les interfaces publiques déjà existantes de chaque service, écrit/lit un fichier JSON unique (`Application.persistentDataPath`) ; ne sauvegarde que l'état **mutable** (propriétaire, trésor, garnisons, relations, progression) — jamais le contenu régénérable (galaxie, roster d'empires) |
 | `SaveController` | orchestration | le plus grand nombre de dépendances de tous les contrôleurs (tous les services de gameplay) ; comme rien ne dépend de lui en retour, il peut se permettre d'attendre patiemment (sondage `Update`, comme `MilitaryController`) que tout le reste soit prêt |
-| `SaveDebugPanel` | contrôle temporaire | état du fichier, boutons Sauvegarder maintenant / Recharger — en bas au centre, dernier emplacement encore libre |
+| `SaveDebugPanel` *(retiré en Phase 11)* | contrôle temporaire | état du fichier, boutons Sauvegarder maintenant / Recharger — remplacé par l'onglet Sauvegarde de `ManagementWindowController` (et par « Sauvegarder maintenant »/« Recharger » du menu pause) |
 
 **Une galaxie enfin déterministe.** Jusqu'à la Phase 9, `GalaxyConfig.seed` valait `0`, tirant
 une galaxie différente à chaque lancement (positions, noms, gisements, routes) — un choix
@@ -447,6 +450,43 @@ sont pas sauvegardées (seules les garnisons déjà stationnées le sont). La fe
 reste faible — sauvegarde automatique mensuelle, trajets de quelques jours, propositions
 résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 
+### Briques de l'interface (Phase 11)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `UITheme` | palette et styles partagés | couleurs, `GUIStyle` et textures 1×1 mis en cache, construits paresseusement (jamais en initialiseur statique — `GUI.skin` n'est valide que dans `OnGUI`) ; évite que chaque écran invente ses propres couleurs |
+| `HudFormatter` | mise en forme textuelle | seule logique **pure** de cette phase (dates, montants abrégés en k/M, pourcentages) — testable en EditMode et recoupée en Python, contrairement au reste (agencement visuel non testable sans éditeur) |
+| `HudController` | barre supérieure, toujours visible | date/vitesse et trésor/impôts du joueur — fusionne `GameClockDebugPanel` et l'encart trésor d'`EconomyDebugPanel` (Phases 3/4) ; bascule les deux autres fenêtres via `GetComponent` (même GameObject `[UI]`) |
+| `SystemInfoPanelController` | panneau du système sélectionné | fiche d'identité + actions (construire, investir, recruter, déplacer la garnison) si le système appartient au joueur — fusionne l'ancien encart de sélection de `GalaxyMapController`, l'encart d'actions d'`EconomyDebugPanel` et la totalité de `MilitaryDebugPanel` (Phases 2/4/6) |
+| `ManagementWindowController` | fenêtre à onglets | Empires / Diplomatie / Recherche / Espionnage / Sauvegarde — remplace cinq panneaux distincts (Phases 5/7/8/9/10) par une seule fenêtre, ouverte/fermée par le bouton « Gestion » ; pas d'onglet Économie dédié (déjà couvert par `HudController` et `SystemInfoPanelController`) |
+| `PauseMenuController` | menu pause | Reprendre / Sauvegarder / Recharger / Menu principal / Quitter ; met l'horloge en pause à l'ouverture et la reprend à la fermeture, **seulement** si c'est lui qui l'a mise en pause |
+| `MainMenuController` | menu principal | Nouvelle partie / Continuer (actif seulement si une sauvegarde existe) / Quitter — placé directement dans la scène `Bootstrap`, donne enfin un écran réel à `MainMenuState` (qui restait un état muet depuis la Phase 1) |
+| `SaveFileLocator` | chemin de la sauvegarde | extrait de `SaveService`/`SaveController` : le menu principal doit savoir si une sauvegarde existe et pouvoir la supprimer **avant** qu'aucun service de `GalaxyMap` (donc `ISaveService`) n'existe |
+
+> **Pourquoi encore de l'IMGUI (`OnGUI`), pas UI Toolkit ni uGUI ?** Ce projet est développé
+> sans accès à l'éditeur Unity. UI Toolkit (UXML/USS) et uGUI (Canvas/RectTransform) exigent
+> tous deux des assets ou des scènes calibrés visuellement — une erreur ne se révèle qu'à
+> l'ouverture dans l'éditeur, jamais à la compilation ni dans un test. IMGUI reste la seule
+> approche entièrement exprimable en C# pur, vérifiable par la seule lecture du code et les
+> tests EditMode. Les panneaux de diagnostic des Phases 2 à 10 le présentaient comme
+> temporaire ; cette phase le garde mais l'élève au rang d'interface définitive, avec un thème
+> partagé (`UITheme`) plutôt que des `GUI.Box` par défaut, quatre écrans consolidés plutôt que
+> neuf encarts empilés, et un vrai menu principal.
+
+> **Flux de scènes enfin réel :** `ISceneLoader`/`SceneLoaderService` existaient depuis la
+> Phase 1 mais n'étaient encore jamais appelés — `GalaxyMap.unity` s'ouvrait jusqu'ici en
+> Play directement, sans passer par `Bootstrap.unity`. Cette phase les met enfin en service
+> (« Nouvelle partie »/« Continuer » vers `GalaxyMap`, « Menu principal » en retour vers
+> `Bootstrap`) et ajoute donc pour la première fois `ProjectSettings/EditorBuildSettings.asset`
+> (les deux scènes, `Bootstrap` en premier). Corollaire découvert à cette occasion :
+> `GalaxyMapController` enregistrait `GalaxyMap` dans le `ServiceLocator` sans jamais s'en
+> désinscrire à sa destruction (aucun aller-retour de scène n'existait encore pour le
+> révéler) — corrigé au passage, sinon un « Nouvelle partie » après un retour au menu aurait
+> câblé toute la nouvelle partie sur l'ancienne galaxie. `IGameClock.ResetToStart` est ajoutée
+> pour la même raison : l'horloge vit dans `GameBootstrap` (`DontDestroyOnLoad`), donc une
+> « Nouvelle partie » doit explicitement lui redemander de repartir de la date de début plutôt
+> que de laisser filer celle de la partie précédente.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -462,18 +502,54 @@ erreur ni warning :
 [FSM] Entree dans MainMenuState - le socle est operationnel.
 ```
 
+**Depuis la Phase 11**, la fenêtre Game affiche en plus un vrai menu principal (« ESPACE » /
+Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail. Le bouton
+« Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
+
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (353 tests, tous packages confondus).
+Voir §5 pour le compte total (389 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-10 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage et sauvegarde
+## 5. Tester les Phases 2-11 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde et interface
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
+
+```
+[Bootstrap] Configuration appliquee (cible : 60 FPS).
+[Bootstrap] 4 services enregistres.
+[FSM] Entree dans BootState
+[FSM] Sortie de BootState
+[FSM] Entree dans MainMenuState - le socle est operationnel.
+[GalaxyMap] Galaxie generee : 100 systemes, ~125 routes hyperspatiales.
+[Economy] Demarree avec 5 types de batiments disponibles.
+[Empires] Federation de l'Aube (joueur) : systeme d'origine <nom>.
+[Empires] Sanctuaire de Vharin (Pacifist) : systeme d'origine <nom>.
+[Empires] Essaim de Kethra (Expansionist) : systeme d'origine <nom>.
+[Empires] Ligue Marchande d'Oskar (Mercantile) : systeme d'origine <nom>.
+[Empires] Bastion de Drathmoor (Militarist) : systeme d'origine <nom>.
+[Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
+[Empires] 6 empires crees.
+[Military] Demarree avec 4 types d'unites disponibles.
+[Diplomacy] Demarree.
+[Research] Demarree avec 21 paliers de recherche disponibles.
+[Espionage] Demarree.
+[Save] Demarree (<chemin>/savegame.json).
+```
+
+**D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
+Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
+- **Continuer** doit être grisé (aucune sauvegarde n'existe encore au tout premier lancement).
+- **Nouvelle partie** doit charger `GalaxyMap` (la console affiche la suite ci-dessous).
+- **Quitter** ne fait rien dans l'éditeur (`Application.Quit` n'agit qu'en build).
+
+**Ensuite, la galaxie elle-même : ouvrir `Assets/Scenes/GalaxyMap.unity` directement et
+appuyer sur Play** (raccourci de développement — inutile de repasser par le menu à chaque
+test). La console doit afficher, sans erreur ni warning :
 
 ```
 [Bootstrap] Configuration appliquee (cible : 60 FPS).
@@ -503,69 +579,63 @@ Dans la fenêtre Game :
 - **Glisser** (clic maintenu + déplacer, ou glisser au doigt) déplace la caméra ; **molette**
   (éditeur) ou **pincement à deux doigts** (mobile) zoome, avec des bornes qui empêchent de
   sortir de la galaxie ou de zoomer à l'infini.
-- **Toucher un système** (tap bref, sans glisser) affiche son détail dans l'encart en haut à
-  gauche : nom, population, richesse, développement, stabilité, propriétaire (le nom de
-  l'empire, ou « Independant » pour un système encore libre), gisements, nombre de routes,
-  et **désormais la garnison** présente (par empire, avec son nombre d'unités). Le nombre de
-  systèmes « Independant » doit **diminuer au fil du temps** si vous laissez tourner l'horloge
-  assez longtemps — les IA colonisent leurs voisins libres. Toucher le fond vide referme
-  l'encart.
-- **En haut à droite**, un second encart affiche la date courante (format `0001-01-02`) et
-  la vitesse. Avec des réglages par défaut, un jour de jeu s'écoule toutes les 2 secondes
-  réelles. Boutons : **Pause/Lecture**, **Normal**, **Rapide** (x2), **Très rapide** (x4),
-  **Maximum** (x8).
-- **En haut au centre**, un nouvel encart liste les **6 empires** : nom, rôle (« Vous » pour
-  le joueur, la personnalité pour chaque IA), nombre de systèmes, Credits en réserve. En
-  accélérant l'horloge (Maximum), les Credits des 5 IA doivent progresser **sans aucune
-  intervention** — c'est la preuve la plus directe que l'IA fonctionne.
-- **En bas à gauche**, le trésor du joueur (5 ressources) et le taux d'imposition courant
-  (25% par défaut), avec des boutons **-10%/+10%**.
-- **Juste au-dessus**, un septième encart affiche votre recherche : domaine actif (« Aucun »
-  au tout début), palier et bonus courants des 7 domaines, et un bouton **Activer** par
-  domaine. Activez un domaine puis accélérez l'horloge : son palier doit progresser et
-  finir par se compléter (visible en filtrant la console sur `[Research]`), et son bonus
-  (ex. Économie) doit se répercuter sur la production correspondante dans le trésor.
-- **Touchez votre système d'origine** (celui portant le nom de votre empire) : un troisième
-  encart apparaît en bas à droite avec un bouton **Investir** (augmente le développement,
-  coût croissant) et un bouton par type de bâtiment. Un bâtiment déjà construit affiche
-  « (construit) » et devient inactif ; sa production doit apparaître dans le trésor une fois
-  sa durée de construction écoulée.
-- **Un quatrième encart, empilé juste au-dessus du précédent**, affiche votre garnison
-  (nombre d'unités et puissance estimée), un bouton par type d'unité pour recruter (visible
-  après le délai de recrutement), et un bouton par système voisin pour y envoyer toute votre
-  garnison. Envoyer une garnison vers un système libre le colonise à l'arrivée ; vers un
-  système ennemi, déclenche une bataille — le résultat (victoire/défaite, pertes des deux
-  camps) est systématiquement journalisé dans la console, même sans ce panneau ouvert.
-- **Touchez le système d'origine d'une IA** : le panneau du haut-gauche doit afficher le nom
-  de cet empire comme propriétaire, et sa garnison si elle en a recruté une — confirmation
-  visuelle que l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
-- **En haut à droite**, un sixième encart liste votre relation avec chacune des 5 IA (statut,
-  opinion) avec des boutons d'action (Guerre, Pacte, Alliance, Paix, Rompre selon le statut
-  courant), et les propositions reçues en attente avec des boutons Accepter/Refuser. En
-  laissant tourner l'horloge en Maximum, les IA doivent se déclarer la guerre entre elles ou se
-  proposer des pactes selon leur personnalité — visible en filtrant la console sur `[Diplomacy]`
-  — et une attaque IA ne doit plus jamais survenir sans qu'une ligne `[Diplomacy] ... declare la
-  guerre` ne l'ait précédée.
-- **Juste en dessous**, un huitième encart affiche votre puissance d'espionnage et, pour
-  chaque IA, son contre-espionnage estimé avec cinq boutons (Vol tech, Sabotage, Révolte,
-  Influence, Découvrir). Tentez une mission contre une cible faible (contre-espionnage bas) :
-  elle doit réussir sans laisser de trace côté opinion. Tentez-en une contre une cible forte :
-  elle doit échouer, vous coûter quand même le crédit dépensé, et l'opinion de la cible envers
-  vous doit chuter — visible en filtrant la console sur `[Espionage]`.
-- **En bas au centre**, un neuvième encart affiche l'état de la sauvegarde avec deux boutons
-  **Sauvegarder maintenant** et **Recharger**. Jouez quelques mois, changez des choses
-  (impôts, construction, recherche...), sauvegardez, modifiez encore l'état, puis rechargez :
-  tout doit revenir exactement à l'état sauvegardé. Quittez complètement Play et relancez : la
-  console doit afficher `[Save] Sauvegarde existante chargee au demarrage.` et la partie doit
-  reprendre exactement où elle en était, sur la **même** galaxie (positions et noms de
-  systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
+- **Une barre en haut de l'écran** (`HudController`), toujours visible : date courante et
+  vitesse (boutons **Pause/Lecture**, **Normal**, **Rapide** x2, **Très rapide** x4,
+  **Maximum** x8 — un jour de jeu s'écoule toutes les 2 secondes réelles à vitesse Normale),
+  trésor du joueur (5 ressources, abrégées en k/M au-delà de 1000), taux d'imposition courant
+  avec boutons **-/+**, et deux boutons **Gestion**/**Menu** à droite.
+- **Toucher un système** (tap bref, sans glisser) fait apparaître en bas à gauche le panneau
+  du système sélectionné (`SystemInfoPanelController`) : nom, population, richesse,
+  développement, stabilité, propriétaire (le nom de l'empire, ou « Independant » pour un
+  système encore libre), gisements, nombre de routes, et la garnison présente (par empire,
+  avec son nombre d'unités). Le nombre de systèmes « Independant » doit **diminuer au fil du
+  temps** si vous laissez tourner l'horloge assez longtemps — les IA colonisent leurs voisins
+  libres. Toucher le fond vide referme le panneau.
+- **Touchez votre système d'origine** (celui portant le nom de votre empire) : le même
+  panneau affiche en plus une section Économie (bouton **Investir**, coût croissant, et un
+  bouton par type de bâtiment — « (construit) » et inactif une fois bâti, production visible
+  dans le trésor une fois la construction achevée) et une section Armée (garnison et
+  puissance estimée, un bouton par type d'unité pour recruter, un bouton par système voisin
+  pour y envoyer toute la garnison). Envoyer une garnison vers un système libre le colonise à
+  l'arrivée ; vers un système ennemi, déclenche une bataille — le résultat (victoire/défaite,
+  pertes des deux camps) est systématiquement journalisé dans la console, même panneau fermé.
+- **Touchez le système d'origine d'une IA** : le panneau doit afficher le nom de cet empire
+  comme propriétaire, et sa garnison si elle en a recruté une — confirmation visuelle que
+  l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
+- **Le bouton « Gestion »** ouvre une fenêtre centrale à cinq onglets (`ManagementWindowController`) :
+  - **Empires** : les 6 empires (nom, rôle — « Vous » pour le joueur, la personnalité pour
+    chaque IA —, nombre de systèmes, Credits). En accélérant l'horloge (Maximum), les Credits
+    des 5 IA doivent progresser **sans aucune intervention** — la preuve la plus directe que
+    l'IA fonctionne.
+  - **Diplomatie** : statut/opinion envers chaque IA avec boutons d'action (Guerre, Pacte,
+    Alliance, Paix, Rompre selon le statut courant), et les propositions reçues en attente
+    (Accepter/Refuser). En laissant tourner l'horloge en Maximum, les IA doivent se déclarer
+    la guerre entre elles ou se proposer des pactes selon leur personnalité — visible en
+    filtrant la console sur `[Diplomacy]` — et une attaque IA ne doit jamais survenir sans
+    qu'une ligne `[Diplomacy] ... declare la guerre` ne l'ait précédée.
+  - **Recherche** : domaine actif (« Aucun » au tout début), palier et bonus courants des 7
+    domaines, bouton **Activer** par domaine. Activez un domaine puis accélérez l'horloge :
+    son palier doit progresser et finir par se compléter (console `[Research]`), et son bonus
+    (ex. Économie) doit se répercuter sur la production correspondante dans le trésor.
+  - **Espionnage** : puissance d'espionnage du joueur et, pour chaque IA, son
+    contre-espionnage estimé avec cinq boutons (Vol tech, Sabotage, Révolte, Influence,
+    Découvrir). Une mission contre une cible faible doit réussir sans laisser de trace côté
+    opinion ; contre une cible forte, elle doit échouer, coûter quand même le crédit dépensé,
+    et faire chuter l'opinion de la cible envers vous — visible en filtrant la console sur
+    `[Espionage]`.
+  - **Sauvegarde** : état du fichier, boutons **Sauvegarder maintenant**/**Recharger**. Jouez
+    quelques mois, changez des choses (impôts, construction, recherche...), sauvegardez,
+    modifiez encore l'état, puis rechargez : tout doit revenir exactement à l'état sauvegardé.
+- **Le bouton « Menu »** ouvre le menu pause (`PauseMenuController`, met l'horloge en pause) :
+  Reprendre, Sauvegarder maintenant, Recharger, Menu principal (retour à `Bootstrap` via
+  `ISceneLoader`), Quitter le jeu. Depuis le menu principal, **Continuer** doit maintenant être
+  actif et vous ramener exactement où vous étiez.
+- **Quittez complètement Play et relancez** (`GalaxyMap.unity` directement, ou via
+  Continuer) : la console doit afficher `[Save] Sauvegarde existante chargee au demarrage.` et
+  la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
+  noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-> Ces neuf encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
-> finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
-> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel`, `DiplomacyDebugPanel`,
-> `ResearchDebugPanel`, `EspionageDebugPanel` et `SaveDebugPanel`.
-
-**Tests unitaires** (inclus dans le Run All du Test Runner, 353 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 389 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -603,14 +673,18 @@ planter) ; `SaveServiceTests` (Phase 10 — aller-retour complet capture puis ap
 chaque type d'état : systèmes, bâtiments complétés uniquement, trésor et taux d'imposition,
 garnisons, relations/opinions diplomatiques, progression de recherche et domaine actif, date
 de l'horloge ; robustesse face à un fichier absent ou corrompu sans jamais lever d'exception ;
-les méthodes `Restore*` ne publient aucun événement).
+les méthodes `Restore*` ne publient aucun événement) ; `HudFormatterTests` et
+`SaveFileLocatorTests` (Phase 11 — formatage des dates/montants/pourcentages, chemin et
+existence du fichier de sauvegarde ; seule logique de cette phase qui ne touche ni `OnGUI` ni
+`ServiceLocator`, donc la seule testable en EditMode — voir plus bas).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des neuf panneaux IMGUI répondent bien au tactile (traduit
-  automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil) ;
+- que les boutons du HUD, du panneau système, de la fenêtre de gestion et des menus
+  répondent bien au tactile (traduit automatiquement par Unity sur Android/iOS, mais un
+  point à confirmer sur appareil) ;
 - que la sauvegarde survit bien à une mise en arrière-plan réelle de l'application (pas
   seulement à un Play/Stop dans l'éditeur), le scénario mobile le plus courant.
 
@@ -626,7 +700,10 @@ reproduit l'algorithme (voir les commentaires de `GalaxyGenerator`, `GameClock`,
 `MilitaryDecisionMaker`, `ProposalEvaluator`, `DiplomacyDecisionMaker`, `ResearchService` et
 `EspionageService` pour le détail) ; la Phase 10 n'introduit pas de nouvelle formule mais un
 script Python recoupe tout de même la logique de filtrage de `SaveService.Capture` (quelles
-entrées valent la peine d'être écrites) et la fidélité d'un aller-retour JSON.
+entrées valent la peine d'être écrites) et la fidélité d'un aller-retour JSON. La Phase 11
+recoupe de la même façon le formatage de `HudFormatter` (abréviations k/M, arrondi des
+pourcentages) — le reste de cette phase (agencement `OnGUI`) est de la présentation pure,
+vérifiable seulement en Play Mode, pas par un script indépendant.
 
 ---
 
@@ -644,14 +721,15 @@ entrées valent la peine d'être écrites) et la fidélité d'un aller-retour JS
 | 8 | Recherche (arbre technologique, 7 domaines) | ✅ terminée |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | ✅ terminée |
 | 10 | Sauvegarde JSON automatique | ✅ terminée |
-| 11 | Interface complète (menu, écrans de gestion, HUD) | à venir |
+| 11 | Interface complète (menu, écrans de gestion, HUD) | ✅ terminée |
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 10 n'a touché ni l'interface finale, ni
-l'équilibrage — tous les systèmes de jeu du brief (économie, diplomatie, recherche,
-espionnage, guerre) sont implémentés et persistent désormais d'une session à l'autre ; il ne
-reste que l'habillage visuel et le réglage des valeurs numériques.
+complexe à la fois (consigne du brief) : la Phase 11 n'a touché à aucune formule ni règle de
+jeu — tous les systèmes du brief (économie, diplomatie, recherche, espionnage, guerre) étaient
+déjà implémentés et persistants ; elle leur donne une interface complète (menu, HUD, panneau
+de système, fenêtre de gestion, menu pause) pour la première fois pilotable de bout en bout
+sans dérouler la console. Il ne reste que le réglage des valeurs numériques (Phase 12).
 
 ---
 

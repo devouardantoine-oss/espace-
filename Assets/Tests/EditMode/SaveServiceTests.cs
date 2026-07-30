@@ -39,6 +39,7 @@ namespace Espace.Tests.EditMode
             public void TogglePause() => CurrentSpeed = IsPaused ? GameSpeed.Normal : GameSpeed.Paused;
             public void SetSpeed(GameSpeed speed) => CurrentSpeed = speed;
             public void SetDate(GameDate date) => CurrentDate = date;
+            public void ResetToStart() { }
         }
 
         private EventBus _eventBus;

@@ -151,6 +151,15 @@ namespace Espace.Core
             _accumulatedSeconds = 0f;
         }
 
+        /// <inheritdoc />
+        public void ResetToStart()
+        {
+            CurrentDate = _settings.StartDate;
+            _accumulatedSeconds = 0f;
+            _speedBeforePause = GameSpeed.Normal;
+            SetSpeedInternal(GameSpeed.Normal);
+        }
+
         private void SetSpeedInternal(GameSpeed speed)
         {
             if (CurrentSpeed == speed)

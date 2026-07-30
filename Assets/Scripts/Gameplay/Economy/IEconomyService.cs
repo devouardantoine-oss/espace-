@@ -10,8 +10,9 @@ namespace Espace.Gameplay.Economy
     /// <para>
     /// <b>Depuis la Phase 5 :</b> généralisé à plusieurs empires. <see cref="Treasury"/>,
     /// <see cref="TaxRate"/> et <see cref="SetTaxRate(float)"/> restent des raccourcis vers
-    /// <see cref="EconomyService.PlayerOwnerId"/>, pour que le code écrit en Phase 4
-    /// (notamment <c>EconomyDebugPanel</c>) continue de fonctionner sans modification.
+    /// <see cref="EconomyService.PlayerOwnerId"/>, pour que le code écrit en Phase 4 (repris
+    /// depuis en Phase 11 par <c>Espace.UI.HudController</c>) continue de fonctionner sans
+    /// modification.
     /// <see cref="TryStartConstruction"/> et <see cref="TryInvestInDevelopment"/> retrouvent
     /// déjà l'empire concerné via le propriétaire du système visé : ils fonctionnent tels
     /// quels pour n'importe quel empire, joueur ou IA.

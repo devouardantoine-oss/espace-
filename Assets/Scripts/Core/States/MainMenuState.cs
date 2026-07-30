@@ -3,9 +3,10 @@ namespace Espace.Core.States
     /// <summary>
     /// Etat « menu principal » : point d'arrivee du demarrage.
     /// <para>
-    /// En Phase 1 c'est un etat terminal qui se contente de signaler qu'il est actif.
-    /// Il recevra l'ecran principal (Nouvelle partie / Charger / Parametres) en Phase 9,
-    /// et la transition vers la carte galactique en Phase 2.
+    /// Etat terminal qui se contente de signaler qu'il est actif : l'ecran reellement affiche
+    /// (Nouvelle partie / Continuer / Quitter) est un <c>MonoBehaviour</c> IMGUI independant
+    /// (<c>Espace.UI.MainMenuController</c>, Phase 11) place directement dans la scene
+    /// <c>Bootstrap</c>, pas piloté par cet etat — voir sa remarque sur <c>ISceneLoader</c>.
     /// </para>
     /// </summary>
     public sealed class MainMenuState : IGameState

@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using Espace.Core;
-using Espace.Gameplay.Empires;
-using Espace.Gameplay.Military;
 using UnityEngine;
 
 namespace Espace.Gameplay.Galaxy
@@ -19,10 +17,10 @@ namespace Espace.Gameplay.Galaxy
     /// orchestrateur habituel le ferait dans un projet edite normalement dans l'editeur.
     /// </para>
     /// <para>
-    /// Affiche egalement un panneau de diagnostic minimal (<see cref="OnGUI"/>) pour rendre
-    /// la selection observable sans attendre l'ecran « Gestion des systemes » de la Phase 11.
-    /// Volontairement en IMGUI, pas en TextMeshPro : c'est un outil de mise au point
-    /// temporaire, pas une brique de l'interface finale.
+    /// La selection de systeme (evenements <see cref="SystemSelectedEvent"/>/<see cref="SystemDeselectedEvent"/>)
+    /// est affichee par <c>Espace.UI.SystemInfoPanelController</c> depuis la Phase 11 : ce
+    /// composant ne fait plus que la publier, il ne la rend plus lui-meme (l'ancien panneau de
+    /// diagnostic IMGUI qui vivait ici jusqu'a la Phase 10 a ete retire).
     /// </para>
     /// </summary>
     public sealed class GalaxyMapController : MonoBehaviour
@@ -36,16 +34,6 @@ namespace Espace.Gameplay.Galaxy
         private float minOrthographicSize = 4f;
 
         private GalaxyMap _map;
-        private IEventBus _eventBus;
-        private StarSystemId? _selectedSystemId;
-
-        // Uniquement pour afficher un nom d'empire plutot qu'un identifiant brut dans le
-        // panneau de diagnostic ci-dessous : pas une dependance structurelle a Espace.Gameplay.Empires,
-        // resolue paresseusement comme le reste des dependances inter-controleurs de la scene.
-        private EmpireRegistry _empireRegistry;
-
-        // Meme raison : afficher la garnison du systeme selectionne sans dependance structurelle a Espace.Gameplay.Military.
-        private IMilitaryService _military;
 
         private void Awake()
         {
@@ -71,39 +59,20 @@ namespace Espace.Gameplay.Galaxy
             SetupCamera();
         }
 
-        private void OnEnable()
+        /// <summary>
+        /// Desenregistre la galaxie a la destruction de ce composant : sans cela, un retour
+        /// au menu principal suivi d'une nouvelle partie (Phase 11) trouverait
+        /// <see cref="ServiceLocator.IsRegistered{T}"/> deja vrai dans <see cref="Awake"/> et
+        /// laisserait tous les autres services de la nouvelle scene pointer vers l'ancienne
+        /// galaxie plutot que celle fraichement generee.
+        /// </summary>
+        private void OnDestroy()
         {
-            if (ServiceLocator.TryGet(out _eventBus))
+            if (_map != null)
             {
-                _eventBus.Subscribe<SystemSelectedEvent>(OnSystemSelected);
-                _eventBus.Subscribe<SystemDeselectedEvent>(OnSystemDeselected);
+                ServiceLocator.Unregister<GalaxyMap>();
+                _map = null;
             }
-            else
-            {
-                GameLog.Warning("[GalaxyMapController] IEventBus indisponible : le panneau de diagnostic ne recevra pas la selection.");
-            }
-        }
-
-        private void OnDisable()
-        {
-            if (_eventBus == null)
-            {
-                return;
-            }
-
-            _eventBus.Unsubscribe<SystemSelectedEvent>(OnSystemSelected);
-            _eventBus.Unsubscribe<SystemDeselectedEvent>(OnSystemDeselected);
-            _eventBus = null;
-        }
-
-        private void OnSystemSelected(SystemSelectedEvent selectedEvent)
-        {
-            _selectedSystemId = selectedEvent.SystemId;
-        }
-
-        private void OnSystemDeselected(SystemDeselectedEvent deselectedEvent)
-        {
-            _selectedSystemId = null;
         }
 
         /// <summary>Instancie un marqueur par systeme et retourne leurs positions monde, indexees par identifiant.</summary>
@@ -157,98 +126,6 @@ namespace Espace.Gameplay.Galaxy
             cameraController.Initialize(config.GalaxyRadius);
 
             mainCamera.gameObject.AddComponent<GalaxySelectionController>();
-        }
-
-        /// <summary>Panneau de diagnostic temporaire affichant le systeme selectionne.</summary>
-        private void OnGUI()
-        {
-            if (_empireRegistry == null)
-            {
-                ServiceLocator.TryGet(out _empireRegistry);
-            }
-
-            if (_military == null)
-            {
-                ServiceLocator.TryGet(out _military);
-            }
-
-            const int width = 260;
-            const int padding = 10;
-            const int height = 170;
-
-            GUI.Box(new Rect(padding, padding, width, height), string.Empty);
-
-            var layout = new Rect(padding + 8, padding + 6, width - 16, height - 10);
-            GUILayout.BeginArea(layout);
-
-            if (_map == null)
-            {
-                GUILayout.Label("Galaxie non generee.");
-            }
-            else if (_selectedSystemId.HasValue && _map.TryGetSystem(_selectedSystemId.Value, out StarSystemState system))
-            {
-                GUILayout.Label($"{system.Name}");
-                GUILayout.Label($"Population : {system.Population} M");
-                GUILayout.Label($"Richesse : {system.Wealth}/100");
-                GUILayout.Label($"Developpement : {system.DevelopmentLevel}/5");
-                GUILayout.Label($"Stabilite : {Mathf.RoundToInt(system.Stability * 100f)}%");
-                GUILayout.Label($"Proprietaire : {OwnerLabel(system.OwnerId)}");
-                GUILayout.Label($"Gisements : {(system.ResourceDeposits.Length == 0 ? "aucun" : string.Join(", ", system.ResourceDeposits))}");
-                GUILayout.Label($"Routes : {_map.GetNeighbors(system.Id).Count}");
-                GUILayout.Label($"Garnison : {GarrisonLabel(system)}");
-            }
-            else
-            {
-                GUILayout.Label($"{_map.Systems.Count} systemes, {_map.Links.Count} routes.");
-                GUILayout.Label("Touchez un systeme pour ses details.");
-            }
-
-            GUILayout.EndArea();
-        }
-
-        /// <summary>
-        /// Nom de l'empire proprietaire, s'il est deja connu (l'IEmpireRegistry n'existe
-        /// qu'a partir du Start d'EmpireController) ; repli sur l'identifiant brut sinon.
-        /// </summary>
-        private string OwnerLabel(int ownerId)
-        {
-            if (ownerId == StarSystemState.UnownedOwnerId)
-            {
-                return "Independant";
-            }
-
-            if (_empireRegistry != null && _empireRegistry.TryGetEmpire(ownerId, out Empire empire))
-            {
-                return empire.Name;
-            }
-
-            return ownerId.ToString();
-        }
-
-        /// <summary>
-        /// Resume des flottes stationnees sur ce systeme, tous proprietaires confondus
-        /// (repli sur « inconnue » si IMilitaryService n'est pas encore disponible).
-        /// </summary>
-        private string GarrisonLabel(StarSystemState system)
-        {
-            if (_military == null)
-            {
-                return "inconnue";
-            }
-
-            IReadOnlyList<Fleet> fleets = _military.GetFleetsAt(system.Id);
-            if (fleets.Count == 0)
-            {
-                return "aucune";
-            }
-
-            var parts = new List<string>(fleets.Count);
-            foreach (Fleet fleet in fleets)
-            {
-                parts.Add($"{OwnerLabel(fleet.OwnerId)} : {fleet.Composition.TotalCount}");
-            }
-
-            return string.Join(" | ", parts);
         }
     }
 }
