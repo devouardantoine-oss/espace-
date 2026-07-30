@@ -269,6 +269,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   gameConfig: {fileID: 11400000, guid: e5face00000000000000000000000071, type: 2}
+  gameClockConfig: {fileID: 11400000, guid: e5face00000000000000000000000240, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

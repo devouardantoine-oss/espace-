@@ -14,8 +14,9 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 2 terminée** — carte galactique (100 systèmes). Économie, diplomatie,
-> recherche, espionnage et armées ne sont pas encore implémentés.
+> **Statut : Phase 3 terminée** — carte galactique (100 systèmes) et horloge de jeu (temps
+> continu, pause, vitesses). Économie, diplomatie, recherche, espionnage et armées ne sont
+> pas encore implémentés.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -79,10 +80,11 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable Phase 2 : carte galactique
+│   └── GalaxyMap.unity           # scène jouable : carte galactique + horloge (Phases 2-3)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
+│   ├── GameClockConfig.asset
 │   └── GalaxyConfig.asset
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
@@ -145,6 +147,23 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 | `GalaxySelectionController` | sélection tactile | distingue un tap d'un glisser par seuils de durée/déplacement ; publie `SystemSelectedEvent` / `SystemDeselectedEvent` sur l'`IEventBus` |
 | `GalaxyMapController` | orchestrateur de scène | construit toute la carte **par code** plutôt que par références d'inspecteur — réduit au minimum le YAML de scène à écrire à la main |
 
+### Briques de l'horloge de jeu (Phase 3)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `GameDate` | date de jeu | calendrier simplifié 12 mois × 30 jours (360 j/an, sans année bissextile) — convention courante en grande stratégie, arithmétique de date triviale |
+| `GameSpeed` | palier de vitesse | `Paused`, `Normal`, `Fast`, `Faster`, `Fastest` — 4 paliers actifs plutôt que les 5 de CK3, pour rester lisible sur petit écran |
+| `GameClockSettings` | paramètres purs | structure C# immuable (même rôle que `GalaxyGenerationParameters` en Phase 2) : `GameClock` reste testable sans ScriptableObject |
+| `IGameClock` / `GameClock` | horloge | temps continu accumulé (`deltaTime × multiplicateur`) avec seuil de jour ; `Tick` n'est **pas** sur l'interface publique — seul `GameBootstrap` fait avancer le temps, tout le reste ne fait que le lire ou le piloter |
+| événements (`DayAdvancedEvent`, `MonthAdvancedEvent`, `YearAdvancedEvent`, `GameSpeedChangedEvent`) | notifications | un `DayAdvancedEvent` **par jour réellement franchi**, même si plusieurs jours s'écoulent dans une frame — l'économie (Phase 4) ne doit jamais sauter une production |
+| `GameClockConfig` | réglages éditables | ScriptableObject ; convertit vers `GameClockSettings`, même pattern que `GalaxyConfig` |
+| `GameClockDebugPanel` | contrôle temporaire | boutons tactiles Pause/Normal/Rapide/Très rapide/Maximum en IMGUI, pilotant le vrai `IGameClock` — outil de mise au point, pas l'écran Paramètres final (Phase 11) |
+
+> **Plafond de rattrapage :** si l'application est relancée après une longue mise en veille
+> (deltaTime extrême), `GameClock` plafonne l'avance à 30 jours par frame plutôt que de
+> geler l'application ou de publier des centaines d'événements d'un coup — un vrai scénario
+> mobile, pas une précaution théorique.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -154,28 +173,28 @@ erreur ni warning :
 
 ```
 [Bootstrap] Configuration appliquee (cible : 60 FPS).
-[Bootstrap] 3 services enregistres.
+[Bootstrap] 4 services enregistres.
 [FSM] Entree dans BootState
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (73 tests, tous packages confondus).
+Voir §5 pour le compte total (117 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester la Phase 2 — carte galactique
+## 5. Tester les Phases 2-3 — carte galactique et horloge
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
 
 ```
 [Bootstrap] Configuration appliquee (cible : 60 FPS).
-[Bootstrap] 3 services enregistres.
+[Bootstrap] 4 services enregistres.
 [FSM] Entree dans BootState
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
@@ -192,22 +211,35 @@ Dans la fenêtre Game :
   gauche : nom, population, richesse, développement, stabilité, propriétaire (« Independant »
   pour tous en Phase 2, les empires arrivent en Phase 5), gisements, nombre de routes.
   Toucher le fond vide referme l'encart.
+- **En haut à droite**, un second encart affiche la date courante (format `0001-01-02`) et
+  la vitesse. Avec des réglages par défaut, un jour de jeu s'écoule toutes les 2 secondes
+  réelles. Boutons : **Pause/Lecture**, **Normal**, **Rapide** (x2), **Très rapide** (x4),
+  **Maximum** (x8) — la date doit s'incrémenter plus vite à mesure qu'on augmente la vitesse,
+  et s'arrêter net sur Pause.
 
-> Ce panneau en haut à gauche est un outil de mise au point temporaire (IMGUI), pas l'écran
-> « Gestion des systèmes » prévu en Phase 11 — voir le commentaire de `GalaxyMapController`.
+> Ces deux encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> finaux (Phase 11) — voir les commentaires de `GalaxyMapController` et `GameClockDebugPanel`.
 
-**Tests unitaires propres à la galaxie** (inclus dans le Run All du Test Runner) :
-`GalaxyGeneratorTests` (déterminisme, connexité totale, respect des distances, plages de
-statistiques), `GalaxyMapTests` (validation des données, requêtes de voisinage),
-`HyperlaneLinkTests` (égalité non ordonnée A↔B), `StarSystemNameGeneratorTests`
-(déterminisme et unicité des noms).
+**Tests unitaires** (inclus dans le Run All du Test Runner, 117 au total) :
+`GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
+(Phase 2 — déterminisme, connexité, unicité des noms) ; `GameDateTests` (arithmétique de
+calendrier, franchissements de mois/année), `GameClockSettingsTests` (validation des
+multiplicateurs), `GameClockTests` (Phase 3 — seuils de jour, pause/reprise, événements
+publiés une fois par jour même à vitesse élevée, plafond de rattrapage sur `deltaTime`
+extrême, vérifié avec `LogAssert.Expect`).
 
-**Point à vérifier en priorité sur appareil réel** — c'est la partie la plus délicate à
-garantir sans pouvoir ouvrir l'éditeur ici : le geste de pincement (`GalaxyCameraController`,
-API `EnhancedTouch`) et la distinction tap/glisser (`GalaxySelectionController`). La logique
-de génération, elle, a été recoupée indépendamment par un script Python qui reproduit
-l'algorithme (déterminisme, connexité sur 10 graines, absence de doublons) : voir le
-commentaire de `GalaxyGenerator` pour le détail de l'algorithme.
+**Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
+sans pouvoir ouvrir l'éditeur ici :
+- le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
+  tap/glisser (`GalaxySelectionController`) ;
+- que les boutons `GameClockDebugPanel` répondent bien au tactile (IMGUI traduit le tactile
+  en événements de pointeur automatiquement sur Android/iOS, mais c'est un point à confirmer
+  sur appareil).
+
+La logique de génération de galaxie et celle de l'horloge/calendrier ont chacune été
+recoupées indépendamment par un script Python qui reproduit l'algorithme (déterminisme,
+connexité, franchissements de mois/année, plafond de rattrapage) : voir les commentaires de
+`GalaxyGenerator` et `GameClock` pour le détail.
 
 ---
 
@@ -217,7 +249,7 @@ commentaire de `GalaxyGenerator` pour le détail de l'algorithme.
 |---|---|---|
 | 1 | Socle technique : services, événements, machine à états, configuration | ✅ terminée |
 | 2 | Carte galactique : 100 systèmes, génération procédurale, caméra tactile, sélection | ✅ terminée |
-| 3 | Horloge de jeu : temps continu, pause, vitesses | à venir |
+| 3 | Horloge de jeu : temps continu, pause, vitesses | ✅ terminée |
 | 4 | Économie : Crédits, Minerais, Énergie, Nourriture, Influence | à venir |
 | 5 | Empires et IA de base (personnalités, colonisation) | à venir |
 | 6 | Armées et résolution automatique des combats | à venir |
@@ -229,8 +261,8 @@ commentaire de `GalaxyGenerator` pour le détail de l'algorithme.
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul
-système complexe à la fois (consigne du brief) : la Phase 2 n'a touché ni l'économie, ni le
-temps, ni aucun autre système.
+système complexe à la fois (consigne du brief) : la Phase 3 n'a touché ni l'économie, ni les
+empires, ni aucun autre système — seule l'horloge existe, rien ne la consomme encore.
 
 ---
 

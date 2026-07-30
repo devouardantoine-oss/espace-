@@ -31,6 +31,10 @@ namespace Espace.Managers
         [SerializeField]
         private GameConfig gameConfig;
 
+        [Tooltip("Asset de reglages de l'horloge de jeu. Si vide, GameClockSettings.Default est utilise.")]
+        [SerializeField]
+        private GameClockConfig gameClockConfig;
+
         /// <summary>
         /// Instance active. Statique uniquement pour detecter les doublons apres un
         /// rechargement de scene — ce n'est pas un point d'acces public aux services,
@@ -41,6 +45,7 @@ namespace Espace.Managers
         private GameManager _gameManager;
         private EventBus _eventBus;
         private SceneLoaderService _sceneLoader;
+        private GameClock _gameClock;
         private bool _servicesReady;
 
         private void Awake()
@@ -72,6 +77,7 @@ namespace Espace.Managers
             // Un unique point d'entree par frame : plus lisible et moins couteux
             // que N MonoBehaviours avec chacun leur Update.
             _gameManager.Tick(Time.deltaTime);
+            _gameClock.Tick(Time.deltaTime);
         }
 
         private void OnDestroy()
@@ -112,8 +118,16 @@ namespace Espace.Managers
             _sceneLoader = new SceneLoaderService();
             _gameManager = new GameManager();
 
+            GameClockSettings clockSettings = gameClockConfig != null ? gameClockConfig.ToSettings() : GameClockSettings.Default;
+            if (gameClockConfig == null)
+            {
+                GameLog.Warning("[Bootstrap] Aucun GameClockConfig assigne : GameClockSettings.Default est utilise.");
+            }
+            _gameClock = new GameClock(clockSettings, _eventBus);
+
             ServiceLocator.Register<IEventBus>(_eventBus);
             ServiceLocator.Register<ISceneLoader>(_sceneLoader);
+            ServiceLocator.Register<IGameClock>(_gameClock);
 
             // GameManager est enregistre sous son type concret : c'est le chef d'orchestre
             // du flux, il n'a pas vocation a etre substitue.
@@ -131,6 +145,7 @@ namespace Espace.Managers
             _eventBus.Initialize();
             _sceneLoader.Initialize();
             _gameManager.Initialize();
+            _gameClock.Initialize();
 
             _servicesReady = true;
         }
@@ -140,12 +155,14 @@ namespace Espace.Managers
         {
             _servicesReady = false;
 
+            _gameClock?.Shutdown();
             _gameManager?.Shutdown();
             _sceneLoader?.Shutdown();
             _eventBus?.Shutdown();
 
             ServiceLocator.Clear();
 
+            _gameClock = null;
             _gameManager = null;
             _sceneLoader = null;
             _eventBus = null;
