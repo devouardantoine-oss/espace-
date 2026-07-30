@@ -6,6 +6,7 @@ using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
+using Espace.Gameplay.Research;
 using UnityEngine;
 
 namespace Espace.Gameplay.Diplomacy
@@ -383,14 +384,14 @@ namespace Espace.Gameplay.Diplomacy
             {
                 case ProposalType.Alliance:
                     SetStatus(proposal.ProposerId, proposal.TargetId, DiplomaticStatus.Alliance);
-                    AdjustOpinion(proposal.ProposerId, proposal.TargetId, AllianceOpinionBonus);
-                    AdjustOpinion(proposal.TargetId, proposal.ProposerId, AllianceOpinionBonus);
+                    AdjustOpinionGain(proposal.ProposerId, proposal.TargetId, AllianceOpinionBonus);
+                    AdjustOpinionGain(proposal.TargetId, proposal.ProposerId, AllianceOpinionBonus);
                     break;
 
                 case ProposalType.NonAggressionPact:
                     SetStatus(proposal.ProposerId, proposal.TargetId, DiplomaticStatus.NonAggressionPact);
-                    AdjustOpinion(proposal.ProposerId, proposal.TargetId, PactOpinionBonus);
-                    AdjustOpinion(proposal.TargetId, proposal.ProposerId, PactOpinionBonus);
+                    AdjustOpinionGain(proposal.ProposerId, proposal.TargetId, PactOpinionBonus);
+                    AdjustOpinionGain(proposal.TargetId, proposal.ProposerId, PactOpinionBonus);
                     break;
 
                 case ProposalType.TradeTreaty:
@@ -399,14 +400,14 @@ namespace Espace.Gameplay.Diplomacy
 
                 case ProposalType.PeaceTreaty:
                     SetStatus(proposal.ProposerId, proposal.TargetId, DiplomaticStatus.Peace);
-                    AdjustOpinion(proposal.ProposerId, proposal.TargetId, PeaceOpinionBonus);
-                    AdjustOpinion(proposal.TargetId, proposal.ProposerId, PeaceOpinionBonus);
+                    AdjustOpinionGain(proposal.ProposerId, proposal.TargetId, PeaceOpinionBonus);
+                    AdjustOpinionGain(proposal.TargetId, proposal.ProposerId, PeaceOpinionBonus);
                     break;
 
                 case ProposalType.ResourceExchange:
                     TransferResources(proposal.ProposerId, proposal.TargetId, proposal.OfferedResources);
                     TransferResources(proposal.TargetId, proposal.ProposerId, proposal.RequestedResources);
-                    AdjustOpinion(proposal.TargetId, proposal.ProposerId, TradeGoodwillOpinionBonus);
+                    AdjustOpinionGain(proposal.TargetId, proposal.ProposerId, TradeGoodwillOpinionBonus);
                     break;
 
                 case ProposalType.TerritoryExchange:
@@ -517,6 +518,24 @@ namespace Espace.Gameplay.Diplomacy
             var key = (observerId, targetId);
             float current = _opinions.TryGetValue(key, out float value) ? value : 0f;
             _opinions[key] = Mathf.Clamp(current + delta, MinOpinion, MaxOpinion);
+        }
+
+        /// <summary>
+        /// Variante d'<see cref="AdjustOpinion"/> pour un gain d'opinion positif issu d'une
+        /// proposition acceptee (alliance, pacte, paix, bonne volonte commerciale) : amplifie
+        /// par la recherche en Diplomatie (Phase 8) de <paramref name="observerId"/> — de
+        /// meilleurs diplomates suscitent une meilleure opinion. Volontairement pas utilisee
+        /// pour les penalites (guerre declaree, pacte rompu, soumission a un ultimatum) : la
+        /// recherche rend plus convaincant, elle n'attenue pas la colere qu'on suscite.
+        /// </summary>
+        private void AdjustOpinionGain(int observerId, int targetId, float baseBonus)
+        {
+            AdjustOpinion(observerId, targetId, baseBonus * ResearchMultiplier(observerId, ResearchDomain.Diplomacy));
+        }
+
+        private static float ResearchMultiplier(int empireId, ResearchDomain domain)
+        {
+            return ServiceLocator.TryGet(out IResearchService research) ? 1f + research.GetBonus(empireId, domain) : 1f;
         }
 
         private void SetStatus(int empireAId, int empireBId, DiplomaticStatus newStatus)

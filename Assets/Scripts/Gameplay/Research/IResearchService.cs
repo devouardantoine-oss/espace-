@@ -1,0 +1,35 @@
+using System.Collections.Generic;
+
+namespace Espace.Gameplay.Research
+{
+    /// <summary>
+    /// Recherche de tous les empires : generation journaliere de points investis dans un
+    /// domaine actif choisi, progression et bonus cumulatifs par domaine.
+    /// </summary>
+    public interface IResearchService
+    {
+        /// <summary>Catalogue complet des paliers de recherche, tous domaines confondus.</summary>
+        IReadOnlyList<TechnologyDefinition> Catalog { get; }
+
+        /// <summary>Domaine sur lequel <paramref name="empireId"/> investit ses points de recherche journaliers, ou <c>null</c> si aucun n'a encore ete choisi.</summary>
+        ResearchDomain? GetActiveDomain(int empireId);
+
+        /// <summary>Nombre de paliers de <paramref name="domain"/> deja completes par <paramref name="empireId"/> (0 si aucun).</summary>
+        int GetCompletedTierCount(int empireId, ResearchDomain domain);
+
+        /// <summary>Points de recherche deja investis dans le prochain palier non complete de <paramref name="domain"/> pour <paramref name="empireId"/>.</summary>
+        float GetProgress(int empireId, ResearchDomain domain);
+
+        /// <summary>Prochain palier non complete de <paramref name="domain"/> pour <paramref name="empireId"/>, ou <c>null</c> si le domaine est deja au maximum.</summary>
+        TechnologyDefinition GetNextTechnology(int empireId, ResearchDomain domain);
+
+        /// <summary>Bonus cumulatif (somme des <see cref="TechnologyDefinition.EffectMagnitude"/>) de tous les paliers de <paramref name="domain"/> deja completes par <paramref name="empireId"/>. 0 si aucun.</summary>
+        float GetBonus(int empireId, ResearchDomain domain);
+
+        /// <summary>
+        /// Fait de <paramref name="domain"/> le domaine actif de <paramref name="empireId"/>.
+        /// Echoue si ce domaine est deja au maximum, ou s'il est deja actif.
+        /// </summary>
+        bool TrySetActiveDomain(int empireId, ResearchDomain domain, out string error);
+    }
+}

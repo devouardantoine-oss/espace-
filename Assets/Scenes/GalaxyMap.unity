@@ -606,6 +606,85 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000000610, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+--- !u!1 &900000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 900001}
+  - component: {fileID: 900002}
+  - component: {fileID: 900003}
+  m_Layer: 0
+  m_Name: '[Research]'
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &900001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &900002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5face00000000000000000000000707, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  catalog:
+  - {fileID: 11400000, guid: e5face00000000000000000000000710, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000711, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000712, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000713, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000714, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000715, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000716, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000717, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000718, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000719, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000720, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000721, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000722, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000723, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000724, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000725, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000726, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000727, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000728, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000729, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000730, type: 2}
+--- !u!114 &900003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5face00000000000000000000000708, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -618,3 +697,4 @@ SceneRoots:
   - {fileID: 600001}
   - {fileID: 700001}
   - {fileID: 800001}
+  - {fileID: 900001}

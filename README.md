@@ -14,13 +14,15 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 7 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 8 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
-> colonisation), et désormais diplomatie : guerre/paix/alliances/pactes de non-agression,
-> opinion, traités commerciaux, embargos, ultimatums, échanges de ressources et de
-> territoires. **Le combat est maintenant conditionné à un état de guerre déclaré** — une IA
-> ne peut plus attaquer sans l'avoir décidé diplomatiquement au préalable. Recherche et
-> espionnage ne sont pas encore implémentés.
+> colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
+> commerciaux, embargos, ultimatums, échanges de ressources et de territoires), et désormais
+> recherche : 7 domaines (Économie, Industrie, Armement, Énergie, Diplomatie, Espionnage,
+> Logistique), 3 paliers chacun, dont les bonus se répercutent directement sur la production,
+> le combat, la vitesse des flottes et les gains d'opinion. Espionnage n'est pas encore
+> implémenté (Phase 9) — son domaine de recherche existe déjà, en attente d'un système à
+> améliorer.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -84,7 +86,7 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie (Phases 2-7)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie + recherche (Phases 2-8)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
@@ -92,7 +94,8 @@ Assets/
 │   ├── GalaxyConfig.asset
 │   ├── Buildings/                # 5 types de bâtiments (1 par ressource)
 │   ├── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
-│   └── Units/                    # 4 types d'unités (Infanterie, Blindés, Forces spéciales, Flotte spatiale)
+│   ├── Units/                    # 4 types d'unités (Infanterie, Blindés, Forces spéciales, Flotte spatiale)
+│   └── Research/                 # 21 paliers de recherche (3 x 7 domaines)
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
 │   ├── Data/                     # → Espace.Data     (ScriptableObjects et types génériques)
@@ -102,7 +105,8 @@ Assets/
 │   │   ├── Economy/              #     production, bâtiments, impôts, investissement
 │   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
 │   │   ├── Military/             #     unités, flottes, combat automatique, colonisation
-│   │   └── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
+│   │   ├── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
+│   │   └── Research/             #     domaines, paliers, points, bonus par domaine
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -276,9 +280,12 @@ PuissanceDefenseur = Σ(quantité × puissance du catalogue) × MoralSystème ×
 « Moral » approximé par la stabilité du système (celui d'origine pour l'attaquant, celui
 attaqué pour le défenseur) ; « terrain » par le niveau de développement du système défendu
 (fortifications) ; « commandement » par la personnalité de l'empire (seul le Militariste a un
-bonus, ×1.15). « Ravitaillement » reste implicitement favorable tant que les déplacements sont
-limités aux voisins directs (pas de calcul d'itinéraire multi-sauts en v1). « Technologie »
-vaut 1 pour tous les empires — la recherche n'existe pas encore (Phase 8).
+bonus, ×1.15) **et, depuis la Phase 8, par le bonus de recherche Armement de chaque empire**
+(voir plus bas). « Ravitaillement » reste implicitement favorable tant que les déplacements
+sont limités aux voisins directs (pas de calcul d'itinéraire multi-sauts en v1) ; le domaine
+de recherche Logistique accélère désormais ces déplacements plutôt que d'agir sur le combat
+lui-même. « Technologie » n'est donc plus un facteur neutre depuis la Phase 8 : il se
+décompose entre les bonus des domaines Armement (puissance) et Logistique (vitesse).
 
 **En cas de défaite, l'attaquant survivant se replie** vers son système d'origine plutôt que
 d'être systématiquement anéanti : plus lisible à observer, et une défaite reste réversible
@@ -326,6 +333,43 @@ revenu passif aux deux partenaires chaque mois, via le nouveau `IEconomyService.
 (contrepartie inconditionnelle de `TrySpend`, introduite pour tout gain hors production
 journalière : échanges de ressources, tribut d'ultimatum, revenu commercial).
 
+### Briques de la recherche (Phase 8)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `ResearchDomain` | contenu | 7 domaines du brief (Économie, Industrie, Armement, Énergie, Diplomatie, Espionnage, Logistique), chacun lié à un système précis qu'il améliore — sauf Espionnage, banqué pour la Phase 9 |
+| `TechnologyDefinition` | contenu | ScriptableObject, même pattern que `BuildingType`/`UnitTypeDefinition` : nom, domaine, palier (1 à 3), coût en points de recherche, bonus apporté ; 21 assets au total (3 paliers × 7 domaines) |
+| `IResearchService` / `ResearchService` | recherche de tous les empires | même architecture que `EconomyService`/`MilitaryService` ; génère des points chaque jour (population et développement des systèmes possédés, même forme que la production d'Influence) crédités au **domaine actif** choisi par l'empire — un seul à la fois, changer de domaine ne fait perdre aucune progression déjà acquise |
+| `ResearchDecisionMaker` | décision de recherche IA | même séparation que les autres : si le domaine actif est encore en cours, ne change rien ; sinon, choisit le premier domaine non maximal dans l'ordre de préférence de la personnalité (`EmpirePersonalityProfileData.ResearchPriority`) |
+| `ResearchController` | orchestration | seul contrôleur de Phase 7-8 à s'initialiser dans `Start` plutôt qu'`Update` : aucune dépendance à un autre `Start` de la scène (juste `GalaxyMap` et `IEventBus`, disponibles dès l'`Awake`) |
+| `ResearchDebugPanel` | contrôle temporaire | domaine actif, palier et bonus courants des 7 domaines, bouton pour rediriger le focus — empilé en bas à gauche, au-dessus du trésor |
+
+**Bonus appliqués sans dépendance de construction, par résolution paresseuse.** `EconomyService`,
+`MilitaryService` et `DiplomacyService` résolvent `IResearchService` via `ServiceLocator` au
+moment où ils en ont besoin (même précédent que `DiplomacyService` résolvant
+`IMilitaryService` en Phase 7) plutôt que de le recevoir au constructeur — sans quoi
+`ResearchController` et les autres contrôleurs devraient s'attendre mutuellement. Le bonus
+vaut 0 (aucun effet) tant que la recherche n'est pas disponible ou que rien n'a encore été
+recherché : **tous les tests des phases précédentes restent valides sans aucune modification**,
+la meilleure preuve que cette intégration est correctement rétrocompatible.
+
+**Où va chaque domaine :**
+
+```
+Économie   → +bonus% sur la production de Credits (EconomyService)
+Industrie  → +bonus% sur la production de Minerais (EconomyService)
+Énergie    → +bonus% sur la production d'Énergie (EconomyService)
+Armement   → +bonus% sur la puissance de combat, attaquant et défenseur (MilitaryService)
+Logistique → +bonus% sur la vitesse des flottes, donc des trajets plus courts (MilitaryService)
+Diplomatie → +bonus% sur les gains d'opinion d'une proposition acceptée, jamais sur les
+             pénalités (DiplomacyService) — la recherche rend plus convaincant, elle
+             n'atténue pas la colère qu'on suscite
+Espionnage → calculé et affiché, sans effet avant la Phase 9
+```
+
+Nourriture et Influence n'ont volontairement aucun domaine associé : le brief n'en compte que
+7, et forcer une correspondance aurait dilué le sens de chacun.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -342,14 +386,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (288 tests, tous packages confondus).
+Voir §5 pour le compte total (313 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-7 — galaxie, horloge, économie, empires, armées et diplomatie
+## 5. Tester les Phases 2-8 — galaxie, horloge, économie, empires, armées, diplomatie et recherche
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -371,6 +415,7 @@ sans erreur ni warning :
 [Empires] 6 empires crees.
 [Military] Demarree avec 4 types d'unites disponibles.
 [Diplomacy] Demarree.
+[Research] Demarree avec 21 paliers de recherche disponibles.
 ```
 
 Dans la fenêtre Game :
@@ -396,6 +441,11 @@ Dans la fenêtre Game :
   intervention** — c'est la preuve la plus directe que l'IA fonctionne.
 - **En bas à gauche**, le trésor du joueur (5 ressources) et le taux d'imposition courant
   (25% par défaut), avec des boutons **-10%/+10%**.
+- **Juste au-dessus**, un septième encart affiche votre recherche : domaine actif (« Aucun »
+  au tout début), palier et bonus courants des 7 domaines, et un bouton **Activer** par
+  domaine. Activez un domaine puis accélérez l'horloge : son palier doit progresser et
+  finir par se compléter (visible en filtrant la console sur `[Research]`), et son bonus
+  (ex. Économie) doit se répercuter sur la production correspondante dans le trésor.
 - **Touchez votre système d'origine** (celui portant le nom de votre empire) : un troisième
   encart apparaît en bas à droite avec un bouton **Investir** (augmente le développement,
   coût croissant) et un bouton par type de bâtiment. Un bâtiment déjà construit affiche
@@ -418,11 +468,12 @@ Dans la fenêtre Game :
   — et une attaque IA ne doit plus jamais survenir sans qu'une ligne `[Diplomacy] ... declare la
   guerre` ne l'ait précédée.
 
-> Ces six encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> Ces sept encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
 > finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
-> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel` et `DiplomacyDebugPanel`.
+> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel`, `DiplomacyDebugPanel` et
+> `ResearchDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 288 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 313 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -442,23 +493,32 @@ le joueur, effets de chaque proposition acceptée — échange de ressources/ter
 tribut d'ultimatum —, refus d'un ultimatum déclenchant une guerre automatique, dérive mensuelle
 de l'opinion, revenu de traité commercial), `DiplomacyDecisionMakerTests` (propose la paix
 avant d'envisager la guerre, ne déclare la guerre que si l'avantage dépasse le seuil de la
-personnalité, ne propose un pacte qu'au-dessus du seuil d'opinion, une seule action par appel).
+personnalité, ne propose un pacte qu'au-dessus du seuil d'opinion, une seule action par appel) ;
+`ResearchServiceTests` (Phase 8 — génération journalière de points selon population/développement,
+progression et complétion de palier avec report du surplus sur le palier suivant, plusieurs
+paliers complétés le même jour si les points le permettent, points perdus sans exception une
+fois le domaine au maximum, bonus cumulatif, progressions indépendantes entre domaines et
+entre empires), `ResearchDecisionMakerTests` (choisit le premier domaine non maximal dans
+l'ordre de préférence de la personnalité, ne change rien tant que le domaine actif progresse
+encore).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des cinq panneaux IMGUI répondent bien au tactile (traduit
+- que les boutons des sept panneaux IMGUI répondent bien au tactile (traduit
   automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil).
 
 La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
 économique, le placement des systèmes d'origine (*farthest-point sampling*), l'arbitrage de
-décision de l'IA par personnalité, la formule de combat, les décisions militaires de l'IA, et
-désormais l'évaluation des propositions diplomatiques et l'arbitrage guerre/paix/pacte de
-`DiplomacyDecisionMaker`, ont chacune été recoupées indépendamment par un script Python qui
-reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
+décision de l'IA par personnalité, la formule de combat, les décisions militaires de l'IA,
+l'évaluation des propositions diplomatiques et l'arbitrage guerre/paix/pacte de
+`DiplomacyDecisionMaker`, et désormais la génération/progression/complétion des paliers de
+recherche de `ResearchService`, ont chacune été recoupées indépendamment par un script Python
+qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
 `EconomyService`, `EmpirePlacement`, `AIDecisionMaker`, `CombatResolver`,
-`MilitaryDecisionMaker`, `ProposalEvaluator` et `DiplomacyDecisionMaker` pour le détail.
+`MilitaryDecisionMaker`, `ProposalEvaluator`, `DiplomacyDecisionMaker` et `ResearchService`
+pour le détail.
 
 ---
 
@@ -473,16 +533,16 @@ reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`
 | 5 | Empires et IA de base (personnalités, gestion économique autonome) | ✅ terminée |
 | 6 | Armées, résolution automatique des combats, colonisation | ✅ terminée |
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | ✅ terminée |
-| 8 | Recherche (arbre technologique, 7 domaines) | à venir |
+| 8 | Recherche (arbre technologique, 7 domaines) | ✅ terminée |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | à venir |
 | 10 | Sauvegarde JSON automatique | à venir |
 | 11 | Interface complète (menu, écrans de gestion, HUD) | à venir |
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 7 n'a touché ni la recherche, ni
-l'espionnage — la diplomatie reste pour l'instant sans notion de technologie ni d'agents
-d'influence, qui n'existeront qu'à partir des Phases 8 et 9.
+complexe à la fois (consigne du brief) : la Phase 8 n'a touché ni l'espionnage, ni la
+sauvegarde — le domaine de recherche Espionnage existe et accumule déjà un bonus calculable,
+simplement sans système à améliorer avant la Phase 9.
 
 ---
 

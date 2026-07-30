@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Espace.Core;
 using Espace.Data;
 using Espace.Gameplay.Galaxy;
+using Espace.Gameplay.Research;
 
 namespace Espace.Gameplay.Economy
 {
@@ -310,9 +311,9 @@ namespace Espace.Gameplay.Economy
             float taxRate = GetTaxRate(system.OwnerId);
 
             var baseProduction = new ResourceBundle(
-                credits: system.Wealth * CreditsPerWealthPoint * taxRate * DepositFactor(system, ResourceType.Credits),
-                minerals: system.Population * MineralsPerPopulationPoint * DepositFactor(system, ResourceType.Minerals),
-                energy: system.Population * EnergyPerPopulationPoint * DepositFactor(system, ResourceType.Energy),
+                credits: system.Wealth * CreditsPerWealthPoint * taxRate * DepositFactor(system, ResourceType.Credits) * ResearchMultiplier(system.OwnerId, ResearchDomain.Economy),
+                minerals: system.Population * MineralsPerPopulationPoint * DepositFactor(system, ResourceType.Minerals) * ResearchMultiplier(system.OwnerId, ResearchDomain.Industry),
+                energy: system.Population * EnergyPerPopulationPoint * DepositFactor(system, ResourceType.Energy) * ResearchMultiplier(system.OwnerId, ResearchDomain.Energy),
                 food: system.Population * FoodPerPopulationPoint * DepositFactor(system, ResourceType.Food),
                 influence: system.DevelopmentLevel * InfluencePerDevelopmentPoint * DepositFactor(system, ResourceType.Influence));
 
@@ -331,6 +332,22 @@ namespace Espace.Gameplay.Economy
             }
 
             return baseProduction * stability + buildingBonus * stability;
+        }
+
+        /// <summary>
+        /// Multiplicateur de production issu de la recherche (Phase 7) : <c>1 + bonus cumule</c>
+        /// du domaine correspondant pour le proprietaire du systeme. Resolu paresseusement via
+        /// <see cref="ServiceLocator"/> plutot qu'injecte au constructeur, pour la meme raison
+        /// que <see cref="Espace.Gameplay.Diplomacy.DiplomacyService"/> resout
+        /// <see cref="Espace.Gameplay.Military.IMilitaryService"/> paresseusement : eviter tout
+        /// ordre d'initialisation impose entre <c>EconomyController</c> et
+        /// <c>ResearchController</c>. Vaut 1 (aucun effet) si la recherche n'est pas encore
+        /// disponible ou si l'empire n'a rien recherche dans ce domaine — Aliment et Influence
+        /// n'ont volontairement aucun domaine de recherche associe.
+        /// </summary>
+        private static float ResearchMultiplier(int empireId, ResearchDomain domain)
+        {
+            return ServiceLocator.TryGet(out IResearchService research) ? 1f + research.GetBonus(empireId, domain) : 1f;
         }
 
         private static float DepositFactor(StarSystemState system, ResourceType type)

@@ -1,5 +1,6 @@
 using System;
 using Espace.Data;
+using Espace.Gameplay.Research;
 
 namespace Espace.Gameplay.Empires
 {
@@ -81,10 +82,20 @@ namespace Espace.Gameplay.Empires
         /// </summary>
         public readonly float PeacePowerRatioThreshold;
 
+        /// <summary>
+        /// Ordre de préférence des sept domaines de recherche (voir <c>ResearchDecisionMaker</c>) :
+        /// l'IA active toujours le premier domaine de cette liste qui n'est pas encore
+        /// recherché au maximum. Même pattern que <see cref="BuildPriority"/> — un ordre fixe
+        /// plutôt qu'une répartition, pour une différence de comportement lisible entre
+        /// personnalités.
+        /// </summary>
+        public readonly ResearchDomain[] ResearchPriority;
+
         public EmpirePersonalityProfileData(
             float PreferredTaxRate, ResourceType[] BuildPriority, bool PicksCheapestAffordable, float InvestmentEagerness,
             int TargetGarrisonSize, bool PrefersStrongestUnit, float? AggressionThreshold, float CommandModifier,
-            float MinOpinionToAcceptPact, float ProactivePactOpinionThreshold, float PeacePowerRatioThreshold)
+            float MinOpinionToAcceptPact, float ProactivePactOpinionThreshold, float PeacePowerRatioThreshold,
+            ResearchDomain[] ResearchPriority)
         {
             this.PreferredTaxRate = PreferredTaxRate;
             this.BuildPriority = BuildPriority;
@@ -97,6 +108,7 @@ namespace Espace.Gameplay.Empires
             this.MinOpinionToAcceptPact = MinOpinionToAcceptPact;
             this.ProactivePactOpinionThreshold = ProactivePactOpinionThreshold;
             this.PeacePowerRatioThreshold = PeacePowerRatioThreshold;
+            this.ResearchPriority = ResearchPriority;
         }
     }
 
@@ -128,6 +140,13 @@ namespace Espace.Gameplay.Empires
     /// propose rarement un pacte) et ne cède qu'écrasé ; l'Expansionniste et l'Opportuniste
     /// se situent entre les deux.
     /// </para>
+    /// <para>
+    /// <b>Recherche (Phase 8) :</b> l'ordre de <see cref="EmpirePersonalityProfileData.ResearchPriority"/>
+    /// reflète la même logique que les autres priorités — le Militariste vise l'Armement puis
+    /// la Logistique, la Commerçante l'Économie puis la Diplomatie, le Pacifiste la Diplomatie
+    /// en premier, l'Expansionniste la Logistique (expansion plus rapide), l'Opportuniste
+    /// l'Espionnage (encore sans effet avant la Phase 9, mais déjà accumulé).
+    /// </para>
     /// </summary>
     public static class EmpirePersonalityProfile
     {
@@ -151,7 +170,12 @@ namespace Espace.Gameplay.Empires
                         CommandModifier: 1.0f,
                         MinOpinionToAcceptPact: -20f,
                         ProactivePactOpinionThreshold: 10f,
-                        PeacePowerRatioThreshold: 1.5f);
+                        PeacePowerRatioThreshold: 1.5f,
+                        ResearchPriority: new[]
+                        {
+                            ResearchDomain.Diplomacy, ResearchDomain.Economy, ResearchDomain.Energy,
+                            ResearchDomain.Industry, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
+                        });
 
                 case EmpirePersonality.Expansionist:
                     // Impots bas (economise pour la croissance future), priorite au
@@ -169,7 +193,12 @@ namespace Espace.Gameplay.Empires
                         CommandModifier: 1.0f,
                         MinOpinionToAcceptPact: 10f,
                         ProactivePactOpinionThreshold: 30f,
-                        PeacePowerRatioThreshold: 0.8f);
+                        PeacePowerRatioThreshold: 0.8f,
+                        ResearchPriority: new[]
+                        {
+                            ResearchDomain.Logistics, ResearchDomain.Industry, ResearchDomain.Economy,
+                            ResearchDomain.Energy, ResearchDomain.Diplomacy, ResearchDomain.Weapons, ResearchDomain.Espionage
+                        });
 
                 case EmpirePersonality.Mercantile:
                     // Impots eleves, priorite absolue aux Credits puis a l'Energie. Garnison
@@ -186,7 +215,12 @@ namespace Espace.Gameplay.Empires
                         CommandModifier: 1.0f,
                         MinOpinionToAcceptPact: -10f,
                         ProactivePactOpinionThreshold: 20f,
-                        PeacePowerRatioThreshold: 1.2f);
+                        PeacePowerRatioThreshold: 1.2f,
+                        ResearchPriority: new[]
+                        {
+                            ResearchDomain.Economy, ResearchDomain.Diplomacy, ResearchDomain.Industry,
+                            ResearchDomain.Energy, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
+                        });
 
                 case EmpirePersonality.Militarist:
                     // Impots moyens-eleves, priorite au Minerai et a l'Energie (materiel des
@@ -203,7 +237,12 @@ namespace Espace.Gameplay.Empires
                         CommandModifier: 1.15f,
                         MinOpinionToAcceptPact: 40f,
                         ProactivePactOpinionThreshold: 60f,
-                        PeacePowerRatioThreshold: 0.4f);
+                        PeacePowerRatioThreshold: 0.4f,
+                        ResearchPriority: new[]
+                        {
+                            ResearchDomain.Weapons, ResearchDomain.Logistics, ResearchDomain.Industry,
+                            ResearchDomain.Energy, ResearchDomain.Economy, ResearchDomain.Espionage, ResearchDomain.Diplomacy
+                        });
 
                 case EmpirePersonality.Opportunist:
                     // Impots moyens, aucun ordre fixe : saisit ce qui est finançable au
@@ -221,7 +260,12 @@ namespace Espace.Gameplay.Empires
                         CommandModifier: 1.0f,
                         MinOpinionToAcceptPact: 20f,
                         ProactivePactOpinionThreshold: 40f,
-                        PeacePowerRatioThreshold: 0.9f);
+                        PeacePowerRatioThreshold: 0.9f,
+                        ResearchPriority: new[]
+                        {
+                            ResearchDomain.Espionage, ResearchDomain.Diplomacy, ResearchDomain.Economy,
+                            ResearchDomain.Weapons, ResearchDomain.Industry, ResearchDomain.Energy, ResearchDomain.Logistics
+                        });
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(personality), personality, "Personnalite inconnue.");

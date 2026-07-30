@@ -6,6 +6,7 @@ using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
+using Espace.Gameplay.Research;
 using UnityEngine;
 
 namespace Espace.Gameplay.Military
@@ -30,6 +31,13 @@ namespace Espace.Gameplay.Military
     /// <b>Entretien impaye :</b> si le tresor d'un empire ne couvre pas l'entretien du jour, la
     /// depense echoue silencieusement (aucune dette, aucune desertion en Phase 6) — a affiner
     /// en Phase 12 si necessaire.
+    /// </para>
+    /// <para>
+    /// <b>Recherche (Phase 8) :</b> le domaine Armement augmente <see cref="CommandModifierFor"/>
+    /// (donc la puissance de combat, attaquant comme defenseur) et le domaine Logistique
+    /// accelere les deplacements de flotte (<see cref="ComputeArrivalDate"/>) — les deux via
+    /// <see cref="Espace.Gameplay.Research.IResearchService"/>, resolu paresseusement, sans
+    /// effet tant que rien n'a ete recherche.
     /// </para>
     /// <para>
     /// <b>Entree en territoire etranger conditionnee a la guerre (Phase 7) :</b>
@@ -203,7 +211,7 @@ namespace Espace.Gameplay.Military
             }
 
             StarSystemState origin = _map.GetSystem(fleet.CurrentSystemId);
-            GameDate arrivalDate = ComputeArrivalDate(origin, destination, fleet.Composition);
+            GameDate arrivalDate = ComputeArrivalDate(origin, destination, fleet.Composition, fleet.OwnerId);
             fleet.BeginMove(destinationSystemId, arrivalDate, isRetreating: false);
 
             _eventBus.Publish(new FleetDepartedEvent(fleet.Id, fleet.OwnerId, origin.Id, destinationSystemId, isRetreating: false));
@@ -248,10 +256,10 @@ namespace Espace.Gameplay.Military
             return true;
         }
 
-        private GameDate ComputeArrivalDate(StarSystemState origin, StarSystemState destination, UnitBundle composition)
+        private GameDate ComputeArrivalDate(StarSystemState origin, StarSystemState destination, UnitBundle composition, int fleetOwnerId)
         {
             float distance = Vector2.Distance(origin.Position, destination.Position);
-            float speed = SlowestSpeed(composition);
+            float speed = SlowestSpeed(composition) * ResearchMultiplier(fleetOwnerId, ResearchDomain.Logistics);
             int days = Mathf.Max(1, Mathf.CeilToInt(distance / speed));
             return _gameClock.CurrentDate.AddDays(days);
         }
@@ -396,7 +404,7 @@ namespace Espace.Gameplay.Military
 
             StarSystemId retreatTo = attackerFleet.OriginSystemId;
             attackerFleet.SetComposition(outcome.AttackerSurvivors);
-            GameDate retreatArrival = ComputeArrivalDate(system, _map.GetSystem(retreatTo), outcome.AttackerSurvivors);
+            GameDate retreatArrival = ComputeArrivalDate(system, _map.GetSystem(retreatTo), outcome.AttackerSurvivors, attackerFleet.OwnerId);
             attackerFleet.BeginMove(retreatTo, retreatArrival, isRetreating: true);
         }
 
@@ -417,9 +425,23 @@ namespace Espace.Gameplay.Military
 
         private float CommandModifierFor(int empireId)
         {
-            return _empireRegistry.TryGetEmpire(empireId, out Empire empire)
+            float personalityModifier = _empireRegistry.TryGetEmpire(empireId, out Empire empire)
                 ? EmpirePersonalityProfile.Get(empire.Personality).CommandModifier
                 : 1f;
+
+            return personalityModifier * ResearchMultiplier(empireId, ResearchDomain.Weapons);
+        }
+
+        /// <summary>
+        /// Multiplicateur issu de la recherche (Phase 8) : <c>1 + bonus cumule</c> du domaine
+        /// correspondant. Meme resolution paresseuse via <see cref="ServiceLocator"/> que
+        /// <see cref="Espace.Gameplay.Economy.EconomyService"/>, pour la meme raison : eviter
+        /// tout ordre d'initialisation impose entre <c>MilitaryController</c> et
+        /// <c>ResearchController</c>.
+        /// </summary>
+        private static float ResearchMultiplier(int empireId, ResearchDomain domain)
+        {
+            return ServiceLocator.TryGet(out IResearchService research) ? 1f + research.GetBonus(empireId, domain) : 1f;
         }
 
         private void MergeIntoStationedFleet(Fleet arrivingFleet)
