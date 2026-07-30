@@ -260,6 +260,29 @@ namespace Espace.Gameplay.Diplomacy
             AdjustOpinion(observerId, targetId, delta);
         }
 
+        /// <inheritdoc />
+        public void RestoreRelations(int empireAId, int empireBId, DiplomaticStatus status, bool hasTradeTreaty)
+        {
+            _statuses[NormalizeKey(empireAId, empireBId)] = status;
+
+            if (hasTradeTreaty)
+            {
+                _tradeTreaties.Add(NormalizeKey(empireAId, empireBId));
+            }
+        }
+
+        /// <inheritdoc />
+        public void RestoreOpinion(int observerId, int targetId, float value)
+        {
+            _opinions[(observerId, targetId)] = Mathf.Clamp(value, MinOpinion, MaxOpinion);
+        }
+
+        /// <inheritdoc />
+        public void RestoreEmbargo(int fromEmpireId, int toEmpireId)
+        {
+            _embargoes.Add((fromEmpireId, toEmpireId));
+        }
+
         private bool ValidateProposalPreconditions(int proposerId, int targetId, ProposalType type, out string error)
         {
             if (!_empireRegistry.TryGetEmpire(proposerId, out _) || !_empireRegistry.TryGetEmpire(targetId, out _))

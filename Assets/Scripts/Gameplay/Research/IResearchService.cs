@@ -40,5 +40,20 @@ namespace Espace.Gameplay.Research
         /// normale : du point de vue de l'empire qui en beneficie, le resultat est identique.
         /// </summary>
         void GrantTier(int empireId, ResearchDomain domain);
+
+        /// <summary>
+        /// Impose directement le nombre de paliers completes et la progression courante de
+        /// <paramref name="domain"/> pour <paramref name="empireId"/>, sans evenement publie
+        /// — reserve au chargement d'une sauvegarde (Phase 10).
+        /// </summary>
+        void RestoreProgress(int empireId, ResearchDomain domain, int completedTiers, float progress);
+
+        /// <summary>
+        /// Impose directement le domaine actif de <paramref name="empireId"/>, sans passer par
+        /// les verifications ni l'evenement de <see cref="TrySetActiveDomain"/> — reserve au
+        /// chargement d'une sauvegarde (Phase 10), ou le domaine sauvegarde peut legitimement
+        /// etre deja au maximum (l'empire n'avait pas encore change de focus).
+        /// </summary>
+        void RestoreActiveDomain(int empireId, ResearchDomain domain);
     }
 }

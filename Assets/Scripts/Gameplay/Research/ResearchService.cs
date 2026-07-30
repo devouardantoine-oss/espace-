@@ -173,6 +173,19 @@ namespace Espace.Gameplay.Research
             _eventBus.Publish(new TechnologyResearchedEvent(empireId, next));
         }
 
+        /// <inheritdoc />
+        public void RestoreProgress(int empireId, ResearchDomain domain, int completedTiers, float progress)
+        {
+            _completedTiers[(empireId, domain)] = completedTiers;
+            _progress[(empireId, domain)] = progress;
+        }
+
+        /// <inheritdoc />
+        public void RestoreActiveDomain(int empireId, ResearchDomain domain)
+        {
+            _activeDomainByEmpire[empireId] = domain;
+        }
+
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
         {
             var pointsByEmpire = new Dictionary<int, float>();

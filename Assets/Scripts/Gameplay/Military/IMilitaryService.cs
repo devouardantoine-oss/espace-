@@ -46,5 +46,15 @@ namespace Espace.Gameplay.Military
         /// avoir a deplacer la garnison entiere et laisser le systeme sans defense.
         /// </summary>
         bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error);
+
+        /// <summary>
+        /// Definit directement la garnison stationnee de <paramref name="empireId"/> sur
+        /// <paramref name="systemId"/>, sans recrutement, cout ni evenement publie — reserve
+        /// au chargement d'une sauvegarde (Phase 10). Les flottes en transit et les commandes
+        /// de recrutement en cours ne font volontairement pas partie de la sauvegarde
+        /// (limitation v1 documentee : la fenetre de risque est faible, l'autosauvegarde etant
+        /// mensuelle et les trajets ne durant que quelques jours).
+        /// </summary>
+        void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition);
     }
 }

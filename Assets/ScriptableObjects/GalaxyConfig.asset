@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000000107, type: 3}
   m_Name: GalaxyConfig
   m_EditorClassIdentifier:
-  seed: 0
+  seed: 20260730
   systemCount: 100
   galaxyRadius: 45
   minSystemDistance: 3

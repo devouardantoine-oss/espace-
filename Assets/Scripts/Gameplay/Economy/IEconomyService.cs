@@ -76,5 +76,13 @@ namespace Espace.Gameplay.Economy
 
         /// <summary>Batiments (construits ou en cours) presents sur <paramref name="systemId"/>.</summary>
         IReadOnlyList<BuildingInstance> GetBuildings(StarSystemId systemId);
+
+        /// <summary>
+        /// Ajoute directement <paramref name="buildingType"/> comme deja construit sur
+        /// <paramref name="systemId"/>, sans verification ni cout ni evenement publie —
+        /// reserve au chargement d'une sauvegarde (Phase 10). Ne fait rien si ce type de
+        /// batiment est deja present sur ce systeme.
+        /// </summary>
+        void RestoreCompletedBuilding(StarSystemId systemId, BuildingType buildingType);
     }
 }

@@ -41,5 +41,14 @@ namespace Espace.Core
         /// etait en pause.
         /// </summary>
         void SetSpeed(GameSpeed speed);
+
+        /// <summary>
+        /// Impose directement <see cref="CurrentDate"/>, sans publier <c>DayAdvancedEvent</c>
+        /// ni <c>MonthAdvancedEvent</c> pour les jours « sautes ». Reserve au chargement d'une
+        /// sauvegarde (Phase 10) — meme restriction de principe que l'absence de <c>Tick</c>
+        /// sur cette interface : personne d'autre que ce cas precis ne doit deplacer le temps
+        /// autrement qu'en le laissant s'ecouler.
+        /// </summary>
+        void SetDate(GameDate date);
     }
 }

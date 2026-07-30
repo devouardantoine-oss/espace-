@@ -35,6 +35,7 @@ namespace Espace.Tests.EditMode
             public void Resume() { }
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
+            public void SetDate(GameDate date) => CurrentDate = date;
         }
 
         /// <summary>Puissance controlee : chaque empire a une garnison fixe sur son unique systeme, puissance = nombre d'unites.</summary>
@@ -55,6 +56,7 @@ namespace Espace.Tests.EditMode
             public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error) { error = "n/a"; return false; }
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
+            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition) { }
         }
 
         private EventBus _eventBus;

@@ -34,6 +34,7 @@ namespace Espace.Tests.EditMode
             public void Resume() { }
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
+            public void SetDate(GameDate date) => CurrentDate = date;
         }
 
         /// <summary>
@@ -94,6 +95,9 @@ namespace Espace.Tests.EditMode
             }
 
             public void ApplyOpinionShift(int observerId, int targetId, float delta) { }
+            public void RestoreRelations(int empireAId, int empireBId, DiplomaticStatus status, bool hasTradeTreaty) { }
+            public void RestoreOpinion(int observerId, int targetId, float value) { }
+            public void RestoreEmbargo(int fromEmpireId, int toEmpireId) { }
         }
 
         private EventBus _eventBus;

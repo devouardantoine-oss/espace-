@@ -457,6 +457,13 @@ namespace Espace.Gameplay.Military
             }
         }
 
+        /// <inheritdoc />
+        public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition)
+        {
+            Fleet garrison = GetOrCreateStationedFleet(systemId, empireId);
+            garrison.SetComposition(composition);
+        }
+
         private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId)
         {
             if (TryGetStationedFleet(systemId, ownerId, out Fleet existing))

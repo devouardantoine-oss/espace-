@@ -14,16 +14,16 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 9 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 10 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
 > colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
 > commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
 > (7 domaines, 3 paliers chacun, bonus sur la production, le combat, la vitesse des flottes et
-> les gains d'opinion), et désormais espionnage : cinq missions déterministes (vol de
-> technologie, sabotage, incitation à la révolte, influence de gouvernement, découverte
-> d'armées) résolues selon un rapport de puissance — jamais de hasard, mais une mission ratée
-> est toujours découverte et coûte une pénalité d'opinion. Le domaine de recherche Espionnage,
-> banqué depuis la Phase 8, a désormais un effet réel.
+> les gains d'opinion), espionnage (cinq missions déterministes selon un rapport de puissance),
+> et désormais une sauvegarde JSON automatique : la partie reprend exactement où elle en était
+> après une fermeture ou une mise en arrière-plan, sur un seul fichier local. La génération de
+> la galaxie est devenue déterministe (graine fixe) pour que la même galaxie réapparaisse d'une
+> session à l'autre.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -87,12 +87,12 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie + recherche + espionnage (Phases 2-9)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie + recherche + espionnage + sauvegarde (Phases 2-10)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
 │   ├── GameClockConfig.asset
-│   ├── GalaxyConfig.asset
+│   ├── GalaxyConfig.asset        # graine fixe depuis la Phase 10 (voir §3, Briques de la sauvegarde)
 │   ├── Buildings/                # 5 types de bâtiments (1 par ressource)
 │   ├── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
 │   ├── Units/                    # 4 types d'unités (Infanterie, Blindés, Forces spéciales, Flotte spatiale)
@@ -108,7 +108,8 @@ Assets/
 │   │   ├── Military/             #     unités, flottes, combat automatique, colonisation
 │   │   ├── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
 │   │   ├── Research/             #     domaines, paliers, points, bonus par domaine
-│   │   └── Espionage/            #     missions déterministes, puissance/contre-espionnage
+│   │   ├── Espionage/            #     missions déterministes, puissance/contre-espionnage
+│   │   └── Save/                 #     capture/restauration JSON de l'état mutable
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -407,6 +408,45 @@ des technologies ; le Militariste découvre les armées adverses avant de frappe
 sabote pour affaiblir avant d'envahir ; l'Opportuniste, seuil le plus bas du groupe, influence
 les gouvernements — le moyen le plus discret.
 
+### Briques de la sauvegarde (Phase 10)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `GameSaveData` | contenu | arbre de classes `[Serializable]` **à plat**, compatible `JsonUtility` (qui ne sérialise ni dictionnaires, ni `Nullable`, ni références de `ScriptableObject`) — construit et lu uniquement par `SaveService`, jamais par les services eux-mêmes |
+| `ISaveService` / `SaveService` | sauvegarde de toute la partie | capture l'état via les interfaces publiques déjà existantes de chaque service, écrit/lit un fichier JSON unique (`Application.persistentDataPath`) ; ne sauvegarde que l'état **mutable** (propriétaire, trésor, garnisons, relations, progression) — jamais le contenu régénérable (galaxie, roster d'empires) |
+| `SaveController` | orchestration | le plus grand nombre de dépendances de tous les contrôleurs (tous les services de gameplay) ; comme rien ne dépend de lui en retour, il peut se permettre d'attendre patiemment (sondage `Update`, comme `MilitaryController`) que tout le reste soit prêt |
+| `SaveDebugPanel` | contrôle temporaire | état du fichier, boutons Sauvegarder maintenant / Recharger — en bas au centre, dernier emplacement encore libre |
+
+**Une galaxie enfin déterministe.** Jusqu'à la Phase 9, `GalaxyConfig.seed` valait `0`, tirant
+une galaxie différente à chaque lancement (positions, noms, gisements, routes) — un choix
+délibéré pour explorer des layouts variés en développement, mais incompatible avec une
+sauvegarde qui référence des systèmes par simple identifiant numérique. La graine est
+désormais fixée : la galaxie régénérée à chaque lancement est **strictement identique**,
+donc les identifiants de système sauvegardés retrouvent toujours le même contexte visuel.
+
+**Restaurer sans perturber : des méthodes `Restore*` dédiées, silencieuses.** Charger une
+sauvegarde ne doit déclencher ni coût, ni vérification, ni notification — contrairement aux
+méthodes de jeu normales (`TryDeclareWar`, `TrySetActiveDomain`...) qui publient des
+événements et appliquent des règles. `IEconomyService.RestoreCompletedBuilding`,
+`IMilitaryService.RestoreGarrison`, `IDiplomacyService.RestoreRelations`/`RestoreOpinion`/
+`RestoreEmbargo` et `IResearchService.RestoreProgress`/`RestoreActiveDomain` écrivent
+directement l'état, sans lever d'événement (seule exception pragmatique : la restauration du
+trésor réutilise `Grant`, déjà sans risque sur une économie fraîchement initialisée à zéro,
+plutôt que d'ajouter une cinquième méthode dédiée pour ce seul cas).
+
+**Sauvegarde automatique, jamais de plantage sur un fichier illisible.** Une sauvegarde a lieu
+chaque mois de jeu (`MonthAdvancedEvent`), et à chaque mise en arrière-plan ou fermeture de
+l'application (`OnApplicationPause`/`OnApplicationQuit`) — le scénario le plus courant sur
+mobile, où l'application est bien plus souvent suspendue que fermée proprement. Un fichier
+absent, corrompu ou d'une version incompatible ne fait jamais planter le jeu : `TryLoadAndApply`
+retourne simplement un échec explicite, journalisé, et la partie continue sur son état courant.
+
+**Limitations v1, assumées et documentées plutôt que traitées comme des bugs :** les flottes en
+transit, les commandes de recrutement en cours et les propositions diplomatiques en attente ne
+sont pas sauvegardées (seules les garnisons déjà stationnées le sont). La fenêtre de risque
+reste faible — sauvegarde automatique mensuelle, trajets de quelques jours, propositions
+résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -423,14 +463,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (340 tests, tous packages confondus).
+Voir §5 pour le compte total (353 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-9 — galaxie, horloge, économie, empires, armées, diplomatie, recherche et espionnage
+## 5. Tester les Phases 2-10 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage et sauvegarde
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -454,6 +494,7 @@ sans erreur ni warning :
 [Diplomacy] Demarree.
 [Research] Demarree avec 21 paliers de recherche disponibles.
 [Espionage] Demarree.
+[Save] Demarree (<chemin>/savegame.json).
 ```
 
 Dans la fenêtre Game :
@@ -511,13 +552,20 @@ Dans la fenêtre Game :
   elle doit réussir sans laisser de trace côté opinion. Tentez-en une contre une cible forte :
   elle doit échouer, vous coûter quand même le crédit dépensé, et l'opinion de la cible envers
   vous doit chuter — visible en filtrant la console sur `[Espionage]`.
+- **En bas au centre**, un neuvième encart affiche l'état de la sauvegarde avec deux boutons
+  **Sauvegarder maintenant** et **Recharger**. Jouez quelques mois, changez des choses
+  (impôts, construction, recherche...), sauvegardez, modifiez encore l'état, puis rechargez :
+  tout doit revenir exactement à l'état sauvegardé. Quittez complètement Play et relancez : la
+  console doit afficher `[Save] Sauvegarde existante chargee au demarrage.` et la partie doit
+  reprendre exactement où elle en était, sur la **même** galaxie (positions et noms de
+  systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-> Ces huit encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> Ces neuf encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
 > finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
 > `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel`, `DiplomacyDebugPanel`,
-> `ResearchDebugPanel` et `EspionageDebugPanel`.
+> `ResearchDebugPanel`, `EspionageDebugPanel` et `SaveDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 340 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 353 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -551,26 +599,34 @@ le développement, révolte réduit la stabilité sans jamais devenir négative,
 l'opinion, découverte retourne la garnison réelle —, dégradation propre quand un service
 optionnel est indisponible), `EspionageDecisionMakerTests` (seuil et mission préférée propres
 à chaque personnalité, le Pacifiste n'espionne jamais, ignore les cibles sans territoire sans
-planter).
+planter) ; `SaveServiceTests` (Phase 10 — aller-retour complet capture puis application pour
+chaque type d'état : systèmes, bâtiments complétés uniquement, trésor et taux d'imposition,
+garnisons, relations/opinions diplomatiques, progression de recherche et domaine actif, date
+de l'horloge ; robustesse face à un fichier absent ou corrompu sans jamais lever d'exception ;
+les méthodes `Restore*` ne publient aucun événement).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des huit panneaux IMGUI répondent bien au tactile (traduit
-  automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil).
+- que les boutons des neuf panneaux IMGUI répondent bien au tactile (traduit
+  automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil) ;
+- que la sauvegarde survit bien à une mise en arrière-plan réelle de l'application (pas
+  seulement à un Play/Stop dans l'éditeur), le scénario mobile le plus courant.
 
 La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
 économique, le placement des systèmes d'origine (*farthest-point sampling*), l'arbitrage de
 décision de l'IA par personnalité, la formule de combat, les décisions militaires de l'IA,
 l'évaluation des propositions diplomatiques et l'arbitrage guerre/paix/pacte de
 `DiplomacyDecisionMaker`, la génération/progression/complétion des paliers de recherche de
-`ResearchService`, et désormais les formules de puissance/contre-espionnage et de vol de
-technologie d'`EspionageService`, ont chacune été recoupées indépendamment par un script
-Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
+`ResearchService`, et les formules de puissance/contre-espionnage et de vol de technologie
+d'`EspionageService`, ont chacune été recoupées indépendamment par un script Python qui
+reproduit l'algorithme (voir les commentaires de `GalaxyGenerator`, `GameClock`,
 `EconomyService`, `EmpirePlacement`, `AIDecisionMaker`, `CombatResolver`,
 `MilitaryDecisionMaker`, `ProposalEvaluator`, `DiplomacyDecisionMaker`, `ResearchService` et
-`EspionageService` pour le détail.
+`EspionageService` pour le détail) ; la Phase 10 n'introduit pas de nouvelle formule mais un
+script Python recoupe tout de même la logique de filtrage de `SaveService.Capture` (quelles
+entrées valent la peine d'être écrites) et la fidélité d'un aller-retour JSON.
 
 ---
 
@@ -587,14 +643,15 @@ Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, 
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | ✅ terminée |
 | 8 | Recherche (arbre technologique, 7 domaines) | ✅ terminée |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | ✅ terminée |
-| 10 | Sauvegarde JSON automatique | à venir |
+| 10 | Sauvegarde JSON automatique | ✅ terminée |
 | 11 | Interface complète (menu, écrans de gestion, HUD) | à venir |
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 9 n'a touché ni la sauvegarde, ni l'interface
-finale — tous les systèmes de jeu du brief (économie, diplomatie, recherche, espionnage,
-guerre) sont désormais implémentés, il ne reste que la persistance et l'habillage.
+complexe à la fois (consigne du brief) : la Phase 10 n'a touché ni l'interface finale, ni
+l'équilibrage — tous les systèmes de jeu du brief (économie, diplomatie, recherche,
+espionnage, guerre) sont implémentés et persistent désormais d'une session à l'autre ; il ne
+reste que l'habillage visuel et le réglage des valeurs numériques.
 
 ---
 

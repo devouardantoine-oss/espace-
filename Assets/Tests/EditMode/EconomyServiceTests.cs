@@ -29,6 +29,7 @@ namespace Espace.Tests.EditMode
             public void Resume() { }
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
+            public void SetDate(GameDate date) => CurrentDate = date;
         }
 
         private EventBus _eventBus;

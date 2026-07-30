@@ -36,6 +36,7 @@ namespace Espace.Tests.EditMode
             public void Resume() { }
             public void TogglePause() { }
             public void SetSpeed(GameSpeed speed) { }
+            public void SetDate(GameDate date) => CurrentDate = date;
         }
 
         /// <summary>Espionne les appels a <see cref="ApplyOpinionShift"/> sans avoir a construire un vrai <see cref="DiplomacyService"/> (qui exigerait un EmpireRegistry).</summary>
@@ -66,6 +67,10 @@ namespace Espace.Tests.EditMode
             {
                 OpinionShifts.Add((observerId, targetId, delta));
             }
+
+            public void RestoreRelations(int empireAId, int empireBId, DiplomaticStatus status, bool hasTradeTreaty) { }
+            public void RestoreOpinion(int observerId, int targetId, float value) { }
+            public void RestoreEmbargo(int fromEmpireId, int toEmpireId) { }
         }
 
         /// <summary>Garnison controlee par systeme, pour verifier que la decouverte retourne des donnees reelles.</summary>
@@ -83,6 +88,7 @@ namespace Espace.Tests.EditMode
             public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error) { error = "n/a"; return false; }
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
+            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition) { }
         }
 
         private EventBus _eventBus;

@@ -63,5 +63,23 @@ namespace Espace.Gameplay.Diplomacy
         /// d'une mission d'influence de gouvernement reussie (Phase 9).
         /// </summary>
         void ApplyOpinionShift(int observerId, int targetId, float delta);
+
+        /// <summary>
+        /// Impose directement le statut et le traite commercial entre ces deux empires, sans
+        /// evenement publie ni effet de bord (contrairement a <see cref="TryDeclareWar"/>/
+        /// <see cref="TryBreakPact"/>) — reserve au chargement d'une sauvegarde (Phase 10).
+        /// </summary>
+        void RestoreRelations(int empireAId, int empireBId, DiplomaticStatus status, bool hasTradeTreaty);
+
+        /// <summary>
+        /// Impose directement l'opinion de <paramref name="observerId"/> envers
+        /// <paramref name="targetId"/> a <paramref name="value"/> (remplace, n'ajoute pas —
+        /// a la difference d'<see cref="ApplyOpinionShift"/>). Reserve au chargement d'une
+        /// sauvegarde (Phase 10).
+        /// </summary>
+        void RestoreOpinion(int observerId, int targetId, float value);
+
+        /// <summary>Impose directement un embargo dirige de <paramref name="fromEmpireId"/> envers <paramref name="toEmpireId"/>, sans evenement publie — reserve au chargement d'une sauvegarde (Phase 10).</summary>
+        void RestoreEmbargo(int fromEmpireId, int toEmpireId);
     }
 }

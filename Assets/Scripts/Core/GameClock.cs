@@ -144,6 +144,13 @@ namespace Espace.Core
             SetSpeedInternal(speed);
         }
 
+        /// <inheritdoc />
+        public void SetDate(GameDate date)
+        {
+            CurrentDate = date;
+            _accumulatedSeconds = 0f;
+        }
+
         private void SetSpeedInternal(GameSpeed speed)
         {
             if (CurrentSpeed == speed)

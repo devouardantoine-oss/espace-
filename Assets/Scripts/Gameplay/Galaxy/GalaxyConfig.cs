@@ -11,6 +11,14 @@ namespace Espace.Gameplay.Galaxy
     /// a <see cref="GalaxyGenerator"/> — qui reste ainsi testable sans instancier de
     /// ScriptableObject.
     /// </para>
+    /// <para>
+    /// <b>Graine fixe depuis la Phase 10 :</b> la sauvegarde (<c>SaveService</c>) ne
+    /// persiste que l'etat mutable des systemes (proprietaire, population, richesse,
+    /// developpement, stabilite), identifies par <c>StarSystemId</c> — jamais leur position,
+    /// nom ou gisements, regeneres a chaque lancement. Cela suppose que la generation soit
+    /// identique d'une session a l'autre, donc que la graine ne soit plus tiree au hasard
+    /// (l'asset livre avec le projet fixe <c>seed</c> a une valeur non nulle).
+    /// </para>
     /// </summary>
     [CreateAssetMenu(fileName = "GalaxyConfig", menuName = "Espace/Galaxy/Galaxy Config", order = 0)]
     public sealed class GalaxyConfig : ScriptableObject

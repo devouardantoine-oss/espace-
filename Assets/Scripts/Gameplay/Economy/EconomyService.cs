@@ -238,6 +238,20 @@ namespace Espace.Gameplay.Economy
                 : Array.Empty<BuildingInstance>();
         }
 
+        /// <inheritdoc />
+        public void RestoreCompletedBuilding(StarSystemId systemId, BuildingType buildingType)
+        {
+            List<BuildingInstance> buildings = GetOrCreateBuildingList(systemId);
+            if (buildings.Exists(b => b.Type == buildingType))
+            {
+                return;
+            }
+
+            var building = new BuildingInstance(systemId, buildingType, _gameClock.CurrentDate);
+            building.Complete();
+            buildings.Add(building);
+        }
+
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
         {
             CompleteFinishedConstructions(dayAdvancedEvent.Date);
