@@ -113,12 +113,13 @@ namespace Espace.Tests.EditMode
         public void ComparisonOperators_OrderByDayIndex()
         {
             var earlier = new GameDate(1, 1, 1);
+            var earlierCopy = new GameDate(1, 1, 1);
             var later = new GameDate(1, 1, 2);
 
             Assert.IsTrue(earlier < later);
             Assert.IsTrue(later > earlier);
-            Assert.IsTrue(earlier <= earlier);
-            Assert.IsTrue(earlier >= earlier);
+            Assert.IsTrue(earlier <= earlierCopy);
+            Assert.IsTrue(earlier >= earlierCopy);
             Assert.IsFalse(later < earlier);
         }
 

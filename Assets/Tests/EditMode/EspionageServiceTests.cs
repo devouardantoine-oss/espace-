@@ -113,7 +113,7 @@ namespace Espace.Tests.EditMode
             UnregisterIfPresent<IDiplomacyService>();
         }
 
-        private static void UnregisterIfPresent<T>()
+        private static void UnregisterIfPresent<T>() where T : class
         {
             if (ServiceLocator.IsRegistered<T>())
             {
