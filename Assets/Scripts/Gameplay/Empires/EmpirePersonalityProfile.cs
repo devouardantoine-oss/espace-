@@ -58,9 +58,33 @@ namespace Espace.Gameplay.Empires
         /// </summary>
         public readonly float CommandModifier;
 
+        /// <summary>
+        /// Opinion minimale (voir <c>IDiplomacyService.GetOpinion</c>) que cette personnalité
+        /// exige du proposeur pour accepter une Alliance, un Pacte de non-agression ou un
+        /// Traité commercial reçu. Peut être négative : une personnalité très conciliante
+        /// accepte même d'un empire qu'elle n'apprécie pas encore.
+        /// </summary>
+        public readonly float MinOpinionToAcceptPact;
+
+        /// <summary>
+        /// Opinion au-delà de laquelle cette personnalité propose spontanément un Pacte de
+        /// non-agression à un voisin en Paix simple (voir <c>DiplomacyDecisionMaker</c>).
+        /// </summary>
+        public readonly float ProactivePactOpinionThreshold;
+
+        /// <summary>
+        /// Rapport de puissance (la sienne divisée par celle de l'adversaire) en dessous
+        /// duquel cette personnalité cherche à sortir d'un conflit : propose la paix si déjà
+        /// en guerre, ou accepte le tribut d'un ultimatum plutôt que risquer la guerre sinon.
+        /// Même logique que <see cref="AggressionThreshold"/> mais dans l'autre sens — capituler
+        /// plutôt qu'attaquer.
+        /// </summary>
+        public readonly float PeacePowerRatioThreshold;
+
         public EmpirePersonalityProfileData(
             float PreferredTaxRate, ResourceType[] BuildPriority, bool PicksCheapestAffordable, float InvestmentEagerness,
-            int TargetGarrisonSize, bool PrefersStrongestUnit, float? AggressionThreshold, float CommandModifier)
+            int TargetGarrisonSize, bool PrefersStrongestUnit, float? AggressionThreshold, float CommandModifier,
+            float MinOpinionToAcceptPact, float ProactivePactOpinionThreshold, float PeacePowerRatioThreshold)
         {
             this.PreferredTaxRate = PreferredTaxRate;
             this.BuildPriority = BuildPriority;
@@ -70,6 +94,9 @@ namespace Espace.Gameplay.Empires
             this.PrefersStrongestUnit = PrefersStrongestUnit;
             this.AggressionThreshold = AggressionThreshold;
             this.CommandModifier = CommandModifier;
+            this.MinOpinionToAcceptPact = MinOpinionToAcceptPact;
+            this.ProactivePactOpinionThreshold = ProactivePactOpinionThreshold;
+            this.PeacePowerRatioThreshold = PeacePowerRatioThreshold;
         }
     }
 
@@ -94,6 +121,13 @@ namespace Espace.Gameplay.Empires
     /// non nul ; Pacifiste et Commerçante n'attaquent jamais ; l'Expansionniste privilégie très
     /// largement la colonisation (seuil élevé, quasi jamais atteint).
     /// </para>
+    /// <para>
+    /// <b>Diplomatie (Phase 7) :</b> le Pacifiste et la Commerçante font confiance facilement
+    /// (opinion minimale basse ou négative, seuil de proposition spontanée bas) et sortent
+    /// vite d'une guerre qui tourne mal ; le Militariste se méfie (opinion minimale haute,
+    /// propose rarement un pacte) et ne cède qu'écrasé ; l'Expansionniste et l'Opportuniste
+    /// se situent entre les deux.
+    /// </para>
     /// </summary>
     public static class EmpirePersonalityProfile
     {
@@ -114,7 +148,10 @@ namespace Espace.Gameplay.Empires
                         TargetGarrisonSize: 2,
                         PrefersStrongestUnit: false,
                         AggressionThreshold: null,
-                        CommandModifier: 1.0f);
+                        CommandModifier: 1.0f,
+                        MinOpinionToAcceptPact: -20f,
+                        ProactivePactOpinionThreshold: 10f,
+                        PeacePowerRatioThreshold: 1.5f);
 
                 case EmpirePersonality.Expansionist:
                     // Impots bas (economise pour la croissance future), priorite au
@@ -129,7 +166,10 @@ namespace Espace.Gameplay.Empires
                         TargetGarrisonSize: 4,
                         PrefersStrongestUnit: false,
                         AggressionThreshold: 2.5f,
-                        CommandModifier: 1.0f);
+                        CommandModifier: 1.0f,
+                        MinOpinionToAcceptPact: 10f,
+                        ProactivePactOpinionThreshold: 30f,
+                        PeacePowerRatioThreshold: 0.8f);
 
                 case EmpirePersonality.Mercantile:
                     // Impots eleves, priorite absolue aux Credits puis a l'Energie. Garnison
@@ -143,7 +183,10 @@ namespace Espace.Gameplay.Empires
                         TargetGarrisonSize: 3,
                         PrefersStrongestUnit: false,
                         AggressionThreshold: null,
-                        CommandModifier: 1.0f);
+                        CommandModifier: 1.0f,
+                        MinOpinionToAcceptPact: -10f,
+                        ProactivePactOpinionThreshold: 20f,
+                        PeacePowerRatioThreshold: 1.2f);
 
                 case EmpirePersonality.Militarist:
                     // Impots moyens-eleves, priorite au Minerai et a l'Energie (materiel des
@@ -157,7 +200,10 @@ namespace Espace.Gameplay.Empires
                         TargetGarrisonSize: 8,
                         PrefersStrongestUnit: true,
                         AggressionThreshold: 1.1f,
-                        CommandModifier: 1.15f);
+                        CommandModifier: 1.15f,
+                        MinOpinionToAcceptPact: 40f,
+                        ProactivePactOpinionThreshold: 60f,
+                        PeacePowerRatioThreshold: 0.4f);
 
                 case EmpirePersonality.Opportunist:
                     // Impots moyens, aucun ordre fixe : saisit ce qui est finançable au
@@ -172,7 +218,10 @@ namespace Espace.Gameplay.Empires
                         TargetGarrisonSize: 5,
                         PrefersStrongestUnit: false,
                         AggressionThreshold: 1.6f,
-                        CommandModifier: 1.0f);
+                        CommandModifier: 1.0f,
+                        MinOpinionToAcceptPact: 20f,
+                        ProactivePactOpinionThreshold: 40f,
+                        PeacePowerRatioThreshold: 0.9f);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(personality), personality, "Personnalite inconnue.");

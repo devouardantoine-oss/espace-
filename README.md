@@ -14,10 +14,13 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 6 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
-> 6 empires (1 joueur + 5 IA), et désormais armées : recrutement, résolution automatique des
-> combats, colonisation. Les IA colonisent et, selon leur personnalité, peuvent attaquer un
-> voisin plus faible. Diplomatie, recherche et espionnage ne sont pas encore implémentés.
+> **Statut : Phase 7 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
+> colonisation), et désormais diplomatie : guerre/paix/alliances/pactes de non-agression,
+> opinion, traités commerciaux, embargos, ultimatums, échanges de ressources et de
+> territoires. **Le combat est maintenant conditionné à un état de guerre déclaré** — une IA
+> ne peut plus attaquer sans l'avoir décidé diplomatiquement au préalable. Recherche et
+> espionnage ne sont pas encore implémentés.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -81,7 +84,7 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées (Phases 2-6)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie (Phases 2-7)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
@@ -98,7 +101,8 @@ Assets/
 │   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection
 │   │   ├── Economy/              #     production, bâtiments, impôts, investissement
 │   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
-│   │   └── Military/             #     unités, flottes, combat automatique, colonisation
+│   │   ├── Military/             #     unités, flottes, combat automatique, colonisation
+│   │   └── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -280,6 +284,48 @@ vaut 1 pour tous les empires — la recherche n'existe pas encore (Phase 8).
 d'être systématiquement anéanti : plus lisible à observer, et une défaite reste réversible
 plutôt que définitivement punitive pour une IA qui aurait mal évalué ses chances.
 
+### Briques de la diplomatie (Phase 7)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `DiplomaticStatus` | statut symétrique | `Peace` / `War` / `Alliance` / `NonAggressionPact`, un seul par paire d'empires — traité commercial et embargo restent des relations **indépendantes** (voir plus bas), une vraie diplomatie les superpose plutôt que de les fondre dans un seul statut |
+| `ProposalType` / `DiplomaticProposal` | proposition | 7 types (Alliance, Pacte de non-agression, Traité commercial, Traité de paix, Échange de ressources, Échange de territoires, Ultimatum) ; une seule classe de proposition avec une charge utile optionnelle (ressources/systèmes) plutôt qu'une hiérarchie polymorphe — volontairement simple pour le périmètre du MVP |
+| `IDiplomacyService` / `DiplomacyService` | diplomatie de tous les empires | même architecture que `MilitaryService`/`EconomyService` ; statut stocké par paire non ordonnée, **opinion stockée par paire dirigée** (l'opinion de A envers B peut différer de celle de B envers A) |
+| `ProposalEvaluator` | acceptation d'une proposition | fonction pure, même esprit que `CombatResolver` : une IA cible accepte selon l'opinion qu'elle a du proposeur (pactes), le rapport de puissance (paix, ultimatum), ou l'équité de l'échange (ressources) |
+| `DiplomacyDecisionMaker` | décision diplomatique IA | même séparation que `MilitaryDecisionMaker` : propose la paix si le rapport de force devient défavorable, sinon déclare la guerre à un voisin écrasé (personnalités agressives uniquement), sinon propose un pacte de non-agression (ou une alliance) à un voisin apprécié ; **une seule action par appel** |
+| `DiplomacyController` | orchestration | s'initialise **avant** `MilitaryController` (qui dépend désormais de `IDiplomacyService`) sans jamais dépendre en retour de `IMilitaryService` au constructeur — `DiplomacyService` le résout paresseusement via `ServiceLocator` pour éviter un cycle d'attente mutuelle entre les deux contrôleurs |
+| `DiplomacyDebugPanel` | contrôle temporaire | statut/opinion envers chaque IA avec boutons d'action (guerre, pacte, alliance, paix, rupture), et les propositions reçues en attente (accepter/refuser) ; échanges de ressources/territoires et ultimatums non exposés en bouton (charge utile numérique peu adaptée à l'IMGUI tactile) mais entièrement implémentés et testés au niveau du service |
+
+**Résolution des propositions : instantanée pour l'IA, en attente pour le joueur.** Une
+proposition dont la cible est une IA est évaluée et résolue au moment même où elle est
+soumise (`ProposalEvaluator`, appelé par `DiplomacyService`) — pas de file d'attente pour des
+décisions qui n'ont pas besoin d'attendre une saisie humaine. Une proposition qui cible le
+joueur est mise en attente et publiée via `ProposalReceivedEvent`, jusqu'à ce que
+`TryRespondToProposal` soit appelée (bouton du `DiplomacyDebugPanel`).
+
+**Le combat conditionné à la guerre.** `MilitaryService.TryMoveFleet` refuse désormais tout
+déplacement vers un système possédé par un autre empire tant qu'un état de
+`DiplomaticStatus.War` n'a pas été déclaré entre les deux — avant cette phase, n'importe quel
+empire pouvait attaquer n'importe quel voisin sans justification diplomatique (limitation du
+combat automatique de la Phase 6, explicitement signalée à l'époque). Le choix de *qui*
+attaquer (seuil d'agressivité, rapport de puissance) est passé de `MilitaryDecisionMaker` à
+`DiplomacyDecisionMaker`, appelé juste avant dans `AIController` (ordre **Économie → Diplomatie
+→ Armée**) : une guerre déclarée ce mois-ci peut donc être exploitée par l'armée ce même mois.
+La colonisation d'un système non possédé reste, elle, entièrement libre.
+
+**Un ultimatum refusé déclare automatiquement la guerre.** `Ultimatum` est la seule proposition
+à effet asymétrique en cas de refus : la cible qui refuse de payer le tribut demandé s'expose à
+une déclaration de guerre immédiate et automatique du proposeur — pas de round supplémentaire
+de négociation, cohérent avec le sens réel du mot.
+
+**Opinion et revenu commercial dérivent chaque mois.** Sur `MonthAdvancedEvent`, chaque opinion
+déjà enregistrée dérive vers une valeur cible dépendant du statut courant (guerre : très
+négative, alliance : très positive, pacte : positive, paix simple : neutre) — pas de dérive
+brutale, un point par mois (`Mathf.MoveTowards`). Un traité commercial actif crédite un petit
+revenu passif aux deux partenaires chaque mois, via le nouveau `IEconomyService.Grant`
+(contrepartie inconditionnelle de `TrySpend`, introduite pour tout gain hors production
+journalière : échanges de ressources, tribut d'ultimatum, revenu commercial).
+
 ---
 
 ## 4. Tester la Phase 1
@@ -296,14 +342,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (262 tests, tous packages confondus).
+Voir §5 pour le compte total (288 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-6 — galaxie, horloge, économie, empires et armées
+## 5. Tester les Phases 2-7 — galaxie, horloge, économie, empires, armées et diplomatie
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -324,6 +370,7 @@ sans erreur ni warning :
 [Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
 [Empires] 6 empires crees.
 [Military] Demarree avec 4 types d'unites disponibles.
+[Diplomacy] Demarree.
 ```
 
 Dans la fenêtre Game :
@@ -363,12 +410,19 @@ Dans la fenêtre Game :
 - **Touchez le système d'origine d'une IA** : le panneau du haut-gauche doit afficher le nom
   de cet empire comme propriétaire, et sa garnison si elle en a recruté une — confirmation
   visuelle que l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
+- **En haut à droite**, un sixième encart liste votre relation avec chacune des 5 IA (statut,
+  opinion) avec des boutons d'action (Guerre, Pacte, Alliance, Paix, Rompre selon le statut
+  courant), et les propositions reçues en attente avec des boutons Accepter/Refuser. En
+  laissant tourner l'horloge en Maximum, les IA doivent se déclarer la guerre entre elles ou se
+  proposer des pactes selon leur personnalité — visible en filtrant la console sur `[Diplomacy]`
+  — et une attaque IA ne doit plus jamais survenir sans qu'une ligne `[Diplomacy] ... declare la
+  guerre` ne l'ait précédée.
 
-> Ces cinq encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> Ces six encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
 > finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
-> `EconomyDebugPanel`, `EmpireDebugPanel` et `MilitaryDebugPanel`.
+> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel` et `DiplomacyDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 262 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 288 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -377,9 +431,18 @@ séparation des trésors par empire) ; `EmpirePlacementTests`, `EmpireFactoryTes
 `CombatResolverTests` (Phase 6 — le plus important : vainqueur déterministe selon le ratio de
 puissance, fractions de pertes vérifiées valeur par valeur, cas limites d'une défense vide ou
 de deux camps à puissance nulle), `MilitaryServiceTests` (recrutement → garnison, colonisation,
-combat avec transfert de propriété, retraite après défaite, fusion de garnisons, entretien),
+combat avec transfert de propriété, retraite après défaite, fusion de garnisons, entretien, et
+désormais le blocage d'un déplacement vers un système étranger sans guerre déclarée),
 `MilitaryDecisionMakerTests` (chaque personnalité respecte son seuil d'agressivité — le
-Pacifiste n'attaque jamais même en surnombre écrasant — et une seule action par appel).
+Pacifiste n'attaque jamais même en surnombre écrasant —, une seule action par appel, et
+désormais aucune attaque sans guerre déjà déclarée par la diplomatie) ; `DiplomacyServiceTests`
+(Phase 7 — le plus important : statut symétrique/opinion dirigée, validation des préconditions
+par type de proposition, résolution instantanée pour une IA cible contre mise en attente pour
+le joueur, effets de chaque proposition acceptée — échange de ressources/territoires,
+tribut d'ultimatum —, refus d'un ultimatum déclenchant une guerre automatique, dérive mensuelle
+de l'opinion, revenu de traité commercial), `DiplomacyDecisionMakerTests` (propose la paix
+avant d'envisager la guerre, ne déclare la guerre que si l'avantage dépasse le seuil de la
+personnalité, ne propose un pacte qu'au-dessus du seuil d'opinion, une seule action par appel).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -390,10 +453,12 @@ sans pouvoir ouvrir l'éditeur ici :
 
 La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
 économique, le placement des systèmes d'origine (*farthest-point sampling*), l'arbitrage de
-décision de l'IA par personnalité, la formule de combat et les décisions militaires de l'IA
-ont chacune été recoupées indépendamment par un script Python qui reproduit l'algorithme :
-voir les commentaires de `GalaxyGenerator`, `GameClock`, `EconomyService`, `EmpirePlacement`,
-`AIDecisionMaker`, `CombatResolver` et `MilitaryDecisionMaker` pour le détail.
+décision de l'IA par personnalité, la formule de combat, les décisions militaires de l'IA, et
+désormais l'évaluation des propositions diplomatiques et l'arbitrage guerre/paix/pacte de
+`DiplomacyDecisionMaker`, ont chacune été recoupées indépendamment par un script Python qui
+reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
+`EconomyService`, `EmpirePlacement`, `AIDecisionMaker`, `CombatResolver`,
+`MilitaryDecisionMaker`, `ProposalEvaluator` et `DiplomacyDecisionMaker` pour le détail.
 
 ---
 
@@ -407,7 +472,7 @@ voir les commentaires de `GalaxyGenerator`, `GameClock`, `EconomyService`, `Empi
 | 4 | Économie : production, bâtiments, impôts, investissement | ✅ terminée |
 | 5 | Empires et IA de base (personnalités, gestion économique autonome) | ✅ terminée |
 | 6 | Armées, résolution automatique des combats, colonisation | ✅ terminée |
-| 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | à venir |
+| 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | ✅ terminée |
 | 8 | Recherche (arbre technologique, 7 domaines) | à venir |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | à venir |
 | 10 | Sauvegarde JSON automatique | à venir |
@@ -415,10 +480,9 @@ voir les commentaires de `GalaxyGenerator`, `GameClock`, `EconomyService`, `Empi
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 6 n'a touché ni la diplomatie, ni la
-recherche, ni l'espionnage — les empires peuvent désormais posséder plusieurs systèmes
-(colonisés ou conquis), mais aucune notion de guerre/paix formelle n'existe encore pour
-justifier ou empêcher une attaque, humaine ou IA.
+complexe à la fois (consigne du brief) : la Phase 7 n'a touché ni la recherche, ni
+l'espionnage — la diplomatie reste pour l'instant sans notion de technologie ni d'agents
+d'influence, qui n'existeront qu'à partir des Phases 8 et 9.
 
 ---
 

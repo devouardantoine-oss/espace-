@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Espace.Core;
 using Espace.Data;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
@@ -30,6 +31,14 @@ namespace Espace.Gameplay.Military
     /// depense echoue silencieusement (aucune dette, aucune desertion en Phase 6) — a affiner
     /// en Phase 12 si necessaire.
     /// </para>
+    /// <para>
+    /// <b>Entree en territoire etranger conditionnee a la guerre (Phase 7) :</b>
+    /// <see cref="TryMoveFleet"/> refuse desormais tout deplacement vers un systeme possede
+    /// par un autre empire tant qu'un <see cref="DiplomaticStatus.War"/> n'a pas ete declare
+    /// entre les deux (voir <see cref="IDiplomacyService"/>) — avant la Phase 7, n'importe
+    /// quel empire pouvait attaquer n'importe quel voisin sans justification diplomatique.
+    /// La colonisation d'un systeme non possede reste, elle, entierement libre.
+    /// </para>
     /// </summary>
     public sealed class MilitaryService : IMilitaryService, IGameService
     {
@@ -40,6 +49,7 @@ namespace Espace.Gameplay.Military
         private readonly IGameClock _gameClock;
         private readonly IEventBus _eventBus;
         private readonly IEconomyService _economy;
+        private readonly IDiplomacyService _diplomacy;
         private readonly EmpireRegistry _empireRegistry;
         private readonly List<UnitTypeDefinition> _unitCatalog;
 
@@ -51,13 +61,14 @@ namespace Espace.Gameplay.Military
         public IReadOnlyList<UnitTypeDefinition> UnitCatalog => _unitCatalog;
 
         public MilitaryService(
-            GalaxyMap map, IGameClock gameClock, IEventBus eventBus, IEconomyService economy,
+            GalaxyMap map, IGameClock gameClock, IEventBus eventBus, IEconomyService economy, IDiplomacyService diplomacy,
             EmpireRegistry empireRegistry, IReadOnlyList<UnitTypeDefinition> unitCatalog)
         {
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _gameClock = gameClock ?? throw new ArgumentNullException(nameof(gameClock));
             _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
             _economy = economy ?? throw new ArgumentNullException(nameof(economy));
+            _diplomacy = diplomacy ?? throw new ArgumentNullException(nameof(diplomacy));
             _empireRegistry = empireRegistry ?? throw new ArgumentNullException(nameof(empireRegistry));
             _unitCatalog = new List<UnitTypeDefinition>(unitCatalog ?? Array.Empty<UnitTypeDefinition>());
         }
@@ -180,6 +191,14 @@ namespace Espace.Gameplay.Military
             if (!_map.TryGetSystem(destinationSystemId, out StarSystemState destination))
             {
                 error = "Systeme de destination introuvable.";
+                return false;
+            }
+
+            if (destination.OwnerId != StarSystemState.UnownedOwnerId
+                && destination.OwnerId != fleet.OwnerId
+                && _diplomacy.GetStatus(fleet.OwnerId, destination.OwnerId) != DiplomaticStatus.War)
+            {
+                error = "Deplacement refuse : aucune guerre declaree avec le proprietaire de ce systeme.";
                 return false;
             }
 

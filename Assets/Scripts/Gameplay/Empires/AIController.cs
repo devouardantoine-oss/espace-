@@ -1,4 +1,5 @@
 using Espace.Core;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using UnityEngine;
@@ -6,22 +7,31 @@ using UnityEngine;
 namespace Espace.Gameplay.Empires
 {
     /// <summary>
-    /// Fait agir chaque empire IA une fois par mois de jeu : economie puis armee.
+    /// Fait agir chaque empire IA une fois par mois de jeu : economie, puis diplomatie, puis
+    /// armee.
     /// <para>
     /// <b>Resolution paresseuse dans le gestionnaire d'evenement, pas dans <c>Start</c> :</b>
     /// ce composant a besoin d'<see cref="EmpireRegistry"/> (enregistre par
     /// <c>EmpireController.Start</c>), d'<see cref="IEconomyService"/> (par
-    /// <c>EconomyController.Start</c>) et d'<see cref="IMilitaryService"/> (enregistre au
-    /// premier <c>Update</c> de <c>MilitaryController</c>, voir son commentaire) — aucun ordre
-    /// garanti entre ces enregistrements et celui-ci. S'abonner a <see cref="IEventBus"/>
-    /// reste sur dans <c>Start</c> (enregistre par <c>GameBootstrap</c> bien avant, en
-    /// <c>Awake</c>) ; mais resoudre le reste seulement au premier
-    /// <see cref="MonthAdvancedEvent"/> elimine la course, puisqu'un mois de jeu ecoule
-    /// largement apres que toutes les initialisations de la scene sont terminees.
+    /// <c>EconomyController.Start</c>), d'<see cref="IDiplomacyService"/> (au premier
+    /// <c>Update</c> de <c>DiplomacyController</c>) et d'<see cref="IMilitaryService"/>
+    /// (enregistre au premier <c>Update</c> de <c>MilitaryController</c>, voir son
+    /// commentaire) — aucun ordre garanti entre ces enregistrements et celui-ci. S'abonner a
+    /// <see cref="IEventBus"/> reste sur dans <c>Start</c> (enregistre par
+    /// <c>GameBootstrap</c> bien avant, en <c>Awake</c>) ; mais resoudre le reste seulement au
+    /// premier <see cref="MonthAdvancedEvent"/> elimine la course, puisqu'un mois de jeu
+    /// ecoule largement apres que toutes les initialisations de la scene sont terminees.
     /// </para>
     /// <para>
-    /// Les decisions elles-memes vivent dans <see cref="AIDecisionMaker"/> (economie) et
-    /// <see cref="MilitaryDecisionMaker"/> (armee), deux fonctions statiques testables sans
+    /// <b>Ordre Economie -> Diplomatie -> Armee, deliberement</b> : une guerre declaree ce
+    /// mois-ci par <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/> peut ainsi
+    /// etre exploitee par <see cref="MilitaryDecisionMaker"/> ce meme mois, sans attendre le
+    /// mois suivant.
+    /// </para>
+    /// <para>
+    /// Les decisions elles-memes vivent dans <see cref="AIDecisionMaker"/> (economie),
+    /// <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/> (diplomatie) et
+    /// <see cref="MilitaryDecisionMaker"/> (armee), des fonctions statiques testables sans
     /// scene : ce composant ne fait que les brancher sur l'horloge du jeu.
     /// </para>
     /// </summary>
@@ -30,6 +40,7 @@ namespace Espace.Gameplay.Empires
         private IEventBus _eventBus;
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
+        private IDiplomacyService _diplomacy;
         private IMilitaryService _military;
         private GalaxyMap _map;
 
@@ -65,7 +76,8 @@ namespace Espace.Gameplay.Empires
                 }
 
                 AIDecisionMaker.DecideAndAct(empire, _map, _economy);
-                MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military);
+                DiplomacyDecisionMaker.DecideAndAct(empire, _map, _military, _diplomacy);
+                MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military, _diplomacy);
             }
         }
 
@@ -78,6 +90,11 @@ namespace Espace.Gameplay.Empires
             }
 
             if (_economy == null && !ServiceLocator.TryGet(out _economy))
+            {
+                return false;
+            }
+
+            if (_diplomacy == null && !ServiceLocator.TryGet(out _diplomacy))
             {
                 return false;
             }

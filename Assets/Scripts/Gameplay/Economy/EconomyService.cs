@@ -127,6 +127,14 @@ namespace Espace.Gameplay.Economy
         }
 
         /// <inheritdoc />
+        public void Grant(int empireId, ResourceBundle amount)
+        {
+            ResourceBundle newTreasury = GetTreasury(empireId) + amount;
+            _treasuriesByEmpire[empireId] = newTreasury;
+            _eventBus.Publish(new TreasuryChangedEvent(empireId, newTreasury));
+        }
+
+        /// <inheritdoc />
         public bool TryStartConstruction(StarSystemId systemId, BuildingType buildingType, out string error)
         {
             if (buildingType == null)

@@ -1,5 +1,6 @@
 using System;
 using Espace.Core;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
@@ -11,9 +12,11 @@ namespace Espace.Gameplay.Military
     /// Compose et demarre l'armee dans la scene <c>GalaxyMap</c>.
     /// <para>
     /// <b>Initialisation differee a <c>Update</c>, pas <c>Start</c> :</b> ce composant a besoin
-    /// de <see cref="EmpireRegistry"/> (enregistre par <c>EmpireController.Start</c>) et
-    /// <see cref="IEconomyService"/> (par <c>EconomyController.Start</c>) — deux <c>Start</c>
-    /// sans ordre garanti l'un envers l'autre, ni envers celui-ci. Contrairement aux panneaux
+    /// de <see cref="EmpireRegistry"/> (enregistre par <c>EmpireController.Start</c>),
+    /// <see cref="IEconomyService"/> (par <c>EconomyController.Start</c>) et, depuis la
+    /// Phase 7, <see cref="IDiplomacyService"/> (enregistre au premier <c>Update</c> de
+    /// <c>DiplomacyController</c>, meme pattern) — aucun ordre garanti entre ces
+    /// enregistrements. Contrairement aux panneaux
     /// de diagnostic (qui peuvent se permettre d'attendre <c>OnGUI</c> ou un evenement de jeu),
     /// <see cref="MilitaryService"/> doit exister et etre enregistre <b>avant</b> que d'autres
     /// composants (IA, panneau de recrutement) ne le cherchent des leur propre <c>Start</c>.
@@ -47,12 +50,13 @@ namespace Espace.Gameplay.Military
                 !ServiceLocator.TryGet(out IGameClock gameClock) ||
                 !ServiceLocator.TryGet(out GalaxyMap map) ||
                 !ServiceLocator.TryGet(out IEconomyService economy) ||
+                !ServiceLocator.TryGet(out IDiplomacyService diplomacy) ||
                 !ServiceLocator.TryGet(out EmpireRegistry empireRegistry))
             {
                 return;
             }
 
-            _militaryService = new MilitaryService(map, gameClock, eventBus, economy, empireRegistry, unitCatalog);
+            _militaryService = new MilitaryService(map, gameClock, eventBus, economy, diplomacy, empireRegistry, unitCatalog);
             _militaryService.Initialize();
 
             if (!ServiceLocator.IsRegistered<IMilitaryService>())

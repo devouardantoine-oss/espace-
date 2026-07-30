@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Espace.Core;
 using Espace.Data;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
@@ -34,9 +36,68 @@ namespace Espace.Tests.EditMode
             public void SetSpeed(GameSpeed speed) { }
         }
 
+        /// <summary>
+        /// Remplace <see cref="DiplomacyService"/> pour ces tests : seul le statut
+        /// guerre/paix importe ici (voir le blocage introduit en Phase 7 dans
+        /// <see cref="MilitaryService.TryMoveFleet"/>), directement pilotable via
+        /// <see cref="SetStatus"/> sans reconstruire tout le contexte diplomatique
+        /// (registre d'empires, service economique, carte).
+        /// </summary>
+        private sealed class FakeDiplomacyService : IDiplomacyService
+        {
+            private readonly Dictionary<(int, int), DiplomaticStatus> _statuses = new Dictionary<(int, int), DiplomaticStatus>();
+
+            private static (int, int) Key(int a, int b) => a <= b ? (a, b) : (b, a);
+
+            public void SetStatus(int empireAId, int empireBId, DiplomaticStatus status) => _statuses[Key(empireAId, empireBId)] = status;
+
+            public DiplomaticStatus GetStatus(int empireAId, int empireBId) =>
+                _statuses.TryGetValue(Key(empireAId, empireBId), out DiplomaticStatus status) ? status : DiplomaticStatus.Peace;
+
+            public float GetOpinion(int observerId, int targetId) => 0f;
+            public bool HasTradeTreaty(int empireAId, int empireBId) => false;
+            public bool IsEmbargoing(int fromEmpireId, int toEmpireId) => false;
+            public IReadOnlyList<DiplomaticProposal> GetPendingProposalsFor(int empireId) => Array.Empty<DiplomaticProposal>();
+
+            public bool TryDeclareWar(int declarerId, int targetId, out string error)
+            {
+                SetStatus(declarerId, targetId, DiplomaticStatus.War);
+                error = null;
+                return true;
+            }
+
+            public bool TrySetEmbargo(int fromEmpireId, int toEmpireId, bool active, out string error)
+            {
+                error = "Non supporte par ce faux service.";
+                return false;
+            }
+
+            public bool TryBreakPact(int fromEmpireId, int toEmpireId, out string error)
+            {
+                SetStatus(fromEmpireId, toEmpireId, DiplomaticStatus.Peace);
+                error = null;
+                return true;
+            }
+
+            public bool TrySubmitProposal(
+                int proposerId, int targetId, ProposalType type, ResourceBundle offeredResources, ResourceBundle requestedResources,
+                StarSystemId? offeredSystemId, StarSystemId? requestedSystemId, out string error)
+            {
+                error = "Non supporte par ce faux service.";
+                return false;
+            }
+
+            public bool TryRespondToProposal(int proposalId, bool accept, out string error)
+            {
+                error = "Non supporte par ce faux service.";
+                return false;
+            }
+        }
+
         private EventBus _eventBus;
         private FakeGameClock _clock;
         private EmpireRegistry _empireRegistry;
+        private FakeDiplomacyService _diplomacy;
 
         [SetUp]
         public void SetUp()
@@ -44,6 +105,7 @@ namespace Espace.Tests.EditMode
             _eventBus = new EventBus();
             _eventBus.Initialize();
             _clock = new FakeGameClock();
+            _diplomacy = new FakeDiplomacyService();
             _empireRegistry = new EmpireRegistry(new[]
             {
                 new Empire(PlayerId, "Joueur", Color.blue, EmpirePersonality.Expansionist, isPlayerControlled: true),
@@ -105,7 +167,7 @@ namespace Espace.Tests.EditMode
 
         private MilitaryService MakeMilitary(GalaxyMap map, IEconomyService economy, params UnitTypeDefinition[] catalog)
         {
-            var military = new MilitaryService(map, _clock, _eventBus, economy, _empireRegistry, catalog);
+            var military = new MilitaryService(map, _clock, _eventBus, economy, _diplomacy, _empireRegistry, catalog);
             military.Initialize();
             return military;
         }
@@ -133,11 +195,12 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition[] catalog = Array.Empty<UnitTypeDefinition>();
 
-            Assert.Throws<ArgumentNullException>(() => new MilitaryService(null, _clock, _eventBus, economy, _empireRegistry, catalog));
-            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, null, _eventBus, economy, _empireRegistry, catalog));
-            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, null, economy, _empireRegistry, catalog));
-            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, _eventBus, null, _empireRegistry, catalog));
-            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, _eventBus, economy, null, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(null, _clock, _eventBus, economy, _diplomacy, _empireRegistry, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, null, _eventBus, economy, _diplomacy, _empireRegistry, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, null, economy, _diplomacy, _empireRegistry, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, _eventBus, null, _diplomacy, _empireRegistry, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, _eventBus, economy, null, _empireRegistry, catalog));
+            Assert.Throws<ArgumentNullException>(() => new MilitaryService(map, _clock, _eventBus, economy, _diplomacy, null, catalog));
         }
 
         // --- Recrutement -----------------------------------------------------------
@@ -374,6 +437,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(economy, home, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
 
             bool battlePublished = false;
             _eventBus.Subscribe<BattleResolvedEvent>(e =>
@@ -406,6 +470,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, neighbor, infantry, 20); // defenseur tres fort
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
             military.TryMoveFleet(attackers, neighbor.Id, out _);
             GameDate arrival = attackers.ArrivalDate.Value;
             _eventBus.Publish(new DayAdvancedEvent(arrival));
@@ -434,6 +499,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, neighbor, infantry, 500); // ecrasant : l'attaquant est annihile
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
             military.TryMoveFleet(attackers, neighbor.Id, out _);
             _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
 
@@ -456,10 +522,47 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, neighbor, infantry, 10); // meme puissance brute
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
             military.TryMoveFleet(attackers, neighbor.Id, out _);
             _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
 
             Assert.AreEqual(OtherEmpireId, neighbor.OwnerId, "A puissance brute egale, le bonus de terrain doit favoriser le defenseur.");
+        }
+
+        [Test]
+        public void TryMoveFleet_ForeignSystemWithoutWar_Fails()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 3);
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+
+            bool success = military.TryMoveFleet(fleet, neighbor.Id, out string error);
+
+            Assert.IsFalse(success, "Sans guerre declaree, un deplacement vers un systeme etranger doit etre refuse (Phase 7).");
+            Assert.IsNotNull(error);
+            Assert.AreEqual(FleetStatus.Stationed, fleet.Status);
+        }
+
+        [Test]
+        public void TryMoveFleet_AlliedSystem_Fails()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 3);
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.Alliance);
+
+            bool success = military.TryMoveFleet(fleet, neighbor.Id, out string error);
+
+            Assert.IsFalse(success, "Une Alliance (ou un Pacte de non-agression) interdit tout autant l'entree sur le territoire.");
+            Assert.IsNotNull(error);
         }
 
         // --- Detachement -------------------------------------------------------------

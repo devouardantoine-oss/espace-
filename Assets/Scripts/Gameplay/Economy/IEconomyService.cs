@@ -50,6 +50,14 @@ namespace Espace.Gameplay.Economy
         bool TrySpend(int empireId, ResourceBundle cost, out string error);
 
         /// <summary>
+        /// Ajoute <paramref name="amount"/> au tresor de <paramref name="empireId"/>, sans
+        /// aucune verification (contrepartie inconditionnelle de <see cref="TrySpend"/>).
+        /// Point d'entree generique pour tout gain hors production journaliere : echange de
+        /// ressources, tribut d'ultimatum, revenu de traite commercial (Phase 7, Diplomatie).
+        /// </summary>
+        void Grant(int empireId, ResourceBundle amount);
+
+        /// <summary>
         /// Lance la construction de <paramref name="buildingType"/> sur <paramref name="systemId"/>
         /// si le systeme a un proprietaire, respecte le developpement minimal requis, n'a
         /// pas deja ce batiment, et si le tresor de son proprietaire peut en couvrir le cout.

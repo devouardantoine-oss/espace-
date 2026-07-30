@@ -1,5 +1,6 @@
 using System;
 using Espace.Data;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
@@ -21,13 +22,20 @@ namespace Espace.Gameplay.Military
     /// <see cref="MinimumGarrisonToKeep"/> unites a domicile avant de detacher quoi que ce
     /// soit : un empire ne se laisse jamais totalement sans defense de son propre chef.
     /// </para>
+    /// <para>
+    /// <b>Depuis la Phase 7, n'attaque plus que les voisins deja en guerre :</b> le choix de
+    /// <i>qui</i> attaquer (rapport de puissance, seuil d'agressivite) revient desormais a
+    /// <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/>, appele avant celui-ci
+    /// dans <c>AIController</c> et seul habilite a declarer la guerre. Ce module ne fait plus
+    /// qu'exploiter militairement un etat de guerre deja declare.
+    /// </para>
     /// </summary>
     public static class MilitaryDecisionMaker
     {
         /// <summary>Unites minimales gardees en garnison avant d'en detacher pour coloniser ou attaquer.</summary>
         private const int MinimumGarrisonToKeep = 2;
 
-        public static void DecideAndAct(Empire empire, GalaxyMap map, IEconomyService economy, IMilitaryService military)
+        public static void DecideAndAct(Empire empire, GalaxyMap map, IEconomyService economy, IMilitaryService military, IDiplomacyService diplomacy)
         {
             StarSystemState homeSystem = FindPrimarySystem(empire, map);
             if (homeSystem == null)
@@ -47,7 +55,7 @@ namespace Espace.Gameplay.Military
                 return;
             }
 
-            TryAttackAdjacent(empire, homeSystem, map, military, profile);
+            TryAttackAdjacent(empire, homeSystem, map, military, diplomacy);
         }
 
         private static StarSystemState FindPrimarySystem(Empire empire, GalaxyMap map)
@@ -171,9 +179,18 @@ namespace Espace.Gameplay.Military
             return UnitBundle.Zero;
         }
 
+        /// <summary>
+        /// Attaque le premier voisin avec lequel un etat de guerre est deja declare (voir
+        /// <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/>, seul a decider
+        /// <i>qui</i> attaquer). Une personnalite pacifique/commercante (<c>AggressionThreshold</c>
+        /// nul) n'engage jamais l'offensive de son propre chef, meme si elle se retrouve en
+        /// guerre parce qu'attaquee : elle se defend passivement (la resolution de bataille a
+        /// lieu automatiquement des qu'une flotte ennemie entre sur son systeme).
+        /// </summary>
         private static bool TryAttackAdjacent(
-            Empire empire, StarSystemState system, GalaxyMap map, IMilitaryService military, EmpirePersonalityProfileData profile)
+            Empire empire, StarSystemState system, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy)
         {
+            EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
             if (profile.AggressionThreshold == null)
             {
                 return false;
@@ -185,21 +202,12 @@ namespace Espace.Gameplay.Military
                 return false;
             }
 
-            float ownPower = military.EstimatePower(garrison);
-
             foreach (StarSystemId neighborId in map.GetNeighbors(system.Id))
             {
                 if (!map.TryGetSystem(neighborId, out StarSystemState neighbor)
                     || neighbor.OwnerId == StarSystemState.UnownedOwnerId
-                    || neighbor.OwnerId == empire.Id)
-                {
-                    continue;
-                }
-
-                UnitBundle enemyGarrison = military.GetGarrison(neighborId, neighbor.OwnerId);
-                float enemyPower = military.EstimatePower(enemyGarrison);
-
-                if (enemyPower > 0f && ownPower < enemyPower * profile.AggressionThreshold.Value)
+                    || neighbor.OwnerId == empire.Id
+                    || diplomacy.GetStatus(empire.Id, neighbor.OwnerId) != DiplomaticStatus.War)
                 {
                     continue;
                 }
