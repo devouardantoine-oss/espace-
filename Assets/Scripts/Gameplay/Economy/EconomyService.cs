@@ -109,6 +109,24 @@ namespace Espace.Gameplay.Economy
         }
 
         /// <inheritdoc />
+        public bool TrySpend(int empireId, ResourceBundle cost, out string error)
+        {
+            ResourceBundle treasury = GetTreasury(empireId);
+            if (!treasury.IsGreaterOrEqualTo(cost))
+            {
+                error = "Ressources insuffisantes.";
+                return false;
+            }
+
+            ResourceBundle newTreasury = treasury - cost;
+            _treasuriesByEmpire[empireId] = newTreasury;
+            _eventBus.Publish(new TreasuryChangedEvent(empireId, newTreasury));
+
+            error = null;
+            return true;
+        }
+
+        /// <inheritdoc />
         public bool TryStartConstruction(StarSystemId systemId, BuildingType buildingType, out string error)
         {
             if (buildingType == null)
@@ -143,18 +161,15 @@ namespace Espace.Gameplay.Economy
             }
 
             var cost = new ResourceBundle(credits: buildingType.CreditsCost);
-            ResourceBundle treasury = GetTreasury(system.OwnerId);
-            if (!treasury.IsGreaterOrEqualTo(cost))
+            if (!TrySpend(system.OwnerId, cost, out error))
             {
                 error = "Credits insuffisants.";
                 return false;
             }
 
-            _treasuriesByEmpire[system.OwnerId] = treasury - cost;
             GameDate completionDate = _gameClock.CurrentDate.AddDays(buildingType.ConstructionDurationDays);
             buildings.Add(new BuildingInstance(systemId, buildingType, completionDate));
 
-            _eventBus.Publish(new TreasuryChangedEvent(system.OwnerId, _treasuriesByEmpire[system.OwnerId]));
             _eventBus.Publish(new BuildingConstructionStartedEvent(systemId, buildingType));
 
             error = null;
@@ -194,17 +209,13 @@ namespace Espace.Gameplay.Economy
             }
 
             var cost = new ResourceBundle(credits: GetInvestmentCost(systemId));
-            ResourceBundle treasury = GetTreasury(system.OwnerId);
-            if (!treasury.IsGreaterOrEqualTo(cost))
+            if (!TrySpend(system.OwnerId, cost, out error))
             {
                 error = "Credits insuffisants.";
                 return false;
             }
 
-            _treasuriesByEmpire[system.OwnerId] = treasury - cost;
             system.DevelopmentLevel += 1;
-
-            _eventBus.Publish(new TreasuryChangedEvent(system.OwnerId, _treasuriesByEmpire[system.OwnerId]));
 
             error = null;
             return true;

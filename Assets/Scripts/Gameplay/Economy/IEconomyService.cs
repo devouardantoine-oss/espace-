@@ -41,6 +41,15 @@ namespace Espace.Gameplay.Economy
         void SetTaxRate(int empireId, float rate);
 
         /// <summary>
+        /// Deduit <paramref name="cost"/> du tresor de <paramref name="empireId"/> si celui-ci
+        /// peut le couvrir. Point d'entree generique pour toute depense hors construction et
+        /// investissement (recrutement et entretien militaires, Phase 6) : evite de dupliquer
+        /// la verification d'affordabilite et la publication de <c>TreasuryChangedEvent</c>
+        /// deja ecrites pour <see cref="TryStartConstruction"/>/<see cref="TryInvestInDevelopment"/>.
+        /// </summary>
+        bool TrySpend(int empireId, ResourceBundle cost, out string error);
+
+        /// <summary>
         /// Lance la construction de <paramref name="buildingType"/> sur <paramref name="systemId"/>
         /// si le systeme a un proprietaire, respecte le developpement minimal requis, n'a
         /// pas deja ce batiment, et si le tresor de son proprietaire peut en couvrir le cout.

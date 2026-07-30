@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Espace.Core;
 using Espace.Gameplay.Empires;
+using Espace.Gameplay.Military;
 using UnityEngine;
 
 namespace Espace.Gameplay.Galaxy
@@ -42,6 +43,9 @@ namespace Espace.Gameplay.Galaxy
         // panneau de diagnostic ci-dessous : pas une dependance structurelle a Espace.Gameplay.Empires,
         // resolue paresseusement comme le reste des dependances inter-controleurs de la scene.
         private EmpireRegistry _empireRegistry;
+
+        // Meme raison : afficher la garnison du systeme selectionne sans dependance structurelle a Espace.Gameplay.Military.
+        private IMilitaryService _military;
 
         private void Awake()
         {
@@ -163,12 +167,18 @@ namespace Espace.Gameplay.Galaxy
                 ServiceLocator.TryGet(out _empireRegistry);
             }
 
+            if (_military == null)
+            {
+                ServiceLocator.TryGet(out _military);
+            }
+
             const int width = 260;
             const int padding = 10;
+            const int height = 170;
 
-            GUI.Box(new Rect(padding, padding, width, 150), string.Empty);
+            GUI.Box(new Rect(padding, padding, width, height), string.Empty);
 
-            var layout = new Rect(padding + 8, padding + 6, width - 16, 140);
+            var layout = new Rect(padding + 8, padding + 6, width - 16, height - 10);
             GUILayout.BeginArea(layout);
 
             if (_map == null)
@@ -185,6 +195,7 @@ namespace Espace.Gameplay.Galaxy
                 GUILayout.Label($"Proprietaire : {OwnerLabel(system.OwnerId)}");
                 GUILayout.Label($"Gisements : {(system.ResourceDeposits.Length == 0 ? "aucun" : string.Join(", ", system.ResourceDeposits))}");
                 GUILayout.Label($"Routes : {_map.GetNeighbors(system.Id).Count}");
+                GUILayout.Label($"Garnison : {GarrisonLabel(system)}");
             }
             else
             {
@@ -212,6 +223,32 @@ namespace Espace.Gameplay.Galaxy
             }
 
             return ownerId.ToString();
+        }
+
+        /// <summary>
+        /// Resume des flottes stationnees sur ce systeme, tous proprietaires confondus
+        /// (repli sur « inconnue » si IMilitaryService n'est pas encore disponible).
+        /// </summary>
+        private string GarrisonLabel(StarSystemState system)
+        {
+            if (_military == null)
+            {
+                return "inconnue";
+            }
+
+            IReadOnlyList<Fleet> fleets = _military.GetFleetsAt(system.Id);
+            if (fleets.Count == 0)
+            {
+                return "aucune";
+            }
+
+            var parts = new List<string>(fleets.Count);
+            foreach (Fleet fleet in fleets)
+            {
+                parts.Add($"{OwnerLabel(fleet.OwnerId)} : {fleet.Composition.TotalCount}");
+            }
+
+            return string.Join(" | ", parts);
         }
     }
 }

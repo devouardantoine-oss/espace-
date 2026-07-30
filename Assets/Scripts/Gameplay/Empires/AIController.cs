@@ -1,24 +1,28 @@
 using Espace.Core;
 using Espace.Gameplay.Galaxy;
+using Espace.Gameplay.Military;
 using UnityEngine;
 
 namespace Espace.Gameplay.Empires
 {
     /// <summary>
-    /// Fait agir chaque empire IA une fois par mois de jeu.
+    /// Fait agir chaque empire IA une fois par mois de jeu : economie puis armee.
     /// <para>
     /// <b>Resolution paresseuse dans le gestionnaire d'evenement, pas dans <c>Start</c> :</b>
     /// ce composant a besoin d'<see cref="EmpireRegistry"/> (enregistre par
-    /// <c>EmpireController.Start</c>) et d'<see cref="IEconomyService"/> (par
-    /// <c>EconomyController.Start</c>) — deux <c>Start</c> sans ordre garanti entre eux.
-    /// S'abonner a <see cref="IEventBus"/> reste sur dans <c>Start</c> (enregistre par
-    /// <c>GameBootstrap</c> bien avant, en <c>Awake</c>) ; mais resoudre le reste seulement
-    /// au premier <see cref="MonthAdvancedEvent"/> elimine la course, puisque cet evenement
-    /// ne peut arriver qu'apres que <b>tous</b> les <c>Start</c> de la frame sont termines.
+    /// <c>EmpireController.Start</c>), d'<see cref="IEconomyService"/> (par
+    /// <c>EconomyController.Start</c>) et d'<see cref="IMilitaryService"/> (enregistre au
+    /// premier <c>Update</c> de <c>MilitaryController</c>, voir son commentaire) — aucun ordre
+    /// garanti entre ces enregistrements et celui-ci. S'abonner a <see cref="IEventBus"/>
+    /// reste sur dans <c>Start</c> (enregistre par <c>GameBootstrap</c> bien avant, en
+    /// <c>Awake</c>) ; mais resoudre le reste seulement au premier
+    /// <see cref="MonthAdvancedEvent"/> elimine la course, puisqu'un mois de jeu ecoule
+    /// largement apres que toutes les initialisations de la scene sont terminees.
     /// </para>
     /// <para>
-    /// La decision elle-meme vit dans <see cref="AIDecisionMaker"/>, une fonction statique
-    /// testable sans scene : ce composant ne fait que la brancher sur l'horloge du jeu.
+    /// Les decisions elles-memes vivent dans <see cref="AIDecisionMaker"/> (economie) et
+    /// <see cref="MilitaryDecisionMaker"/> (armee), deux fonctions statiques testables sans
+    /// scene : ce composant ne fait que les brancher sur l'horloge du jeu.
     /// </para>
     /// </summary>
     public sealed class AIController : MonoBehaviour
@@ -26,6 +30,7 @@ namespace Espace.Gameplay.Empires
         private IEventBus _eventBus;
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
+        private IMilitaryService _military;
         private GalaxyMap _map;
 
         private void Start()
@@ -60,6 +65,7 @@ namespace Espace.Gameplay.Empires
                 }
 
                 AIDecisionMaker.DecideAndAct(empire, _map, _economy);
+                MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military);
             }
         }
 
@@ -72,6 +78,11 @@ namespace Espace.Gameplay.Empires
             }
 
             if (_economy == null && !ServiceLocator.TryGet(out _economy))
+            {
+                return false;
+            }
+
+            if (_military == null && !ServiceLocator.TryGet(out _military))
             {
                 return false;
             }

@@ -14,10 +14,10 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 5 terminée** — carte galactique (100 systèmes), horloge de jeu, économie
-> et 6 empires (1 joueur + 5 IA, une personnalité chacun) qui gèrent leur économie de façon
-> autonome. Diplomatie, recherche, espionnage, armées et colonisation ne sont pas encore
-> implémentés.
+> **Statut : Phase 6 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> 6 empires (1 joueur + 5 IA), et désormais armées : recrutement, résolution automatique des
+> combats, colonisation. Les IA colonisent et, selon leur personnalité, peuvent attaquer un
+> voisin plus faible. Diplomatie, recherche et espionnage ne sont pas encore implémentés.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -81,14 +81,15 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires (Phases 2-5)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées (Phases 2-6)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
 │   ├── GameClockConfig.asset
 │   ├── GalaxyConfig.asset
 │   ├── Buildings/                # 5 types de bâtiments (1 par ressource)
-│   └── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
+│   ├── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
+│   └── Units/                    # 4 types d'unités (Infanterie, Blindés, Forces spéciales, Flotte spatiale)
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
 │   ├── Data/                     # → Espace.Data     (ScriptableObjects et types génériques)
@@ -96,7 +97,8 @@ Assets/
 │   ├── Gameplay/                 # → Espace.Gameplay (référence Core + Data)
 │   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection
 │   │   ├── Economy/              #     production, bâtiments, impôts, investissement
-│   │   └── Empires/              #     identité, personnalités, décisions IA autonomes
+│   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
+│   │   └── Military/             #     unités, flottes, combat automatique, colonisation
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -211,7 +213,7 @@ compte pour l'instant.
 
 | Classe | Rôle | Choix technique |
 |---|---|---|
-| `Empire` | identité d'un empire | immuable, **sans territoire stocké** : « quels systèmes possède cet empire » reste dérivé à la volée de `StarSystemState.OwnerId`, pour ne jamais devenir périmé une fois la colonisation possible (Phase 6) |
+| `Empire` | identité d'un empire | immuable, **sans territoire stocké** : « quels systèmes possède cet empire » reste dérivé à la volée de `StarSystemState.OwnerId` — un choix qui s'est révélé payant dès que la Phase 6 a rendu la colonisation possible, sans rien avoir à changer à `Empire` |
 | `EmpirePersonality` / `EmpireDefinition` | contenu | 5 personnalités (Pacifique, Expansionniste, Commerçante, Militaire, Opportuniste) ; `EmpireDefinition` est un ScriptableObject — 6 assets fournis (le joueur + une IA par personnalité) |
 | `EmpireFactory` | attribution des identifiants | trouve la définition marquée joueur (`EconomyService.PlayerOwnerId = 0`), attribue 1..5 aux IA — fonction pure, testable sans scène |
 | `EmpirePlacement` | systèmes d'origine | *farthest-point sampling* déterministe : le 1er (joueur) est le plus proche du centre, chaque suivant maximise sa distance minimale aux origines déjà choisies — disperse les 6 empires sans recourir à l'aléatoire |
@@ -229,11 +231,54 @@ quel empire, et `Treasury`/`TaxRate`/`SetTaxRate(rate)` restent des raccourcis v
 — `EconomyDebugPanel` (Phase 4) continue de marcher **sans une seule ligne changée**, la
 meilleure preuve que la généralisation est correcte.
 
-> **Colonisation reportée à la Phase 6.** Sans flottes (qui n'existent qu'à partir de la
-> Phase 6 « Armées »), coloniser serait un mécanisme abstrait de plus à réécrire une fois les
-> flottes disponibles. Cette phase se limite donc à ce qui ne dépend d'aucun système futur :
-> les empires existent, chacun gère sa propre économie de façon autonome. Négocier, déclarer
-> la guerre, signer des alliances restent Phase 7 (Diplomatie).
+> **Colonisation : reportée à la Phase 5, réalisée en Phase 6.** Sans flottes, coloniser
+> aurait été un mécanisme abstrait de plus à réécrire une fois les flottes disponibles — la
+> Phase 5 s'est donc limitée à ce qui ne dépendait d'aucun système futur (gestion économique
+> autonome). Les flottes existent maintenant : voir la table ci-dessous.
+
+### Briques des armées et du combat (Phase 6)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `UnitType` / `UnitTypeDefinition` | contenu | 4 types (Infanterie, Blindés, Forces spéciales, Flotte spatiale), ScriptableObject — puissance, vitesse, coûts, durée de recrutement, entretien, développement minimal requis |
+| `UnitBundle` | quantité d'unités | même pattern que `ResourceBundle` (Phase 4) : 4 champs `int` nommés plutôt qu'un tableau, pour la même raison d'immuabilité réelle |
+| `Fleet` | groupe d'unités | stationnée (garnison d'un système) ou en déplacement ; **au plus une flotte stationnée par (système, propriétaire)** — toute arrivée fusionne avec la garnison existante, ce qui évite à la résolution de combat de devoir combiner plusieurs flottes du même camp |
+| `CombatResolver` | résolution de bataille | **déterministe, sans hasard** : la puissance de chaque camp (quantité × puissance du catalogue, modulée par moral/commandement/terrain) décide du vainqueur ; la fraction de pertes de chaque camp est proportionnelle à la puissance adverse relative au total — testable sans stub de générateur aléatoire |
+| `IMilitaryService` / `MilitaryService` | armées de tous les empires | même architecture que `EconomyService` : recrutement en file (mirroring `BuildingInstance`), entretien journalier prélevé via `IEconomyService.TrySpend` (nouvelle méthode générique, réutilisée aussi par la construction/l'investissement pour éviter de dupliquer la logique de dépense) |
+| `MilitaryDecisionMaker` | décision militaire IA | même séparation que `AIDecisionMaker` : recrutement jusqu'à la garnison cible, puis colonisation d'un voisin libre, puis — seulement pour les personnalités qui s'y autorisent — une attaque ; **une seule action par appel**, toujours au moins 2 unités gardées à domicile |
+| `MilitaryController` | orchestration | seul composant Phase 6 à dépendre d'un autre `Start()` non garanti (`EmpireRegistry`, `IEconomyService`) : initialisation différée à `Update` plutôt qu'à un événement, faute d'événement naturel à attendre pour un service qui doit exister avant que d'autres ne le cherchent |
+| `MilitaryDebugPanel` | contrôle temporaire | recrutement et envoi de la garnison entière vers un voisin, empilé au-dessus de l'encart de construction économique |
+
+**Agressivité de l'IA — décision produit assumée.** Sans état de guerre/paix (Phase 7), une
+attaque IA n'a pas de justification diplomatique ; le choix a été fait malgré tout de
+l'activer dès cette phase pour les personnalités qui s'y prêtent (voir
+`EmpirePersonalityProfileData.AggressionThreshold`) : Militariste attaque dès qu'elle a un
+léger avantage (×1.1), Opportuniste seulement un net avantage (×1.6), Expansionniste
+quasiment jamais (×2.5, préfère coloniser), Pacifiste et Commerçante jamais (`null`). Ce
+comportement est probablement à retravailler une fois la Phase 7 introduira un véritable état
+de guerre.
+
+**Formule de combat** (voir le commentaire de `CombatResolver.Resolve`) :
+
+```
+PuissanceAttaquant = Σ(quantité × puissance du catalogue) × MoralOrigine × Commandement
+PuissanceDefenseur = Σ(quantité × puissance du catalogue) × MoralSystème × (1 + Développement × 0.1) × Commandement
+
+  Vainqueur = le camp de plus grande puissance (égalité stricte → défenseur)
+  FractionPertesAttaquant = PuissanceDéfenseur / (PuissanceAttaquant + PuissanceDéfenseur)
+  FractionPertesDéfenseur = PuissanceAttaquant / (PuissanceAttaquant + PuissanceDéfenseur)
+```
+
+« Moral » approximé par la stabilité du système (celui d'origine pour l'attaquant, celui
+attaqué pour le défenseur) ; « terrain » par le niveau de développement du système défendu
+(fortifications) ; « commandement » par la personnalité de l'empire (seul le Militariste a un
+bonus, ×1.15). « Ravitaillement » reste implicitement favorable tant que les déplacements sont
+limités aux voisins directs (pas de calcul d'itinéraire multi-sauts en v1). « Technologie »
+vaut 1 pour tous les empires — la recherche n'existe pas encore (Phase 8).
+
+**En cas de défaite, l'attaquant survivant se replie** vers son système d'origine plutôt que
+d'être systématiquement anéanti : plus lisible à observer, et une défaite reste réversible
+plutôt que définitivement punitive pour une IA qui aurait mal évalué ses chances.
 
 ---
 
@@ -251,14 +296,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (201 tests, tous packages confondus).
+Voir §5 pour le compte total (262 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-5 — galaxie, horloge, économie et empires
+## 5. Tester les Phases 2-6 — galaxie, horloge, économie, empires et armées
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -278,6 +323,7 @@ sans erreur ni warning :
 [Empires] Bastion de Drathmoor (Militarist) : systeme d'origine <nom>.
 [Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
 [Empires] 6 empires crees.
+[Military] Demarree avec 4 types d'unites disponibles.
 ```
 
 Dans la fenêtre Game :
@@ -287,10 +333,12 @@ Dans la fenêtre Game :
   (éditeur) ou **pincement à deux doigts** (mobile) zoome, avec des bornes qui empêchent de
   sortir de la galaxie ou de zoomer à l'infini.
 - **Toucher un système** (tap bref, sans glisser) affiche son détail dans l'encart en haut à
-  gauche : nom, population, richesse, développement, stabilité, **propriétaire — le nom de
-  l'empire pour les 6 systèmes d'origine, « Independant » pour tous les autres (94 systèmes
-  restent libres : la colonisation attend la Phase 6)**, gisements, nombre de routes. Toucher
-  le fond vide referme l'encart.
+  gauche : nom, population, richesse, développement, stabilité, propriétaire (le nom de
+  l'empire, ou « Independant » pour un système encore libre), gisements, nombre de routes,
+  et **désormais la garnison** présente (par empire, avec son nombre d'unités). Le nombre de
+  systèmes « Independant » doit **diminuer au fil du temps** si vous laissez tourner l'horloge
+  assez longtemps — les IA colonisent leurs voisins libres. Toucher le fond vide referme
+  l'encart.
 - **En haut à droite**, un second encart affiche la date courante (format `0001-01-02`) et
   la vitesse. Avec des réglages par défaut, un jour de jeu s'écoule toutes les 2 secondes
   réelles. Boutons : **Pause/Lecture**, **Normal**, **Rapide** (x2), **Très rapide** (x4),
@@ -306,37 +354,46 @@ Dans la fenêtre Game :
   coût croissant) et un bouton par type de bâtiment. Un bâtiment déjà construit affiche
   « (construit) » et devient inactif ; sa production doit apparaître dans le trésor une fois
   sa durée de construction écoulée.
-- **Touchez le système d'origine d'une IA** : le panneau du haut-gauche doit maintenant
-  afficher le nom de cet empire comme propriétaire — confirmation visuelle que l'attribution
-  a bien eu lieu pour les 5 IA, pas seulement pour le joueur.
+- **Un quatrième encart, empilé juste au-dessus du précédent**, affiche votre garnison
+  (nombre d'unités et puissance estimée), un bouton par type d'unité pour recruter (visible
+  après le délai de recrutement), et un bouton par système voisin pour y envoyer toute votre
+  garnison. Envoyer une garnison vers un système libre le colonise à l'arrivée ; vers un
+  système ennemi, déclenche une bataille — le résultat (victoire/défaite, pertes des deux
+  camps) est systématiquement journalisé dans la console, même sans ce panneau ouvert.
+- **Touchez le système d'origine d'une IA** : le panneau du haut-gauche doit afficher le nom
+  de cet empire comme propriétaire, et sa garnison si elle en a recruté une — confirmation
+  visuelle que l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
 
-> Ces quatre encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> Ces cinq encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
 > finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
-> `EconomyDebugPanel` et `EmpireDebugPanel`.
+> `EconomyDebugPanel`, `EmpireDebugPanel` et `MilitaryDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 201 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 262 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
-`ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus quelques tests Phase 5 sur la
-séparation des trésors par empire) ; `EmpirePlacementTests` (dispersion et déterminisme du
-placement des origines), `EmpireFactoryTests`, `EmpireRegistryTests`, `AIDecisionMakerTests`
-(Phase 5 — le plus important : chaque personnalité applique son taux d'imposition et son
-ordre de priorité attendus, l'Opportuniste choisit bien le moins cher plutôt qu'un ordre
-fixe, l'investissement n'a lieu qu'à défaut de construction possible et jamais les deux dans
-le même appel).
+`ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
+séparation des trésors par empire) ; `EmpirePlacementTests`, `EmpireFactoryTests`,
+`EmpireRegistryTests`, `AIDecisionMakerTests` (Phase 5) ; `UnitBundleTests`,
+`CombatResolverTests` (Phase 6 — le plus important : vainqueur déterministe selon le ratio de
+puissance, fractions de pertes vérifiées valeur par valeur, cas limites d'une défense vide ou
+de deux camps à puissance nulle), `MilitaryServiceTests` (recrutement → garnison, colonisation,
+combat avec transfert de propriété, retraite après défaite, fusion de garnisons, entretien),
+`MilitaryDecisionMakerTests` (chaque personnalité respecte son seuil d'agressivité — le
+Pacifiste n'attaque jamais même en surnombre écrasant — et une seule action par appel).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des quatre panneaux IMGUI répondent bien au tactile (traduit
+- que les boutons des cinq panneaux IMGUI répondent bien au tactile (traduit
   automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil).
 
 La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
-économique, le placement des systèmes d'origine (*farthest-point sampling*) et l'arbitrage
-de décision de l'IA par personnalité ont chacune été recoupées indépendamment par un script
-Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
-`EconomyService`, `EmpirePlacement` et `AIDecisionMaker` pour le détail.
+économique, le placement des systèmes d'origine (*farthest-point sampling*), l'arbitrage de
+décision de l'IA par personnalité, la formule de combat et les décisions militaires de l'IA
+ont chacune été recoupées indépendamment par un script Python qui reproduit l'algorithme :
+voir les commentaires de `GalaxyGenerator`, `GameClock`, `EconomyService`, `EmpirePlacement`,
+`AIDecisionMaker`, `CombatResolver` et `MilitaryDecisionMaker` pour le détail.
 
 ---
 
@@ -349,7 +406,7 @@ Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, 
 | 3 | Horloge de jeu : temps continu, pause, vitesses | ✅ terminée |
 | 4 | Économie : production, bâtiments, impôts, investissement | ✅ terminée |
 | 5 | Empires et IA de base (personnalités, gestion économique autonome) | ✅ terminée |
-| 6 | Armées, résolution automatique des combats, colonisation | à venir |
+| 6 | Armées, résolution automatique des combats, colonisation | ✅ terminée |
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | à venir |
 | 8 | Recherche (arbre technologique, 7 domaines) | à venir |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | à venir |
@@ -357,11 +414,11 @@ Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, 
 | 11 | Interface complète (menu, écrans de gestion, HUD) | à venir |
 | 12 | Équilibrage | à venir |
 
-Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul
-système complexe à la fois (consigne du brief) : la Phase 5 n'a touché ni la diplomatie, ni
-la recherche, ni les armées, et n'a pas ajouté de colonisation — sans flottes (Phase 6), ce
-serait un mécanisme abstrait de plus à réécrire une fois les flottes disponibles. Chaque
-empire gère pour l'instant l'unique système qu'on lui a attribué au démarrage.
+Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
+complexe à la fois (consigne du brief) : la Phase 6 n'a touché ni la diplomatie, ni la
+recherche, ni l'espionnage — les empires peuvent désormais posséder plusieurs systèmes
+(colonisés ou conquis), mais aucune notion de guerre/paix formelle n'existe encore pour
+justifier ou empêcher une attaque, humaine ou IA.
 
 ---
 
