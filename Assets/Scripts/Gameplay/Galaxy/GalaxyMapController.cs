@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Espace.Core;
+using Espace.Gameplay.Empires;
 using UnityEngine;
 
 namespace Espace.Gameplay.Galaxy
@@ -36,6 +37,11 @@ namespace Espace.Gameplay.Galaxy
         private GalaxyMap _map;
         private IEventBus _eventBus;
         private StarSystemId? _selectedSystemId;
+
+        // Uniquement pour afficher un nom d'empire plutot qu'un identifiant brut dans le
+        // panneau de diagnostic ci-dessous : pas une dependance structurelle a Espace.Gameplay.Empires,
+        // resolue paresseusement comme le reste des dependances inter-controleurs de la scene.
+        private EmpireRegistry _empireRegistry;
 
         private void Awake()
         {
@@ -152,6 +158,11 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Panneau de diagnostic temporaire affichant le systeme selectionne.</summary>
         private void OnGUI()
         {
+            if (_empireRegistry == null)
+            {
+                ServiceLocator.TryGet(out _empireRegistry);
+            }
+
             const int width = 260;
             const int padding = 10;
 
@@ -171,7 +182,7 @@ namespace Espace.Gameplay.Galaxy
                 GUILayout.Label($"Richesse : {system.Wealth}/100");
                 GUILayout.Label($"Developpement : {system.DevelopmentLevel}/5");
                 GUILayout.Label($"Stabilite : {Mathf.RoundToInt(system.Stability * 100f)}%");
-                GUILayout.Label($"Proprietaire : {(system.OwnerId == StarSystemState.UnownedOwnerId ? "Independant" : system.OwnerId.ToString())}");
+                GUILayout.Label($"Proprietaire : {OwnerLabel(system.OwnerId)}");
                 GUILayout.Label($"Gisements : {(system.ResourceDeposits.Length == 0 ? "aucun" : string.Join(", ", system.ResourceDeposits))}");
                 GUILayout.Label($"Routes : {_map.GetNeighbors(system.Id).Count}");
             }
@@ -182,6 +193,25 @@ namespace Espace.Gameplay.Galaxy
             }
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// Nom de l'empire proprietaire, s'il est deja connu (l'IEmpireRegistry n'existe
+        /// qu'a partir du Start d'EmpireController) ; repli sur l'identifiant brut sinon.
+        /// </summary>
+        private string OwnerLabel(int ownerId)
+        {
+            if (ownerId == StarSystemState.UnownedOwnerId)
+            {
+                return "Independant";
+            }
+
+            if (_empireRegistry != null && _empireRegistry.TryGetEmpire(ownerId, out Empire empire))
+            {
+                return empire.Name;
+            }
+
+            return ownerId.ToString();
         }
     }
 }

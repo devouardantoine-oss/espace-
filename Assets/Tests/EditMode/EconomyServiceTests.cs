@@ -522,6 +522,116 @@ namespace Espace.Tests.EditMode
             StringAssert.Contains("appartient", error);
         }
 
+        // --- Multi-empire (Phase 5) --------------------------------------------
+
+        [Test]
+        public void DayAdvanced_TwoDifferentEmpires_ProduceIntoSeparateTreasuries()
+        {
+            const int otherEmpireId = 7;
+            StarSystemState playerSystem = MakeSystem(id: 0, wealth: 200, population: 1000);
+            StarSystemState otherSystem = MakeSystem(id: 1, wealth: 400, population: 500, ownedByPlayer: false);
+            otherSystem.OwnerId = otherEmpireId;
+
+            var service = new EconomyService(MakeMap(playerSystem, otherSystem), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+
+            _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(1)));
+
+            Assert.AreEqual(200 * 0.05f * 0.25f, service.GetTreasury(EconomyService.PlayerOwnerId).Credits, FloatTolerance);
+            Assert.AreEqual(400 * 0.05f * 0.25f, service.GetTreasury(otherEmpireId).Credits, FloatTolerance);
+            Assert.AreNotEqual(service.GetTreasury(EconomyService.PlayerOwnerId), service.GetTreasury(otherEmpireId));
+        }
+
+        [Test]
+        public void SetTaxRate_PerEmpire_DoesNotAffectOtherEmpires()
+        {
+            const int otherEmpireId = 7;
+            var service = new EconomyService(MakeMap(), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+
+            service.SetTaxRate(otherEmpireId, 0.9f);
+
+            Assert.AreEqual(0.9f, service.GetTaxRate(otherEmpireId), FloatTolerance);
+            Assert.AreEqual(0.25f, service.GetTaxRate(EconomyService.PlayerOwnerId), FloatTolerance, "Le taux par defaut du joueur ne doit pas etre affecte.");
+        }
+
+        [Test]
+        public void SetTaxRate_EmpireOverload_ClampsToZeroOne()
+        {
+            const int otherEmpireId = 7;
+            var service = new EconomyService(MakeMap(), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+
+            service.SetTaxRate(otherEmpireId, -1f);
+            Assert.AreEqual(0f, service.GetTaxRate(otherEmpireId));
+
+            service.SetTaxRate(otherEmpireId, 2f);
+            Assert.AreEqual(1f, service.GetTaxRate(otherEmpireId));
+        }
+
+        [Test]
+        public void GetTreasury_UnknownEmpire_ReturnsZero()
+        {
+            var service = new EconomyService(MakeMap(), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+
+            Assert.AreEqual(ResourceBundle.Zero, service.GetTreasury(42));
+        }
+
+        [Test]
+        public void TryStartConstruction_NonPlayerEmpireOwnedSystem_Succeeds()
+        {
+            const int aiEmpireId = 7;
+            StarSystemState system = MakeSystem(ownedByPlayer: false);
+            system.OwnerId = aiEmpireId;
+            var service = new EconomyService(MakeMap(system), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            GiveCreditsToEmpire(service, system, aiEmpireId, 500f);
+            BuildingType building = MakeBuildingType("Mine", ResourceType.Minerals, 5f, 300f);
+
+            bool success = service.TryStartConstruction(system.Id, building, out string error);
+
+            Assert.IsTrue(success);
+            Assert.IsNull(error);
+            Assert.AreEqual(1, service.GetBuildings(system.Id).Count);
+            Assert.AreEqual(0f, service.GetTreasury(EconomyService.PlayerOwnerId).Credits, "Le tresor du joueur ne doit pas etre touche.");
+        }
+
+        [Test]
+        public void TryInvestInDevelopment_NonPlayerEmpireOwnedSystem_Succeeds()
+        {
+            const int aiEmpireId = 7;
+            StarSystemState system = MakeSystem(ownedByPlayer: false, developmentLevel: 1);
+            system.OwnerId = aiEmpireId;
+            var service = new EconomyService(MakeMap(system), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            float cost = service.GetInvestmentCost(system.Id);
+            GiveCreditsToEmpire(service, system, aiEmpireId, cost);
+
+            bool success = service.TryInvestInDevelopment(system.Id, out string error);
+
+            Assert.IsTrue(success);
+            Assert.IsNull(error);
+            Assert.AreEqual(2, system.DevelopmentLevel);
+        }
+
+        /// <summary>Variante de <see cref="GiveCredits"/> pour un empire quelconque, pas seulement le joueur.</summary>
+        private float GiveCreditsToEmpire(EconomyService service, StarSystemState system, int empireId, float minimumAmount)
+        {
+            int originalWealth = system.Wealth;
+            float originalTax = service.GetTaxRate(empireId);
+
+            system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
+            service.SetTaxRate(empireId, 1f);
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
+            float granted = service.GetTreasury(empireId).Credits;
+
+            system.Wealth = originalWealth;
+            service.SetTaxRate(empireId, originalTax);
+
+            return granted;
+        }
+
         /// <summary>
         /// Fait produire au tresor au moins <paramref name="minimumAmount"/> de Credits, en
         /// gonflant temporairement la richesse et l'impot pour un seul jour puis en

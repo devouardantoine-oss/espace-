@@ -4,24 +4,28 @@ using Espace.Gameplay.Galaxy;
 
 namespace Espace.Gameplay.Economy
 {
-    /// <summary>Publie chaque jour ou le joueur possede au moins un systeme, avec la production totale du jour.</summary>
+    /// <summary>Publie chaque jour ou un empire possede au moins un systeme, avec sa production totale du jour.</summary>
     public readonly struct ResourceProducedEvent : IGameEvent
     {
+        public readonly int EmpireId;
         public readonly ResourceBundle Produced;
 
-        public ResourceProducedEvent(ResourceBundle produced)
+        public ResourceProducedEvent(int empireId, ResourceBundle produced)
         {
+            EmpireId = empireId;
             Produced = produced;
         }
     }
 
-    /// <summary>Publie a chaque changement du tresor (production journaliere, depense de construction ou d'investissement).</summary>
+    /// <summary>Publie a chaque changement du tresor d'un empire (production journaliere, depense de construction ou d'investissement).</summary>
     public readonly struct TreasuryChangedEvent : IGameEvent
     {
+        public readonly int EmpireId;
         public readonly ResourceBundle Treasury;
 
-        public TreasuryChangedEvent(ResourceBundle treasury)
+        public TreasuryChangedEvent(int empireId, ResourceBundle treasury)
         {
+            EmpireId = empireId;
             Treasury = treasury;
         }
     }

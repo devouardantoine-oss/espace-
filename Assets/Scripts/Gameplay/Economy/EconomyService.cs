@@ -10,21 +10,22 @@ namespace Espace.Gameplay.Economy
     /// Implementation par defaut de <see cref="IEconomyService"/>.
     /// <para>
     /// <b>Boucle de production :</b> s'abonne a <see cref="DayAdvancedEvent"/> (Phase 3).
-    /// Chaque jour ecoule, chaque systeme possede par le joueur produit des ressources
-    /// selon une formule simple (voir <see cref="ComputeSystemProduction"/>), et les
-    /// constructions dont la date d'achevement est atteinte se terminent.
+    /// Chaque jour ecoule, chaque systeme possede produit des ressources selon une formule
+    /// simple (voir <see cref="ComputeSystemProduction"/>) creditees au tresor de son
+    /// proprietaire, et les constructions dont la date d'achevement est atteinte se
+    /// terminent.
     /// </para>
     /// <para>
-    /// <b>Un seul tresor pour l'instant :</b> <see cref="PlayerOwnerId"/> est la seule
-    /// « faction » existante (les empires et leur IA arrivent en Phase 5). Le reste de
-    /// l'API (couts, production, construction) est deja ecrit de façon generalisable : la
-    /// Phase 5 n'aura qu'a faire de <c>OwnerId</c> un identifiant d'empire quelconque et
-    /// instancier un <see cref="EconomyService"/> (ou equivalent) par empire.
+    /// <b>Un tresor par empire (Phase 5) :</b> un seul service gere tous les empires — une
+    /// instance par empire dupliquerait l'abonnement a <see cref="DayAdvancedEvent"/> et la
+    /// boucle sur tous les systemes, pour un cout en O(empires x systemes) au lieu de
+    /// O(systemes). <see cref="PlayerOwnerId"/> reste l'identifiant reserve au joueur ; les
+    /// empires IA recoivent n'importe quel autre entier positif (voir <c>EmpireFactory</c>).
     /// </para>
     /// </summary>
     public sealed class EconomyService : IEconomyService, IGameService
     {
-        /// <summary>Identifiant d'empire reserve au joueur. Les autres valeurs seront les futurs empires IA (Phase 5).</summary>
+        /// <summary>Identifiant d'empire reserve au joueur.</summary>
         public const int PlayerOwnerId = 0;
 
         private const float DefaultTaxRate = 0.25f;
@@ -47,15 +48,14 @@ namespace Espace.Gameplay.Economy
         private readonly IEventBus _eventBus;
         private readonly List<BuildingType> _buildingCatalog;
         private readonly Dictionary<StarSystemId, List<BuildingInstance>> _buildingsBySystem = new Dictionary<StarSystemId, List<BuildingInstance>>();
-
-        private ResourceBundle _treasury;
-        private float _taxRate;
-
-        /// <inheritdoc />
-        public ResourceBundle Treasury => _treasury;
+        private readonly Dictionary<int, ResourceBundle> _treasuriesByEmpire = new Dictionary<int, ResourceBundle>();
+        private readonly Dictionary<int, float> _taxRatesByEmpire = new Dictionary<int, float>();
 
         /// <inheritdoc />
-        public float TaxRate => _taxRate;
+        public ResourceBundle Treasury => GetTreasury(PlayerOwnerId);
+
+        /// <inheritdoc />
+        public float TaxRate => GetTaxRate(PlayerOwnerId);
 
         /// <inheritdoc />
         public IReadOnlyList<BuildingType> BuildingCatalog => _buildingCatalog;
@@ -71,8 +71,8 @@ namespace Espace.Gameplay.Economy
         /// <inheritdoc />
         public void Initialize()
         {
-            _treasury = ResourceBundle.Zero;
-            _taxRate = DefaultTaxRate;
+            _treasuriesByEmpire.Clear();
+            _taxRatesByEmpire.Clear();
             _buildingsBySystem.Clear();
             _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
         }
@@ -85,9 +85,27 @@ namespace Espace.Gameplay.Economy
         }
 
         /// <inheritdoc />
+        public ResourceBundle GetTreasury(int empireId)
+        {
+            return _treasuriesByEmpire.TryGetValue(empireId, out ResourceBundle treasury) ? treasury : ResourceBundle.Zero;
+        }
+
+        /// <inheritdoc />
+        public float GetTaxRate(int empireId)
+        {
+            return _taxRatesByEmpire.TryGetValue(empireId, out float rate) ? rate : DefaultTaxRate;
+        }
+
+        /// <inheritdoc />
         public void SetTaxRate(float rate)
         {
-            _taxRate = rate < 0f ? 0f : rate > 1f ? 1f : rate;
+            SetTaxRate(PlayerOwnerId, rate);
+        }
+
+        /// <inheritdoc />
+        public void SetTaxRate(int empireId, float rate)
+        {
+            _taxRatesByEmpire[empireId] = rate < 0f ? 0f : rate > 1f ? 1f : rate;
         }
 
         /// <inheritdoc />
@@ -105,9 +123,9 @@ namespace Espace.Gameplay.Economy
                 return false;
             }
 
-            if (system.OwnerId != PlayerOwnerId)
+            if (system.OwnerId == StarSystemState.UnownedOwnerId)
             {
-                error = "Ce systeme ne vous appartient pas.";
+                error = "Ce systeme n'a pas de proprietaire.";
                 return false;
             }
 
@@ -125,17 +143,18 @@ namespace Espace.Gameplay.Economy
             }
 
             var cost = new ResourceBundle(credits: buildingType.CreditsCost);
-            if (!_treasury.IsGreaterOrEqualTo(cost))
+            ResourceBundle treasury = GetTreasury(system.OwnerId);
+            if (!treasury.IsGreaterOrEqualTo(cost))
             {
                 error = "Credits insuffisants.";
                 return false;
             }
 
-            _treasury -= cost;
+            _treasuriesByEmpire[system.OwnerId] = treasury - cost;
             GameDate completionDate = _gameClock.CurrentDate.AddDays(buildingType.ConstructionDurationDays);
             buildings.Add(new BuildingInstance(systemId, buildingType, completionDate));
 
-            _eventBus.Publish(new TreasuryChangedEvent(_treasury));
+            _eventBus.Publish(new TreasuryChangedEvent(system.OwnerId, _treasuriesByEmpire[system.OwnerId]));
             _eventBus.Publish(new BuildingConstructionStartedEvent(systemId, buildingType));
 
             error = null;
@@ -162,9 +181,9 @@ namespace Espace.Gameplay.Economy
                 return false;
             }
 
-            if (system.OwnerId != PlayerOwnerId)
+            if (system.OwnerId == StarSystemState.UnownedOwnerId)
             {
-                error = "Ce systeme ne vous appartient pas.";
+                error = "Ce systeme n'a pas de proprietaire.";
                 return false;
             }
 
@@ -175,16 +194,17 @@ namespace Espace.Gameplay.Economy
             }
 
             var cost = new ResourceBundle(credits: GetInvestmentCost(systemId));
-            if (!_treasury.IsGreaterOrEqualTo(cost))
+            ResourceBundle treasury = GetTreasury(system.OwnerId);
+            if (!treasury.IsGreaterOrEqualTo(cost))
             {
                 error = "Credits insuffisants.";
                 return false;
             }
 
-            _treasury -= cost;
+            _treasuriesByEmpire[system.OwnerId] = treasury - cost;
             system.DevelopmentLevel += 1;
 
-            _eventBus.Publish(new TreasuryChangedEvent(_treasury));
+            _eventBus.Publish(new TreasuryChangedEvent(system.OwnerId, _treasuriesByEmpire[system.OwnerId]));
 
             error = null;
             return true;
@@ -219,30 +239,41 @@ namespace Espace.Gameplay.Economy
             }
         }
 
+        /// <summary>
+        /// Production journaliere de tous les systemes possedes, regroupee par empire
+        /// proprietaire avant d'etre creditee : deux empires produisent dans deux tresors
+        /// entierement separes.
+        /// </summary>
         private void ProduceResources()
         {
-            ResourceBundle dailyTotal = ResourceBundle.Zero;
+            var dailyByEmpire = new Dictionary<int, ResourceBundle>();
 
             foreach (StarSystemState system in _map.Systems)
             {
-                if (system.OwnerId != PlayerOwnerId)
+                if (system.OwnerId == StarSystemState.UnownedOwnerId)
                 {
                     continue;
                 }
 
-                dailyTotal += ComputeSystemProduction(system);
+                ResourceBundle production = ComputeSystemProduction(system);
+                dailyByEmpire[system.OwnerId] = dailyByEmpire.TryGetValue(system.OwnerId, out ResourceBundle accumulated)
+                    ? accumulated + production
+                    : production;
             }
 
-            if (dailyTotal == ResourceBundle.Zero)
+            foreach (KeyValuePair<int, ResourceBundle> entry in dailyByEmpire)
             {
-                // Aucun systeme possede : pas de tresor a mettre a jour, et surtout pas
-                // d'evenement a publier pour rien a chaque jour qui passe.
-                return;
-            }
+                if (entry.Value == ResourceBundle.Zero)
+                {
+                    continue;
+                }
 
-            _treasury += dailyTotal;
-            _eventBus.Publish(new ResourceProducedEvent(dailyTotal));
-            _eventBus.Publish(new TreasuryChangedEvent(_treasury));
+                ResourceBundle newTreasury = GetTreasury(entry.Key) + entry.Value;
+                _treasuriesByEmpire[entry.Key] = newTreasury;
+
+                _eventBus.Publish(new ResourceProducedEvent(entry.Key, entry.Value));
+                _eventBus.Publish(new TreasuryChangedEvent(entry.Key, newTreasury));
+            }
         }
 
         /// <summary>
@@ -257,9 +288,10 @@ namespace Espace.Gameplay.Economy
         private ResourceBundle ComputeSystemProduction(StarSystemState system)
         {
             float stability = system.Stability;
+            float taxRate = GetTaxRate(system.OwnerId);
 
             var baseProduction = new ResourceBundle(
-                credits: system.Wealth * CreditsPerWealthPoint * _taxRate * DepositFactor(system, ResourceType.Credits),
+                credits: system.Wealth * CreditsPerWealthPoint * taxRate * DepositFactor(system, ResourceType.Credits),
                 minerals: system.Population * MineralsPerPopulationPoint * DepositFactor(system, ResourceType.Minerals),
                 energy: system.Population * EnergyPerPopulationPoint * DepositFactor(system, ResourceType.Energy),
                 food: system.Population * FoodPerPopulationPoint * DepositFactor(system, ResourceType.Food),

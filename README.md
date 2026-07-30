@@ -14,10 +14,10 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 4 terminée** — carte galactique (100 systèmes), horloge de jeu (temps
-> continu, pause, vitesses) et économie (production automatique, impôts, construction,
-> investissement). Empires/IA, diplomatie, recherche, espionnage et armées ne sont pas
-> encore implémentés.
+> **Statut : Phase 5 terminée** — carte galactique (100 systèmes), horloge de jeu, économie
+> et 6 empires (1 joueur + 5 IA, une personnalité chacun) qui gèrent leur économie de façon
+> autonome. Diplomatie, recherche, espionnage, armées et colonisation ne sont pas encore
+> implémentés.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -81,20 +81,22 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie (Phases 2-4)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires (Phases 2-5)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
 │   ├── GameClockConfig.asset
 │   ├── GalaxyConfig.asset
-│   └── Buildings/                # 5 types de bâtiments (1 par ressource)
+│   ├── Buildings/                # 5 types de bâtiments (1 par ressource)
+│   └── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
 │   ├── Data/                     # → Espace.Data     (ScriptableObjects et types génériques)
 │   ├── Managers/                 # → Espace.Managers (composition de l'application)
 │   ├── Gameplay/                 # → Espace.Gameplay (référence Core + Data)
 │   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection
-│   │   └── Economy/              #     production, bâtiments, impôts, investissement
+│   │   ├── Economy/              #     production, bâtiments, impôts, investissement
+│   │   └── Empires/              #     identité, personnalités, décisions IA autonomes
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -114,18 +116,18 @@ secondaire : modifier l'UI ne recompile pas le cœur du jeu.
 
 > `Espace.Data` ne référence jamais `Espace.Gameplay` (cela créerait une dépendance
 > circulaire) : les ScriptableObjects propres à un système de gameplay (ex. `GalaxyConfig`,
-> `BuildingType`) vivent dans `Espace.Gameplay`, pas dans `Espace.Data`. Seuls les types
-> véritablement transverses (`ResourceType`, `ResourceBundle`, `GameConfig`) restent dans
-> `Espace.Data`.
+> `BuildingType`, `EmpireDefinition`) vivent dans `Espace.Gameplay`, pas dans `Espace.Data`.
+> Seuls les types véritablement transverses (`ResourceType`, `ResourceBundle`, `GameConfig`)
+> restent dans `Espace.Data`.
 >
 > L'assembly `Espace.UI` sera ajoutée avec ses premiers scripts (Phase 11).
 
-> **Un seul trésor pour l'instant :** `StarSystemState.OwnerId` existe depuis la Phase 2,
-> mais jusqu'à la Phase 4 aucun système n'était possédé. `EconomyController` attribue
-> maintenant au joueur (`EconomyService.PlayerOwnerId = 0`) le système le plus proche du
-> centre de la galaxie, pour avoir un propriétaire concret à simuler. C'est une solution
-> minimale, pas le cadre complet des empires : la Phase 5 généralisera `OwnerId` à plusieurs
-> empires dotés d'une IA, sans avoir à retoucher l'API de `EconomyService`.
+> **Empires vs. personnalités : donnée contre comportement.** `EmpireDefinition` (nom,
+> couleur, personnalité, joueur ou non) est un `ScriptableObject` — du contenu qu'un game
+> designer ajuste sans toucher au code, même pattern que `BuildingType`/`GalaxyConfig`.
+> `EmpirePersonalityProfile`, à l'inverse, est une table statique **dans le code** : une
+> personnalité est un comportement de décision, pas un nombre à éditer dans l'inspecteur.
+> Distinction volontaire entre les deux, détaillée dans le commentaire de la classe.
 
 ### Briques du socle (Phase 1)
 
@@ -205,6 +207,34 @@ Valeurs de départ raisonnables, explicitement destinées à être affinées en 
 développement → Influence, gisement = bonus ×2, instabilité = pénalité globale) est ce qui
 compte pour l'instant.
 
+### Briques des empires et de l'IA (Phase 5)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `Empire` | identité d'un empire | immuable, **sans territoire stocké** : « quels systèmes possède cet empire » reste dérivé à la volée de `StarSystemState.OwnerId`, pour ne jamais devenir périmé une fois la colonisation possible (Phase 6) |
+| `EmpirePersonality` / `EmpireDefinition` | contenu | 5 personnalités (Pacifique, Expansionniste, Commerçante, Militaire, Opportuniste) ; `EmpireDefinition` est un ScriptableObject — 6 assets fournis (le joueur + une IA par personnalité) |
+| `EmpireFactory` | attribution des identifiants | trouve la définition marquée joueur (`EconomyService.PlayerOwnerId = 0`), attribue 1..5 aux IA — fonction pure, testable sans scène |
+| `EmpirePlacement` | systèmes d'origine | *farthest-point sampling* déterministe : le 1er (joueur) est le plus proche du centre, chaque suivant maximise sa distance minimale aux origines déjà choisies — disperse les 6 empires sans recourir à l'aléatoire |
+| `EmpireRegistry` | registre passif | même rôle que `GalaxyMap` pour les systèmes : accès O(1) par identifiant, aucune simulation |
+| `EmpirePersonalityProfile` | comportement | table **dans le code**, pas un asset (voir l'encart plus haut) : taux d'imposition préféré, ordre de priorité de construction par ressource, marge de prudence avant investissement — l'Opportuniste déroge à l'ordre fixe et choisit le moins cher disponible |
+| `AIDecisionMaker` | décision IA | fonction statique testable sans `ServiceLocator` : impôts réaffirmés, puis **une seule** action par appel (une construction, sinon un investissement) — jamais les deux, jamais plusieurs bâtiments d'un coup |
+| `EmpireController` / `AIController` | orchestration | fils minces ; `AIController` résout `EmpireRegistry`/`IEconomyService` **paresseusement dans son gestionnaire d'événement** plutôt que dans `Start`, pour éviter toute course avec `EmpireController.Start` (deux `Start` sans ordre garanti entre eux) |
+| `EmpireDebugPanel` | contrôle temporaire | liste les 6 empires (nom, personnalité, systèmes, Credits) en haut de l'écran — seul moyen d'observer l'IA sans dérouler la console |
+
+**`EconomyService` généralisé à plusieurs trésors.** Depuis la Phase 4, la classe était déjà
+écrite pour retrouver le propriétaire d'un système plutôt que de coder « le joueur » en dur.
+La Phase 5 exploite exactement cela : un dictionnaire par empire remplace le trésor unique,
+`TryStartConstruction`/`TryInvestInDevelopment` fonctionnent sans modification pour n'importe
+quel empire, et `Treasury`/`TaxRate`/`SetTaxRate(rate)` restent des raccourcis vers le joueur
+— `EconomyDebugPanel` (Phase 4) continue de marcher **sans une seule ligne changée**, la
+meilleure preuve que la généralisation est correcte.
+
+> **Colonisation reportée à la Phase 6.** Sans flottes (qui n'existent qu'à partir de la
+> Phase 6 « Armées »), coloniser serait un mécanisme abstrait de plus à réécrire une fois les
+> flottes disponibles. Cette phase se limite donc à ce qui ne dépend d'aucun système futur :
+> les empires existent, chacun gère sa propre économie de façon autonome. Négocier, déclarer
+> la guerre, signer des alliances restent Phase 7 (Diplomatie).
+
 ---
 
 ## 4. Tester la Phase 1
@@ -221,14 +251,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (155 tests, tous packages confondus).
+Voir §5 pour le compte total (201 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-4 — galaxie, horloge et économie
+## 5. Tester les Phases 2-5 — galaxie, horloge, économie et empires
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -240,8 +270,14 @@ sans erreur ni warning :
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
 [GalaxyMap] Galaxie generee : 100 systemes, ~125 routes hyperspatiales.
-[Economy] Systeme d'origine attribue au joueur : <nom du systeme>.
 [Economy] Demarree avec 5 types de batiments disponibles.
+[Empires] Federation de l'Aube (joueur) : systeme d'origine <nom>.
+[Empires] Sanctuaire de Vharin (Pacifist) : systeme d'origine <nom>.
+[Empires] Essaim de Kethra (Expansionist) : systeme d'origine <nom>.
+[Empires] Ligue Marchande d'Oskar (Mercantile) : systeme d'origine <nom>.
+[Empires] Bastion de Drathmoor (Militarist) : systeme d'origine <nom>.
+[Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
+[Empires] 6 empires crees.
 ```
 
 Dans la fenêtre Game :
@@ -251,46 +287,56 @@ Dans la fenêtre Game :
   (éditeur) ou **pincement à deux doigts** (mobile) zoome, avec des bornes qui empêchent de
   sortir de la galaxie ou de zoomer à l'infini.
 - **Toucher un système** (tap bref, sans glisser) affiche son détail dans l'encart en haut à
-  gauche : nom, population, richesse, développement, stabilité, propriétaire (« 0 » pour le
-  système d'origine du joueur, « Independant » pour tous les autres — les empires IA arrivent
-  en Phase 5), gisements, nombre de routes. Toucher le fond vide referme l'encart.
+  gauche : nom, population, richesse, développement, stabilité, **propriétaire — le nom de
+  l'empire pour les 6 systèmes d'origine, « Independant » pour tous les autres (94 systèmes
+  restent libres : la colonisation attend la Phase 6)**, gisements, nombre de routes. Toucher
+  le fond vide referme l'encart.
 - **En haut à droite**, un second encart affiche la date courante (format `0001-01-02`) et
   la vitesse. Avec des réglages par défaut, un jour de jeu s'écoule toutes les 2 secondes
   réelles. Boutons : **Pause/Lecture**, **Normal**, **Rapide** (x2), **Très rapide** (x4),
   **Maximum** (x8).
+- **En haut au centre**, un nouvel encart liste les **6 empires** : nom, rôle (« Vous » pour
+  le joueur, la personnalité pour chaque IA), nombre de systèmes, Credits en réserve. En
+  accélérant l'horloge (Maximum), les Credits des 5 IA doivent progresser **sans aucune
+  intervention** — c'est la preuve la plus directe que l'IA fonctionne.
 - **En bas à gauche**, le trésor du joueur (5 ressources) et le taux d'imposition courant
-  (25% par défaut), avec des boutons **-10%/+10%**. Les 5 valeurs doivent augmenter chaque
-  jour de jeu écoulé (visible en accélérant la vitesse).
-- **Touchez le système d'origine du joueur** (le seul avec propriétaire « 0 ») : un troisième
+  (25% par défaut), avec des boutons **-10%/+10%**.
+- **Touchez votre système d'origine** (celui portant le nom de votre empire) : un troisième
   encart apparaît en bas à droite avec un bouton **Investir** (augmente le développement,
-  coût croissant) et un bouton par type de bâtiment (Extracteur de Minerai, Centrale
-  Énergétique, Complexe Agricole, Place de Marché, Centre Culturel). Un bâtiment déjà
-  construit affiche « (construit) » et devient inactif ; sa production doit apparaître dans
-  le trésor une fois sa durée de construction écoulée.
+  coût croissant) et un bouton par type de bâtiment. Un bâtiment déjà construit affiche
+  « (construit) » et devient inactif ; sa production doit apparaître dans le trésor une fois
+  sa durée de construction écoulée.
+- **Touchez le système d'origine d'une IA** : le panneau du haut-gauche doit maintenant
+  afficher le nom de cet empire comme propriétaire — confirmation visuelle que l'attribution
+  a bien eu lieu pour les 5 IA, pas seulement pour le joueur.
 
-> Ces trois encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
-> finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`
-> et `EconomyDebugPanel`.
+> Ces quatre encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
+> `EconomyDebugPanel` et `EmpireDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 155 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 201 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
-`ResourceBundleTests` (arithmétique de ressources), `EconomyServiceTests` (Phase 4 — formule
-de production vérifiée valeur par valeur, effet des gisements et de la stabilité, cycle
-complet construction → achèvement → production, impôts, investissement, tous les cas
-d'erreur des actions joueur).
+`ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus quelques tests Phase 5 sur la
+séparation des trésors par empire) ; `EmpirePlacementTests` (dispersion et déterminisme du
+placement des origines), `EmpireFactoryTests`, `EmpireRegistryTests`, `AIDecisionMakerTests`
+(Phase 5 — le plus important : chaque personnalité applique son taux d'imposition et son
+ordre de priorité attendus, l'Opportuniste choisit bien le moins cher plutôt qu'un ordre
+fixe, l'investissement n'a lieu qu'à défaut de construction possible et jamais les deux dans
+le même appel).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des trois panneaux IMGUI répondent bien au tactile (traduit automatiquement
-  par Unity sur Android/iOS, mais un point à confirmer sur appareil).
+- que les boutons des quatre panneaux IMGUI répondent bien au tactile (traduit
+  automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil).
 
-La logique de génération de galaxie, celle de l'horloge/calendrier, et la formule de
-production économique (y compris le cycle construction → achèvement) ont chacune été
-recoupées indépendamment par un script Python qui reproduit l'algorithme : voir les
-commentaires de `GalaxyGenerator`, `GameClock` et `EconomyService` pour le détail.
+La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
+économique, le placement des systèmes d'origine (*farthest-point sampling*) et l'arbitrage
+de décision de l'IA par personnalité ont chacune été recoupées indépendamment par un script
+Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
+`EconomyService`, `EmpirePlacement` et `AIDecisionMaker` pour le détail.
 
 ---
 
@@ -302,8 +348,8 @@ commentaires de `GalaxyGenerator`, `GameClock` et `EconomyService` pour le déta
 | 2 | Carte galactique : 100 systèmes, génération procédurale, caméra tactile, sélection | ✅ terminée |
 | 3 | Horloge de jeu : temps continu, pause, vitesses | ✅ terminée |
 | 4 | Économie : production, bâtiments, impôts, investissement | ✅ terminée |
-| 5 | Empires et IA de base (personnalités, colonisation) | à venir |
-| 6 | Armées et résolution automatique des combats | à venir |
+| 5 | Empires et IA de base (personnalités, gestion économique autonome) | ✅ terminée |
+| 6 | Armées, résolution automatique des combats, colonisation | à venir |
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | à venir |
 | 8 | Recherche (arbre technologique, 7 domaines) | à venir |
 | 9 | Espionnage (agents, sabotage, vol de technologie) | à venir |
@@ -312,9 +358,10 @@ commentaires de `GalaxyGenerator`, `GameClock` et `EconomyService` pour le déta
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul
-système complexe à la fois (consigne du brief) : la Phase 4 n'a touché ni la diplomatie, ni
-la recherche, ni les armées — l'économie ne connaît qu'un seul propriétaire (le joueur), en
-attendant que la Phase 5 généralise `OwnerId` à des empires IA.
+système complexe à la fois (consigne du brief) : la Phase 5 n'a touché ni la diplomatie, ni
+la recherche, ni les armées, et n'a pas ajouté de colonisation — sans flottes (Phase 6), ce
+serait un mécanisme abstrait de plus à réécrire une fois les flottes disponibles. Chaque
+empire gère pour l'instant l'unique système qu'on lui a attribué au démarrage.
 
 ---
 

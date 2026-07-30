@@ -15,6 +15,13 @@ namespace Espace.Gameplay.Economy
     /// evite donc toute course avec l'<c>Awake</c> de <c>GalaxyMapController</c>, sans avoir
     /// a fixer un ordre d'execution explicite entre les deux composants.
     /// </para>
+    /// <para>
+    /// <b>Depuis la Phase 5 :</b> l'attribution des systemes d'origine ne se fait plus ici —
+    /// c'est desormais le role d'<c>EmpireController</c>/<c>EmpirePlacement</c>, generalise a
+    /// tous les empires (joueur et IA). Ce composant ne fait plus que demarrer le service
+    /// economique lui-meme, qui reste totalement ignorant des empires en tant qu'objets : il
+    /// ne connait que des identifiants entiers de proprietaire.
+    /// </para>
     /// </summary>
     public sealed class EconomyController : MonoBehaviour
     {
@@ -33,8 +40,6 @@ namespace Espace.Gameplay.Economy
                 GameLog.Error("[EconomyController] Dependances manquantes (IEventBus / IGameClock / GalaxyMap) : l'economie ne demarre pas.");
                 return;
             }
-
-            AssignHomeSystem(map);
 
             _economyService = new EconomyService(map, gameClock, eventBus, buildingCatalog);
             _economyService.Initialize();
@@ -57,46 +62,6 @@ namespace Espace.Gameplay.Economy
             _economyService.Shutdown();
             ServiceLocator.Unregister<IEconomyService>();
             _economyService = null;
-        }
-
-        /// <summary>
-        /// Attribue au joueur le systeme le plus proche du centre de la galaxie, s'il n'en
-        /// possede pas deja un.
-        /// <para>
-        /// Solution minimale en attendant les empires (Phase 5) : l'economie a besoin d'un
-        /// proprietaire concret pour produire quelque chose de testable des maintenant, sans
-        /// construire par avance tout le cadre empires/IA/colonisation. Le choix du systeme
-        /// le plus proche du centre (plutot qu'aleatoire) garde la partie reproductible pour
-        /// une graine de galaxie donnee.
-        /// </para>
-        /// </summary>
-        private static void AssignHomeSystem(GalaxyMap map)
-        {
-            StarSystemState closest = null;
-            float closestSqrDistance = float.MaxValue;
-
-            foreach (StarSystemState system in map.Systems)
-            {
-                if (system.OwnerId == EconomyService.PlayerOwnerId)
-                {
-                    // Un systeme d'origine a deja ete attribue (rechargement de la meme
-                    // GalaxyMap, par exemple) : ne pas en assigner un second.
-                    return;
-                }
-
-                float sqrDistance = system.Position.sqrMagnitude;
-                if (sqrDistance < closestSqrDistance)
-                {
-                    closestSqrDistance = sqrDistance;
-                    closest = system;
-                }
-            }
-
-            if (closest != null)
-            {
-                closest.OwnerId = EconomyService.PlayerOwnerId;
-                GameLog.Info($"[Economy] Systeme d'origine attribue au joueur : {closest.Name}.");
-            }
         }
     }
 }
