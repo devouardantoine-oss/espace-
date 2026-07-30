@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Unity 6 - fichiers generes localement, jamais versionnes.
+# ---------------------------------------------------------------------------
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Cache Addressables (le contenu genere est reconstruit a chaque build)
+/[Aa]ssets/AddressableAssetsData/*/*.bin*
+/[Ss]erver[Dd]ata/
+
+# Projets / solutions generes par Unity pour les IDE
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vs/
+.idea/
+.vscode/
+.gradle/
+
+# Artefacts de build mobile
+*.apk
+*.aab
+*.ipa
+*.unitypackage
+*.app
+
+# Crash reports
+sysinfo.txt
+crashlytics-build.properties
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,17 @@
+{
+    "name": "Espace.Managers",
+    "rootNamespace": "Espace.Managers",
+    "references": [
+        "Espace.Core",
+        "Espace.Data"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

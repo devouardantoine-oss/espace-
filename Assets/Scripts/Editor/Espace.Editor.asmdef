@@ -1,0 +1,22 @@
+{
+    "name": "Espace.Editor",
+    "rootNamespace": "Espace.Editor",
+    "references": [
+        "Espace.Core",
+        "Espace.Data",
+        "Espace.Managers",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
