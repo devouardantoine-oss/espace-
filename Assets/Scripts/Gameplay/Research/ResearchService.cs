@@ -160,6 +160,19 @@ namespace Espace.Gameplay.Research
             return true;
         }
 
+        /// <inheritdoc />
+        public void GrantTier(int empireId, ResearchDomain domain)
+        {
+            TechnologyDefinition next = GetNextTechnology(empireId, domain);
+            if (next == null)
+            {
+                return;
+            }
+
+            _completedTiers[(empireId, domain)] = GetCompletedTierCount(empireId, domain) + 1;
+            _eventBus.Publish(new TechnologyResearchedEvent(empireId, next));
+        }
+
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
         {
             var pointsByEmpire = new Dictionary<int, float>();

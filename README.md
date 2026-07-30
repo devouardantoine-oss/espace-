@@ -14,15 +14,16 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 8 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 9 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
 > colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
-> commerciaux, embargos, ultimatums, échanges de ressources et de territoires), et désormais
-> recherche : 7 domaines (Économie, Industrie, Armement, Énergie, Diplomatie, Espionnage,
-> Logistique), 3 paliers chacun, dont les bonus se répercutent directement sur la production,
-> le combat, la vitesse des flottes et les gains d'opinion. Espionnage n'est pas encore
-> implémenté (Phase 9) — son domaine de recherche existe déjà, en attente d'un système à
-> améliorer.
+> commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
+> (7 domaines, 3 paliers chacun, bonus sur la production, le combat, la vitesse des flottes et
+> les gains d'opinion), et désormais espionnage : cinq missions déterministes (vol de
+> technologie, sabotage, incitation à la révolte, influence de gouvernement, découverte
+> d'armées) résolues selon un rapport de puissance — jamais de hasard, mais une mission ratée
+> est toujours découverte et coûte une pénalité d'opinion. Le domaine de recherche Espionnage,
+> banqué depuis la Phase 8, a désormais un effet réel.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -86,7 +87,7 @@ L'opération est idempotente : la relancer ne crée aucun doublon.
 Assets/
 ├── Scenes/
 │   ├── Bootstrap.unity           # scène de démarrage : caméra, lumière, [GameBootstrap]
-│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie + recherche (Phases 2-8)
+│   └── GalaxyMap.unity           # scène jouable : galaxie + horloge + économie + empires + armées + diplomatie + recherche + espionnage (Phases 2-9)
 ├── Settings/                     # assets URP (générés par le script de setup)
 ├── ScriptableObjects/            # instances de données éditables
 │   ├── GameConfig.asset
@@ -106,7 +107,8 @@ Assets/
 │   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
 │   │   ├── Military/             #     unités, flottes, combat automatique, colonisation
 │   │   ├── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
-│   │   └── Research/             #     domaines, paliers, points, bonus par domaine
+│   │   ├── Research/             #     domaines, paliers, points, bonus par domaine
+│   │   └── Espionage/            #     missions déterministes, puissance/contre-espionnage
 │   ├── UI/                       # Phase 11
 │   └── Editor/                   # → Espace.Editor   (outillage, exclu des builds)
 └── Tests/EditMode/               # → Espace.Tests.EditMode
@@ -364,11 +366,46 @@ Logistique → +bonus% sur la vitesse des flottes, donc des trajets plus courts 
 Diplomatie → +bonus% sur les gains d'opinion d'une proposition acceptée, jamais sur les
              pénalités (DiplomacyService) — la recherche rend plus convaincant, elle
              n'atténue pas la colère qu'on suscite
-Espionnage → calculé et affiché, sans effet avant la Phase 9
+Espionnage → +bonus% sur la puissance et le contre-espionnage (EspionageService, Phase 9)
 ```
 
 Nourriture et Influence n'ont volontairement aucun domaine associé : le brief n'en compte que
 7, et forcer une correspondance aurait dilué le sens de chacun.
+
+### Briques de l'espionnage (Phase 9)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `EspionageMissionType` | contenu | 5 missions du brief (vol de technologie, sabotage, découverte d'armées, influence de gouvernement, incitation à la révolte) |
+| `IEspionageService` / `EspionageService` | espionnage de tous les empires | **déterministe, sans hasard**, même philosophie que `CombatResolver` : une mission réussit si et seulement si la puissance d'espionnage du proposeur dépasse strictement le contre-espionnage de la cible (égalité stricte → échec) ; aucune adjacence requise (l'espionnage est distant, à la différence des flottes) |
+| `EspionageDecisionMaker` | décision d'espionnage IA | même séparation que les autres : seuil de puissance et mission préférée propres à chaque personnalité, une seule mission réussie par appel |
+| `EspionageController` | orchestration | comme `ResearchController`, s'initialise dans `Start` sans dépendance à un autre contrôleur — `EspionageService` résout lui-même, paresseusement, l'économie, l'armée, la diplomatie et la recherche au moment où une mission en a besoin |
+| `EspionageDebugPanel` | contrôle temporaire | puissance d'espionnage du joueur, un bouton par mission pour chaque IA, dernier résultat de découverte d'armées — empilé en haut à droite, sous `DiplomacyDebugPanel` |
+
+**Le risque vient de la découverte, pas du hasard.** Une mission réussie est invisible pour la
+cible ; une mission ratée est toujours découverte et inflige une pénalité d'opinion au
+proposeur (`IDiplomacyService.ApplyOpinionShift`, nouvelle méthode réservée à ce genre d'effet
+qui n'entre dans aucune mécanique diplomatique existante). Le coût d'une mission (Credits) est
+payé qu'elle réussisse ou non — lancer une mission perdue d'avance a donc un vrai prix.
+
+**Chaque mission, un effet distinct :**
+
+```
+Vol de technologie      → copie instantanément (IResearchService.GrantTier, sans coût de
+                           points) le domaine où la cible a la plus grande avance sur le
+                           proposeur — échoue si aucun domaine n'est en avance
+Sabotage                 → réduit d'un niveau le développement du système ciblé
+Incitation à la révolte  → réduit fortement la stabilité du système ciblé (bornée à 0)
+Influence de gouvernement → améliore secrètement l'opinion de la cible envers le proposeur
+Découverte d'armées      → révèle la garnison réelle d'un système (IMilitaryService),
+                           purement informatif pour le joueur — l'IA voit déjà tout
+```
+
+**Pourquoi chaque personnalité a sa mission de prédilection.** Le Pacifiste n'espionne jamais
+(seuil nul, cohérent avec son refus de toute confrontation même déguisée) ; la Commerçante vole
+des technologies ; le Militariste découvre les armées adverses avant de frapper ; l'Expansionniste
+sabote pour affaiblir avant d'envahir ; l'Opportuniste, seuil le plus bas du groupe, influence
+les gouvernements — le moyen le plus discret.
 
 ---
 
@@ -386,14 +423,14 @@ erreur ni warning :
 ```
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (313 tests, tous packages confondus).
+Voir §5 pour le compte total (340 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-8 — galaxie, horloge, économie, empires, armées, diplomatie et recherche
+## 5. Tester les Phases 2-9 — galaxie, horloge, économie, empires, armées, diplomatie, recherche et espionnage
 
 **Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
 sans erreur ni warning :
@@ -416,6 +453,7 @@ sans erreur ni warning :
 [Military] Demarree avec 4 types d'unites disponibles.
 [Diplomacy] Demarree.
 [Research] Demarree avec 21 paliers de recherche disponibles.
+[Espionage] Demarree.
 ```
 
 Dans la fenêtre Game :
@@ -467,13 +505,19 @@ Dans la fenêtre Game :
   proposer des pactes selon leur personnalité — visible en filtrant la console sur `[Diplomacy]`
   — et une attaque IA ne doit plus jamais survenir sans qu'une ligne `[Diplomacy] ... declare la
   guerre` ne l'ait précédée.
+- **Juste en dessous**, un huitième encart affiche votre puissance d'espionnage et, pour
+  chaque IA, son contre-espionnage estimé avec cinq boutons (Vol tech, Sabotage, Révolte,
+  Influence, Découvrir). Tentez une mission contre une cible faible (contre-espionnage bas) :
+  elle doit réussir sans laisser de trace côté opinion. Tentez-en une contre une cible forte :
+  elle doit échouer, vous coûter quand même le crédit dépensé, et l'opinion de la cible envers
+  vous doit chuter — visible en filtrant la console sur `[Espionage]`.
 
-> Ces sept encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
+> Ces huit encarts sont des outils de mise au point temporaires (IMGUI), pas les écrans
 > finaux (Phase 11) — voir les commentaires de `GalaxyMapController`, `GameClockDebugPanel`,
-> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel`, `DiplomacyDebugPanel` et
-> `ResearchDebugPanel`.
+> `EconomyDebugPanel`, `EmpireDebugPanel`, `MilitaryDebugPanel`, `DiplomacyDebugPanel`,
+> `ResearchDebugPanel` et `EspionageDebugPanel`.
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 313 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 340 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -500,25 +544,33 @@ paliers complétés le même jour si les points le permettent, points perdus san
 fois le domaine au maximum, bonus cumulatif, progressions indépendantes entre domaines et
 entre empires), `ResearchDecisionMakerTests` (choisit le premier domaine non maximal dans
 l'ordre de préférence de la personnalité, ne change rien tant que le domaine actif progresse
-encore).
+encore) ; `EspionageServiceTests` (Phase 9 — le plus important : succès/échec déterministe
+selon le rapport de puissance, coût toujours payé même en cas d'échec, pénalité d'opinion sur
+échec, effet propre à chaque mission — vol du domaine à l'écart le plus grand, sabotage réduit
+le développement, révolte réduit la stabilité sans jamais devenir négative, influence améliore
+l'opinion, découverte retourne la garnison réelle —, dégradation propre quand un service
+optionnel est indisponible), `EspionageDecisionMakerTests` (seuil et mission préférée propres
+à chaque personnalité, le Pacifiste n'espionne jamais, ignore les cibles sans territoire sans
+planter).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
 - le geste de pincement (`GalaxyCameraController`, API `EnhancedTouch`) et la distinction
   tap/glisser (`GalaxySelectionController`) ;
-- que les boutons des sept panneaux IMGUI répondent bien au tactile (traduit
+- que les boutons des huit panneaux IMGUI répondent bien au tactile (traduit
   automatiquement par Unity sur Android/iOS, mais un point à confirmer sur appareil).
 
 La logique de génération de galaxie, celle de l'horloge/calendrier, la formule de production
 économique, le placement des systèmes d'origine (*farthest-point sampling*), l'arbitrage de
 décision de l'IA par personnalité, la formule de combat, les décisions militaires de l'IA,
 l'évaluation des propositions diplomatiques et l'arbitrage guerre/paix/pacte de
-`DiplomacyDecisionMaker`, et désormais la génération/progression/complétion des paliers de
-recherche de `ResearchService`, ont chacune été recoupées indépendamment par un script Python
-qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
+`DiplomacyDecisionMaker`, la génération/progression/complétion des paliers de recherche de
+`ResearchService`, et désormais les formules de puissance/contre-espionnage et de vol de
+technologie d'`EspionageService`, ont chacune été recoupées indépendamment par un script
+Python qui reproduit l'algorithme : voir les commentaires de `GalaxyGenerator`, `GameClock`,
 `EconomyService`, `EmpirePlacement`, `AIDecisionMaker`, `CombatResolver`,
-`MilitaryDecisionMaker`, `ProposalEvaluator`, `DiplomacyDecisionMaker` et `ResearchService`
-pour le détail.
+`MilitaryDecisionMaker`, `ProposalEvaluator`, `DiplomacyDecisionMaker`, `ResearchService` et
+`EspionageService` pour le détail.
 
 ---
 
@@ -534,15 +586,15 @@ pour le détail.
 | 6 | Armées, résolution automatique des combats, colonisation | ✅ terminée |
 | 7 | Diplomatie (alliances, traités, embargos, ultimatums...) | ✅ terminée |
 | 8 | Recherche (arbre technologique, 7 domaines) | ✅ terminée |
-| 9 | Espionnage (agents, sabotage, vol de technologie) | à venir |
+| 9 | Espionnage (agents, sabotage, vol de technologie) | ✅ terminée |
 | 10 | Sauvegarde JSON automatique | à venir |
 | 11 | Interface complète (menu, écrans de gestion, HUD) | à venir |
 | 12 | Équilibrage | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 8 n'a touché ni l'espionnage, ni la
-sauvegarde — le domaine de recherche Espionnage existe et accumule déjà un bonus calculable,
-simplement sans système à améliorer avant la Phase 9.
+complexe à la fois (consigne du brief) : la Phase 9 n'a touché ni la sauvegarde, ni l'interface
+finale — tous les systèmes de jeu du brief (économie, diplomatie, recherche, espionnage,
+guerre) sont désormais implémentés, il ne reste que la persistance et l'habillage.
 
 ---
 

@@ -1,5 +1,6 @@
 using System;
 using Espace.Data;
+using Espace.Gameplay.Espionage;
 using Espace.Gameplay.Research;
 
 namespace Espace.Gameplay.Empires
@@ -91,11 +92,21 @@ namespace Espace.Gameplay.Empires
         /// </summary>
         public readonly ResearchDomain[] ResearchPriority;
 
+        /// <summary>
+        /// Multiplicateur de puissance d'espionnage exigé avant de lancer une mission contre
+        /// un adversaire (puissance propre ≥ contre-espionnage de la cible × ce seuil). Même
+        /// convention que <see cref="AggressionThreshold"/>. <c>null</c> = n'espionne jamais.
+        /// </summary>
+        public readonly float? EspionageThreshold;
+
+        /// <summary>Mission que cette personnalité tente en priorité quand l'espionnage est jugé favorable. Sans effet si <see cref="EspionageThreshold"/> est <c>null</c>.</summary>
+        public readonly EspionageMissionType PreferredEspionageMission;
+
         public EmpirePersonalityProfileData(
             float PreferredTaxRate, ResourceType[] BuildPriority, bool PicksCheapestAffordable, float InvestmentEagerness,
             int TargetGarrisonSize, bool PrefersStrongestUnit, float? AggressionThreshold, float CommandModifier,
             float MinOpinionToAcceptPact, float ProactivePactOpinionThreshold, float PeacePowerRatioThreshold,
-            ResearchDomain[] ResearchPriority)
+            ResearchDomain[] ResearchPriority, float? EspionageThreshold, EspionageMissionType PreferredEspionageMission)
         {
             this.PreferredTaxRate = PreferredTaxRate;
             this.BuildPriority = BuildPriority;
@@ -109,6 +120,8 @@ namespace Espace.Gameplay.Empires
             this.ProactivePactOpinionThreshold = ProactivePactOpinionThreshold;
             this.PeacePowerRatioThreshold = PeacePowerRatioThreshold;
             this.ResearchPriority = ResearchPriority;
+            this.EspionageThreshold = EspionageThreshold;
+            this.PreferredEspionageMission = PreferredEspionageMission;
         }
     }
 
@@ -147,6 +160,15 @@ namespace Espace.Gameplay.Empires
     /// en premier, l'Expansionniste la Logistique (expansion plus rapide), l'Opportuniste
     /// l'Espionnage (encore sans effet avant la Phase 9, mais déjà accumulé).
     /// </para>
+    /// <para>
+    /// <b>Espionnage (Phase 9) :</b> le Pacifiste n'espionne jamais (<see cref="EmpirePersonalityProfileData.EspionageThreshold"/>
+    /// nul), cohérent avec son refus de toute confrontation même déguisée. Les quatre autres
+    /// personnalités espionnent avec une mission qui leur correspond : la Commerçante vole des
+    /// technologies (avantage économique honnête... presque), le Militariste découvre les
+    /// armées adverses (renseignement avant la bataille), l'Expansionniste sabote (affaiblir
+    /// avant d'envahir), l'Opportuniste influence les gouvernements (le moyen le plus
+    /// discret, cohérent avec son seuil de risque le plus bas).
+    /// </para>
     /// </summary>
     public static class EmpirePersonalityProfile
     {
@@ -175,7 +197,9 @@ namespace Espace.Gameplay.Empires
                         {
                             ResearchDomain.Diplomacy, ResearchDomain.Economy, ResearchDomain.Energy,
                             ResearchDomain.Industry, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
-                        });
+                        },
+                        EspionageThreshold: null,
+                        PreferredEspionageMission: EspionageMissionType.StealTechnology);
 
                 case EmpirePersonality.Expansionist:
                     // Impots bas (economise pour la croissance future), priorite au
@@ -198,7 +222,9 @@ namespace Espace.Gameplay.Empires
                         {
                             ResearchDomain.Logistics, ResearchDomain.Industry, ResearchDomain.Economy,
                             ResearchDomain.Energy, ResearchDomain.Diplomacy, ResearchDomain.Weapons, ResearchDomain.Espionage
-                        });
+                        },
+                        EspionageThreshold: 1.5f,
+                        PreferredEspionageMission: EspionageMissionType.Sabotage);
 
                 case EmpirePersonality.Mercantile:
                     // Impots eleves, priorite absolue aux Credits puis a l'Energie. Garnison
@@ -220,7 +246,9 @@ namespace Espace.Gameplay.Empires
                         {
                             ResearchDomain.Economy, ResearchDomain.Diplomacy, ResearchDomain.Industry,
                             ResearchDomain.Energy, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
-                        });
+                        },
+                        EspionageThreshold: 1.3f,
+                        PreferredEspionageMission: EspionageMissionType.StealTechnology);
 
                 case EmpirePersonality.Militarist:
                     // Impots moyens-eleves, priorite au Minerai et a l'Energie (materiel des
@@ -242,7 +270,9 @@ namespace Espace.Gameplay.Empires
                         {
                             ResearchDomain.Weapons, ResearchDomain.Logistics, ResearchDomain.Industry,
                             ResearchDomain.Energy, ResearchDomain.Economy, ResearchDomain.Espionage, ResearchDomain.Diplomacy
-                        });
+                        },
+                        EspionageThreshold: 1.2f,
+                        PreferredEspionageMission: EspionageMissionType.DiscoverArmies);
 
                 case EmpirePersonality.Opportunist:
                     // Impots moyens, aucun ordre fixe : saisit ce qui est finançable au
@@ -265,7 +295,9 @@ namespace Espace.Gameplay.Empires
                         {
                             ResearchDomain.Espionage, ResearchDomain.Diplomacy, ResearchDomain.Economy,
                             ResearchDomain.Weapons, ResearchDomain.Industry, ResearchDomain.Energy, ResearchDomain.Logistics
-                        });
+                        },
+                        EspionageThreshold: 1.0f,
+                        PreferredEspionageMission: EspionageMissionType.InfluenceGovernment);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(personality), personality, "Personnalite inconnue.");

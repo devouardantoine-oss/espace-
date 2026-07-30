@@ -104,6 +104,7 @@ namespace Espace.Tests.EditMode
             }
 
             public bool TryRespondToProposal(int proposalId, bool accept, out string error) { error = "n/a"; return false; }
+            public void ApplyOpinionShift(int observerId, int targetId, float delta) { }
         }
 
         private EmpireRegistry _empireRegistry;

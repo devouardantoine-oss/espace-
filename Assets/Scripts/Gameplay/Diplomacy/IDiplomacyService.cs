@@ -55,5 +55,13 @@ namespace Espace.Gameplay.Diplomacy
 
         /// <summary>Reponse du joueur a une proposition recue et toujours en attente.</summary>
         bool TryRespondToProposal(int proposalId, bool accept, out string error);
+
+        /// <summary>
+        /// Modifie directement l'opinion de <paramref name="observerId"/> envers <paramref name="targetId"/>
+        /// (bornee comme toute opinion). Reservee aux effets qui n'entrent dans aucune des
+        /// mecaniques ci-dessus : penalite d'une mission d'espionnage decouverte, propagande
+        /// d'une mission d'influence de gouvernement reussie (Phase 9).
+        /// </summary>
+        void ApplyOpinionShift(int observerId, int targetId, float delta);
     }
 }

@@ -254,6 +254,12 @@ namespace Espace.Gameplay.Diplomacy
             return true;
         }
 
+        /// <inheritdoc />
+        public void ApplyOpinionShift(int observerId, int targetId, float delta)
+        {
+            AdjustOpinion(observerId, targetId, delta);
+        }
+
         private bool ValidateProposalPreconditions(int proposerId, int targetId, ProposalType type, out string error)
         {
             if (!_empireRegistry.TryGetEmpire(proposerId, out _) || !_empireRegistry.TryGetEmpire(targetId, out _))

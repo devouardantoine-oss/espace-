@@ -1,5 +1,6 @@
 using Espace.Core;
 using Espace.Gameplay.Diplomacy;
+using Espace.Gameplay.Espionage;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.Research;
@@ -9,12 +10,13 @@ namespace Espace.Gameplay.Empires
 {
     /// <summary>
     /// Fait agir chaque empire IA une fois par mois de jeu : economie, puis recherche, puis
-    /// diplomatie, puis armee.
+    /// espionnage, puis diplomatie, puis armee.
     /// <para>
     /// <b>Resolution paresseuse dans le gestionnaire d'evenement, pas dans <c>Start</c> :</b>
     /// ce composant a besoin d'<see cref="EmpireRegistry"/> (enregistre par
-    /// <c>EmpireController.Start</c>), d'<see cref="IEconomyService"/> et d'<see cref="IResearchService"/>
-    /// (tous deux par un <c>Start</c> propre, voir <c>EconomyController</c>/<c>ResearchController</c>),
+    /// <c>EmpireController.Start</c>), d'<see cref="IEconomyService"/>, d'<see cref="IResearchService"/>
+    /// et d'<see cref="IEspionageService"/> (chacun par un <c>Start</c> propre, voir
+    /// <c>EconomyController</c>/<c>ResearchController</c>/<c>EspionageController</c>),
     /// d'<see cref="IDiplomacyService"/> (au premier <c>Update</c> de <c>DiplomacyController</c>)
     /// et d'<see cref="IMilitaryService"/> (enregistre au premier <c>Update</c> de
     /// <c>MilitaryController</c>, voir son commentaire) — aucun ordre garanti entre ces
@@ -25,16 +27,17 @@ namespace Espace.Gameplay.Empires
     /// la scene sont terminees.
     /// </para>
     /// <para>
-    /// <b>Ordre Economie -> Recherche -> Diplomatie -> Armee, deliberement</b> : une guerre
-    /// declaree ce mois-ci par <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/>
+    /// <b>Ordre Economie -> Recherche -> Espionnage -> Diplomatie -> Armee, deliberement</b> :
+    /// une guerre declaree ce mois-ci par <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/>
     /// peut ainsi etre exploitee par <see cref="MilitaryDecisionMaker"/> ce meme mois, sans
-    /// attendre le mois suivant. La recherche n'a pas cette contrainte de sequencement (changer
-    /// de domaine actif ne beneficie qu'aux mois suivants), mais reste groupee avec l'economie
-    /// par coherence thematique.
+    /// attendre le mois suivant. Recherche et espionnage n'ont pas cette contrainte de
+    /// sequencement, mais restent groupes avant la diplomatie et l'armee par coherence
+    /// thematique (les decisions les plus « discretes » d'abord).
     /// </para>
     /// <para>
     /// Les decisions elles-memes vivent dans <see cref="AIDecisionMaker"/> (economie),
     /// <see cref="Espace.Gameplay.Research.ResearchDecisionMaker"/> (recherche),
+    /// <see cref="Espace.Gameplay.Espionage.EspionageDecisionMaker"/> (espionnage),
     /// <see cref="Espace.Gameplay.Diplomacy.DiplomacyDecisionMaker"/> (diplomatie) et
     /// <see cref="MilitaryDecisionMaker"/> (armee), des fonctions statiques testables sans
     /// scene : ce composant ne fait que les brancher sur l'horloge du jeu.
@@ -46,6 +49,7 @@ namespace Espace.Gameplay.Empires
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
         private IResearchService _research;
+        private IEspionageService _espionage;
         private IDiplomacyService _diplomacy;
         private IMilitaryService _military;
         private GalaxyMap _map;
@@ -83,6 +87,7 @@ namespace Espace.Gameplay.Empires
 
                 AIDecisionMaker.DecideAndAct(empire, _map, _economy);
                 ResearchDecisionMaker.DecideAndAct(empire, _research);
+                EspionageDecisionMaker.DecideAndAct(empire, _empireRegistry, _map, _espionage);
                 DiplomacyDecisionMaker.DecideAndAct(empire, _map, _military, _diplomacy);
                 MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military, _diplomacy);
             }
@@ -102,6 +107,11 @@ namespace Espace.Gameplay.Empires
             }
 
             if (_research == null && !ServiceLocator.TryGet(out _research))
+            {
+                return false;
+            }
+
+            if (_espionage == null && !ServiceLocator.TryGet(out _espionage))
             {
                 return false;
             }

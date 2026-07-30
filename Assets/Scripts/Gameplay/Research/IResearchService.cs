@@ -31,5 +31,14 @@ namespace Espace.Gameplay.Research
         /// Echoue si ce domaine est deja au maximum, ou s'il est deja actif.
         /// </summary>
         bool TrySetActiveDomain(int empireId, ResearchDomain domain, out string error);
+
+        /// <summary>
+        /// Complete instantanement le prochain palier de <paramref name="domain"/> pour
+        /// <paramref name="empireId"/>, sans depenser de points ni verifier de cout — reservee
+        /// au vol de technologie (Espionnage, Phase 9). Ne fait rien si le domaine est deja au
+        /// maximum. Publie le meme <see cref="TechnologyResearchedEvent"/> qu'une completion
+        /// normale : du point de vue de l'empire qui en beneficie, le resultat est identique.
+        /// </summary>
+        void GrantTier(int empireId, ResearchDomain domain);
     }
 }

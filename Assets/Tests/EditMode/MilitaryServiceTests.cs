@@ -92,6 +92,8 @@ namespace Espace.Tests.EditMode
                 error = "Non supporte par ce faux service.";
                 return false;
             }
+
+            public void ApplyOpinionShift(int observerId, int targetId, float delta) { }
         }
 
         private EventBus _eventBus;
