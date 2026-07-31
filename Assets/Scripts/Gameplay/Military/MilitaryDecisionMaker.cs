@@ -45,7 +45,7 @@ namespace Espace.Gameplay.Military
 
             EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
 
-            if (TryRecruit(empire, homeSystem, economy, military, profile))
+            if (TryRecruit(empire, homeSystem, map, economy, military, diplomacy, profile))
             {
                 return;
             }
@@ -71,22 +71,118 @@ namespace Espace.Gameplay.Military
             return null;
         }
 
+        /// <summary>
+        /// Recrute une unite si la garnison est sous sa cible.
+        /// <para>
+        /// <b>Cible ajustee a la colonisation (Phase 16) :</b> la cible de personnalite seule
+        /// rendrait la colonisation structurellement impossible pour les profils a petite
+        /// garnison — coloniser demande <see cref="MinimumGarrisonToKeep"/> + l'exigence du
+        /// systeme vise, soit jusqu'a 8 unites, quand le Pacifiste ne vise que 2. La cible
+        /// effective monte donc au niveau du voisin libre le moins exigeant quand il y en a un
+        /// (maximum 2 + 6 = 8, toujours sous le plafond de 10 unites par flotte).
+        /// </para>
+        /// <para>
+        /// <b>Plancher d'Infanterie (Phase 16) :</b> <see cref="ChooseRecruitType"/> choisit au
+        /// prix ou a la puissance, jamais par type — un Militariste (qui prefere le plus
+        /// puissant) n'aurait donc jamais la moindre Infanterie, et serait incapable de
+        /// coloniser comme d'envahir. L'Infanterie est recrutee en priorite tant que la
+        /// garnison n'en a pas assez pour coloniser le voisin le moins exigeant, ou au moins
+        /// une unite si l'empire est en guerre avec un voisin (pour pouvoir occuper).
+        /// </para>
+        /// </summary>
         private static bool TryRecruit(
-            Empire empire, StarSystemState system, IEconomyService economy, IMilitaryService military, EmpirePersonalityProfileData profile)
+            Empire empire, StarSystemState system, GalaxyMap map, IEconomyService economy, IMilitaryService military,
+            IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
         {
             UnitBundle garrison = military.GetGarrison(system.Id, empire.Id);
-            if (garrison.TotalCount >= profile.TargetGarrisonSize)
+
+            int? cheapestColonizationNeed = FindCheapestColonizationNeed(system.Id, map);
+            int effectiveTarget = profile.TargetGarrisonSize;
+            if (cheapestColonizationNeed.HasValue)
+            {
+                effectiveTarget = Math.Max(effectiveTarget, MinimumGarrisonToKeep + cheapestColonizationNeed.Value);
+            }
+
+            if (garrison.TotalCount >= effectiveTarget)
             {
                 return false;
             }
 
-            UnitTypeDefinition choice = ChooseRecruitType(system, economy, military, profile);
+            int infantryFloor = Math.Max(
+                cheapestColonizationNeed ?? 0,
+                IsAtWarWithAnyNeighbor(empire, system.Id, map, diplomacy) ? 1 : 0);
+
+            UnitTypeDefinition choice = garrison.Infantry < infantryFloor
+                ? FindInfantryType(system, economy, military) ?? ChooseRecruitType(system, economy, military, profile)
+                : ChooseRecruitType(system, economy, military, profile);
+
             if (choice == null)
             {
                 return false;
             }
 
             return military.TryRecruitUnits(system.Id, choice, 1, out _);
+        }
+
+        /// <summary>Exigence de colonisation la plus basse parmi les voisins libres, ou <c>null</c> s'il n'y en a aucun.</summary>
+        private static int? FindCheapestColonizationNeed(StarSystemId systemId, GalaxyMap map)
+        {
+            int? cheapest = null;
+
+            foreach (StarSystemId neighborId in map.GetNeighbors(systemId))
+            {
+                if (!map.TryGetSystem(neighborId, out StarSystemState neighbor) || neighbor.OwnerId != StarSystemState.UnownedOwnerId)
+                {
+                    continue;
+                }
+
+                int required = ColonizationRules.RequiredInfantry(neighbor);
+                if (cheapest == null || required < cheapest.Value)
+                {
+                    cheapest = required;
+                }
+            }
+
+            return cheapest;
+        }
+
+        private static bool IsAtWarWithAnyNeighbor(Empire empire, StarSystemId systemId, GalaxyMap map, IDiplomacyService diplomacy)
+        {
+            foreach (StarSystemId neighborId in map.GetNeighbors(systemId))
+            {
+                if (map.TryGetSystem(neighborId, out StarSystemState neighbor)
+                    && neighbor.OwnerId != StarSystemState.UnownedOwnerId
+                    && neighbor.OwnerId != empire.Id
+                    && diplomacy.GetStatus(empire.Id, neighbor.OwnerId) == DiplomaticStatus.War)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>L'Infanterie du catalogue, si le systeme peut la recruter et que le tresor la couvre.</summary>
+        private static UnitTypeDefinition FindInfantryType(StarSystemState system, IEconomyService economy, IMilitaryService military)
+        {
+            ResourceBundle treasury = economy.GetTreasury(system.OwnerId);
+
+            foreach (UnitTypeDefinition unitType in military.UnitCatalog)
+            {
+                if (unitType == null || unitType.UnitType != UnitType.Infantry
+                    || system.DevelopmentLevel < unitType.MinimumDevelopmentLevel)
+                {
+                    continue;
+                }
+
+                var cost = new ResourceBundle(credits: unitType.CreditsCost, minerals: unitType.MineralsCost);
+                if (treasury.IsGreaterOrEqualTo(cost))
+                {
+                    return unitType;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -129,54 +225,53 @@ namespace Espace.Gameplay.Military
             return best;
         }
 
+        /// <summary>
+        /// Detache l'Infanterie necessaire vers le voisin libre le <b>moins exigeant</b>
+        /// (Phase 16) — viser systematiquement le premier voisin trouve, comme avant cette
+        /// phase, bloquerait l'IA indefiniment sur un systeme trop peuple pour sa garnison
+        /// alors qu'un voisin abordable existe peut-etre juste a cote.
+        /// </summary>
         private static bool TryColonizeAdjacent(Empire empire, StarSystemState system, GalaxyMap map, IMilitaryService military)
         {
             UnitBundle garrison = military.GetGarrison(system.Id, empire.Id);
-            if (garrison.TotalCount < MinimumGarrisonToKeep + 1)
+
+            StarSystemId? target = null;
+            int required = 0;
+
+            foreach (StarSystemId neighborId in map.GetNeighbors(system.Id))
             {
-                return false;
+                if (!map.TryGetSystem(neighborId, out StarSystemState neighbor) || neighbor.OwnerId != StarSystemState.UnownedOwnerId)
+                {
+                    continue;
+                }
+
+                int neighborRequirement = ColonizationRules.RequiredInfantry(neighbor);
+                if (target == null || neighborRequirement < required)
+                {
+                    target = neighborId;
+                    required = neighborRequirement;
+                }
             }
 
-            StarSystemId? target = FindAdjacentUnowned(system.Id, map);
             if (target == null)
             {
                 return false;
             }
 
-            UnitBundle settlers = ChooseSingleUnitToDetach(garrison);
+            // Assez d'Infanterie pour s'installer, et assez d'unites restantes pour ne pas
+            // laisser le systeme d'origine sans defense.
+            if (garrison.Infantry < required || garrison.TotalCount - required < MinimumGarrisonToKeep)
+            {
+                return false;
+            }
+
+            UnitBundle settlers = UnitBundle.Of(UnitType.Infantry, required);
             if (!military.TryDetachFleet(system.Id, empire.Id, settlers, out Fleet colonizer, out _))
             {
                 return false;
             }
 
             return military.TryMoveFleet(colonizer, target.Value, out _);
-        }
-
-        private static StarSystemId? FindAdjacentUnowned(StarSystemId systemId, GalaxyMap map)
-        {
-            foreach (StarSystemId neighborId in map.GetNeighbors(systemId))
-            {
-                if (map.TryGetSystem(neighborId, out StarSystemState neighbor) && neighbor.OwnerId == StarSystemState.UnownedOwnerId)
-                {
-                    return neighborId;
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>Une seule unite, la moins chere disponible (l'Infanterie en priorite) : dediee a coloniser, pas a combattre.</summary>
-        private static UnitBundle ChooseSingleUnitToDetach(UnitBundle garrison)
-        {
-            foreach (UnitType type in UnitTypes.All)
-            {
-                if (garrison.Get(type) > 0)
-                {
-                    return UnitBundle.Of(type, 1);
-                }
-            }
-
-            return UnitBundle.Zero;
         }
 
         /// <summary>
@@ -198,6 +293,13 @@ namespace Espace.Gameplay.Military
 
             UnitBundle garrison = military.GetGarrison(system.Id, empire.Id);
             if (garrison.TotalCount < MinimumGarrisonToKeep + 1)
+            {
+                return false;
+            }
+
+            // Sans Infanterie, une victoire ne capturerait rien (Phase 16) : autant garder ses
+            // unites plutot que d'engager une offensive qui ne peut rien conquerir.
+            if (garrison.Infantry <= 0)
             {
                 return false;
             }
@@ -234,10 +336,17 @@ namespace Espace.Gameplay.Military
 
         /// <summary>
         /// Garde <paramref name="reserveCount"/> unites a domicile en priorisant l'Infanterie
-        /// (la moins utile a l'attaque), envoie le reste — les unites les plus fortes en
+        /// (la moins utile au combat), envoie le reste — les unites les plus fortes en
         /// premier. Generique sur <see cref="UnitTypes.All"/> (Phase 14) : l'ordre de
         /// l'enumeration <see cref="UnitType"/> reste volontairement du moins utile a
         /// l'attaque (Infanterie) au plus puissant (Cuirasse).
+        /// <para>
+        /// <b>Au moins une Infanterie part toujours a l'attaque (Phase 16) :</b> depuis que
+        /// l'occupation d'un systeme conquis exige de l'Infanterie survivante, reserver
+        /// <i>toute</i> l'Infanterie a domicile produirait des forces d'attaque incapables de
+        /// capturer quoi que ce soit — victoires steriles en boucle. La reserve n'en prend
+        /// donc jamais la derniere unite.
+        /// </para>
         /// </summary>
         private static UnitBundle SplitAttackForce(UnitBundle garrison, int reserveCount)
         {
@@ -251,7 +360,13 @@ namespace Espace.Gameplay.Military
                     break;
                 }
 
-                int taken = Math.Min(garrison.Get(type), remaining);
+                int available = garrison.Get(type);
+                if (type == UnitType.Infantry)
+                {
+                    available = Math.Max(0, available - 1);
+                }
+
+                int taken = Math.Min(available, remaining);
                 reserve += UnitBundle.Of(type, taken);
                 remaining -= taken;
             }

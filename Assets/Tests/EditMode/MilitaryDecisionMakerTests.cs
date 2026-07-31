@@ -286,19 +286,23 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, NeighborEmpireId, 1000f);
-            RecruitAndComplete(military, home, infantry, 3); // au-dessus de la cible (2) : peut se permettre d'en detacher un
+            // Cible libre Pop 1000 / Dev 3 -> 3 Infanterie requises (Phase 16), plus les 2 gardees a domicile.
+            RecruitAndComplete(military, home, infantry, 5);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
             MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
 
-            // Une unite a ete detachee et envoyee : la garnison d'origine diminue immediatement,
-            // mais la colonisation elle-meme n'a pas encore eu lieu (le trajet prend au moins un jour).
+            // Les 3 Infanterie requises ont ete detachees et envoyees : la garnison d'origine diminue
+            // immediatement, mais la colonisation elle-meme n'a pas encore eu lieu (le trajet prend au moins un jour).
             Assert.AreEqual(new UnitBundle(infantry: 2), military.GetGarrison(home.Id, NeighborEmpireId));
             Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId);
 
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
 
             Assert.AreEqual(NeighborEmpireId, unowned.OwnerId, "Le systeme doit etre colonise a l'arrivee.");
+            Assert.AreEqual(
+                new UnitBundle(infantry: 2), military.GetGarrison(unowned.Id, NeighborEmpireId),
+                "3 Infanterie engagees - 1 perdue a l'installation = 2 en garnison sur la colonie.");
         }
 
         [Test]
@@ -311,13 +315,87 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, NeighborEmpireId, 1000f);
-            RecruitAndComplete(military, home, infantry, 2); // exactement la cible du Pacifiste : rien a epargner
+            // 2 Infanterie : il en faudrait 3 pour coloniser plus 2 a garder a domicile (Phase 16).
+            RecruitAndComplete(military, home, infantry, 2);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
             MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
 
-            Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId);
-            Assert.AreEqual(new UnitBundle(infantry: 2), military.GetGarrison(home.Id, NeighborEmpireId));
+            Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId, "Pas assez d'Infanterie pour tenter la colonisation.");
+            Assert.AreEqual(new UnitBundle(infantry: 2), military.GetGarrison(home.Id, NeighborEmpireId), "Aucune unite detachee.");
+        }
+
+        [Test]
+        public void DecideAndAct_UnownedNeighborPresent_RecruitsBeyondPersonalityTarget()
+        {
+            // Sans cette regle (Phase 16), le Pacifiste (cible de garnison 2) ne pourrait jamais
+            // coloniser quoi que ce soit : coloniser demande 2 unites gardees + l'exigence du systeme vise.
+            StarSystemState home = MakeSystem(0, Vector2.zero, NeighborEmpireId);
+            StarSystemState unowned = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId);
+            var map = new GalaxyMap(new[] { home, unowned }, new[] { new HyperlaneLink(home.Id, unowned.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            RecruitAndComplete(military, home, infantry, 2); // deja a la cible de personnalite
+            Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(
+                3, military.GetGarrison(home.Id, NeighborEmpireId).TotalCount,
+                "La cible effective monte a 2 (reserve) + 3 (exigence du voisin) : le recrutement continue.");
+        }
+
+        [Test]
+        public void DecideAndAct_ChoosesLeastDemandingUnownedNeighbor()
+        {
+            StarSystemState home = MakeSystem(0, Vector2.zero, NeighborEmpireId);
+            StarSystemState expensive = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 5);
+            StarSystemState cheap = MakeSystem(2, new Vector2(-1f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 0);
+            expensive.Population = 4000; // exigence 6
+            cheap.Population = 0;        // exigence 1
+            var map = new GalaxyMap(
+                new[] { home, expensive, cheap },
+                new[] { new HyperlaneLink(home.Id, expensive.Id), new HyperlaneLink(home.Id, cheap.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(home.Id, NeighborEmpireId, new UnitBundle(infantry: 3));
+            Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
+
+            Assert.AreEqual(NeighborEmpireId, cheap.OwnerId, "L'IA doit viser le voisin le moins exigeant.");
+            Assert.AreEqual(StarSystemState.UnownedOwnerId, expensive.OwnerId);
+        }
+
+        [Test]
+        public void DecideAndAct_AtWarWithoutInfantry_RecruitsInfantryFirst()
+        {
+            // Le Militariste recrute normalement l'unite la plus puissante : sans cette regle
+            // (Phase 16) il n'aurait jamais d'Infanterie, donc ne pourrait jamais occuper un
+            // systeme conquis.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId, developmentLevel: 5);
+            StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborEmpireId);
+            var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, creditsCost: 20f, mineralsCost: 0f);
+            UnitTypeDefinition battleship = MakeUnitType(UnitType.Battleship, power: 90f, creditsCost: 30f, mineralsCost: 0f);
+            MilitaryService military = MakeMilitary(map, economy, infantry, battleship);
+            GiveCredits(economy, home, AiEmpireId, 1000f);
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(battleship: 2)); // aucune Infanterie
+            _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(
+                1, military.GetGarrison(home.Id, AiEmpireId).Infantry,
+                "En guerre sans Infanterie, le Militariste doit en recruter malgre sa preference pour la puissance.");
         }
 
         // --- Agressivite -----------------------------------------------------------------
@@ -373,8 +451,10 @@ namespace Espace.Tests.EditMode
         public void DecideAndAct_Militarist_ReservesInfantryFirstAcrossAllSevenTypes()
         {
             // Garnison mixte incluant les nouveaux types de vaisseaux (Phase 14) : SplitAttackForce
-            // doit toujours garder l'Infanterie en priorite (elle apparait en premier dans
-            // UnitTypes.All) et envoyer le reste, quels que soient les types presents.
+            // garde l'Infanterie en priorite (elle apparait en premier dans UnitTypes.All) et
+            // envoie le reste, quels que soient les types presents — mais depuis la Phase 16 la
+            // reserve ne prend jamais la derniere Infanterie, sinon la force d'attaque ne
+            // pourrait occuper aucun systeme conquis.
             StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
             StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborEmpireId);
             var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
@@ -393,8 +473,13 @@ namespace Espace.Tests.EditMode
             MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
 
             Assert.IsTrue(military.TryGetStationedFleet(home.Id, AiEmpireId, out Fleet remainingGarrison));
-            Assert.AreEqual(2, remainingGarrison.Composition.Infantry, "Les 2 unites d'Infanterie doivent rester en reserve (MinimumGarrisonToKeep = 2).");
-            Assert.AreEqual(0, remainingGarrison.Composition.Fighter + remainingGarrison.Composition.Cruiser, "Le reste part attaquer.");
+            Assert.AreEqual(
+                1, remainingGarrison.Composition.Infantry,
+                "Une seule Infanterie reste en reserve : la seconde part avec la force d'attaque pour pouvoir occuper.");
+            Assert.AreEqual(
+                1, remainingGarrison.Composition.Fighter,
+                "La reserve de 2 unites est completee par le type suivant dans UnitTypes.All.");
+            Assert.AreEqual(0, remainingGarrison.Composition.Cruiser, "Les unites les plus fortes partent toutes a l'attaque.");
         }
 
         [Test]

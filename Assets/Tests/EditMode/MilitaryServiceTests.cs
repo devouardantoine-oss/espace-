@@ -366,7 +366,8 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, PlayerId, 1000f);
-            RecruitAndComplete(military, home, infantry, 1);
+            // 3 Infanterie : l'exigence de colonisation du systeme voisin (Pop 1000, Dev 3) depuis la Phase 16.
+            RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
 
             bool departedPublished = false;
@@ -390,7 +391,8 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f); // arrivee en 1 jour
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, PlayerId, 1000f);
-            RecruitAndComplete(military, home, infantry, 1);
+            // Voisin Pop 1000 / Dev 3 / Stab 1 -> 3 Infanterie requises, 1 perdue a l'installation (Phase 16).
+            RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
             military.TryMoveFleet(fleet, neighbor.Id, out _);
 
@@ -400,13 +402,57 @@ namespace Espace.Tests.EditMode
                 colonizedPublished = true;
                 Assert.AreEqual(neighbor.Id, e.SystemId);
                 Assert.AreEqual(PlayerId, e.EmpireId);
+                Assert.AreEqual(1, e.InfantryLost);
             });
 
             _eventBus.Publish(new DayAdvancedEvent(fleet.ArrivalDate.Value));
 
             Assert.IsTrue(colonizedPublished);
             Assert.AreEqual(PlayerId, neighbor.OwnerId);
-            Assert.IsFalse(military.TryGetStationedFleet(neighbor.Id, PlayerId, out _), "La flotte de colons se dissout, elle ne devient pas une garnison.");
+            Assert.AreEqual(
+                new UnitBundle(infantry: 2), military.GetGarrison(neighbor.Id, PlayerId),
+                "Le reste de la flotte (3 engagees - 1 perdue) devient la garnison de la nouvelle colonie.");
+        }
+
+        [Test]
+        public void TryMoveFleet_NotEnoughInfantryToColonize_Fails()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 2); // 2 < 3 requises
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+
+            bool success = military.TryMoveFleet(fleet, neighbor.Id, out string error);
+
+            Assert.IsFalse(success, "Le depart doit etre refuse en amont plutot que d'echouer a l'arrivee.");
+            StringAssert.Contains("Infanterie", error);
+            Assert.AreEqual(FleetStatus.Stationed, fleet.Status);
+        }
+
+        [Test]
+        public void Arrival_AtUnownedSystem_ExactlyRequiredInfantry_FleetDissolves()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor);
+            neighbor.Population = 0;
+            neighbor.DevelopmentLevel = 0;
+            neighbor.Stability = 0.2f; // exigence 1, pertes 1 : toute la flotte y passe
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 1);
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+            military.TryMoveFleet(fleet, neighbor.Id, out _);
+
+            _eventBus.Publish(new DayAdvancedEvent(fleet.ArrivalDate.Value));
+
+            Assert.AreEqual(PlayerId, neighbor.OwnerId);
+            Assert.IsFalse(
+                military.TryGetStationedFleet(neighbor.Id, PlayerId, out _),
+                "Une flotte qui n'embarquait que le strict necessaire se dissout entierement dans la colonie.");
         }
 
         // --- Renfort ---------------------------------------------------------------
@@ -461,6 +507,55 @@ namespace Espace.Tests.EditMode
             Assert.IsTrue(battlePublished);
             Assert.AreEqual(PlayerId, neighbor.OwnerId);
             Assert.AreEqual(new UnitBundle(infantry: 3), military.GetGarrison(neighbor.Id, PlayerId));
+        }
+
+        // --- Invasion : Infanterie indispensable pour occuper (Phase 16) --------------------
+
+        [Test]
+        public void ResolveBattle_VictoryWithoutInfantry_DoesNotCaptureSystem()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, speed: 100f);
+            UnitTypeDefinition fighter = MakeUnitType(UnitType.Fighter, power: 20f, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry, fighter);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
+
+            // Chasseurs seuls, ecrasants : ils gagnent la bataille mais n'ont personne pour occuper.
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(fighter: 10));
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 1));
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+
+            military.TryMoveFleet(attackers, neighbor.Id, out string moveError);
+            Assert.IsNull(moveError, moveError);
+            _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
+
+            Assert.AreEqual(OtherEmpireId, neighbor.OwnerId, "Sans Infanterie survivante, le systeme ne change pas de main.");
+            Assert.AreEqual(UnitBundle.Zero, military.GetGarrison(neighbor.Id, OtherEmpireId), "La garnison defenderesse est bien detruite.");
+            Assert.AreEqual(FleetStatus.Moving, attackers.Status, "Les vainqueurs sans Infanterie repartent.");
+            Assert.IsTrue(attackers.IsRetreating);
+        }
+
+        [Test]
+        public void ResolveBattle_VictoryWithInfantry_CapturesSystem()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, speed: 100f);
+            UnitTypeDefinition fighter = MakeUnitType(UnitType.Fighter, power: 20f, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry, fighter);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
+
+            // Meme rapport de force ecrasant, mais avec de l'Infanterie a bord : le systeme tombe.
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 4, fighter: 8));
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 1));
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+
+            military.TryMoveFleet(attackers, neighbor.Id, out _);
+            _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
+
+            Assert.AreEqual(PlayerId, neighbor.OwnerId, "Avec de l'Infanterie survivante, la conquete aboutit (non-regression).");
+            Assert.Greater(military.GetGarrison(neighbor.Id, PlayerId).Infantry, 0);
         }
 
         [Test]
@@ -755,9 +850,10 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, PlayerId, 1000f);
-            RecruitAndComplete(military, home, infantry, 2);
+            // 6 Infanterie : deux groupes de 3, l'exigence de colonisation des deux voisins libres (Phase 16).
+            RecruitAndComplete(military, home, infantry, 6);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet garrison);
-            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 1), out Fleet detached, out _);
+            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 3), out Fleet detached, out _);
 
             bool firstMoveSucceeds = military.TryMoveFleet(garrison, neighborA.Id, out _);
             bool secondMoveSucceeds = military.TryMoveFleet(detached, neighborB.Id, out string error);
@@ -821,8 +917,9 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
 
-            military.RestoreGarrison(home1.Id, PlayerId, new UnitBundle(infantry: 1), admiral: new Admiral("Neutre", 0f, 0f, 0f));
-            military.RestoreGarrison(home2.Id, OtherEmpireId, new UnitBundle(infantry: 1), admiral: new Admiral("Rapide", 0f, 0.5f, 0f));
+            // 3 Infanterie chacune : l'exigence de colonisation des systemes vises (Phase 16).
+            military.RestoreGarrison(home1.Id, PlayerId, new UnitBundle(infantry: 3), admiral: new Admiral("Neutre", 0f, 0f, 0f));
+            military.RestoreGarrison(home2.Id, OtherEmpireId, new UnitBundle(infantry: 3), admiral: new Admiral("Rapide", 0f, 0.5f, 0f));
 
             military.TryGetStationedFleet(home1.Id, PlayerId, out Fleet baselineFleet);
             military.TryGetStationedFleet(home2.Id, OtherEmpireId, out Fleet boostedFleet);

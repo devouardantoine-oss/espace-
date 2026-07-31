@@ -14,12 +14,13 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 15 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 16 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (sept types d'unités dont quatre classes de vaisseaux —
 > Chasseurs, Frégate, Croiseur, Cuirassé —, flottes nommées et commandées chacune par un Amiral
 > aux bonus/malus propres, plafonnées à 10 unités, nombre de flottes en campagne simultanée lié
-> à la recherche en Logistique, recrutement, résolution automatique des combats, colonisation),
-> diplomatie (guerre/paix/alliances/pactes de
+> à la recherche en Logistique, recrutement, résolution automatique des combats, et une
+> colonisation stratégique où l'Infanterie est indispensable — pour s'installer sur un système
+> libre comme pour occuper un système conquis), diplomatie (guerre/paix/alliances/pactes de
 > non-agression, opinion, traités commerciaux, embargos, ultimatums, échanges de ressources et
 > de territoires), recherche (7 domaines, 3 paliers chacun, bonus sur la production, le combat,
 > la vitesse des flottes et les gains d'opinion), espionnage (cinq missions déterministes selon
@@ -39,8 +40,8 @@ ravitaillement, terrain, commandement).
 > originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
 > Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
 > du jeu — carte immersive (Phase 12), choix de faction/système de départ (Phase 13), refonte
-> des flottes (Phase 14) et amiraux (Phase 15, ci-dessus) sont terminées ; restent la
-> colonisation stratégique, le déplacement longue distance et les rencontres spatiales, et une
+> des flottes (Phase 14), amiraux (Phase 15) et colonisation stratégique (Phase 16, ci-dessus)
+> sont terminées ; restent le déplacement longue distance et les rencontres spatiales, puis une
 > IA plus dynamique. Un seul système complexe à la fois, comme depuis la Phase 1.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
@@ -578,6 +579,23 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 | `GameSaveData.Version` 2→3 / `GarrisonSaveData` (étendu) | sauvegarde | 4 nouveaux champs (nom + 3 bonus de l'Amiral) ; une sauvegarde antérieure (Version < 3) ne les contient pas — `SaveService.Apply` génère alors un nouvel Amiral plutôt que d'en restaurer un « tout à zéro » à partir des champs absents |
 | `SystemInfoPanelController` / `ManagementWindowController` (étendus) | affichage | nom et trois bonus de l'Amiral affichés sous la garnison du panneau système et sous chaque ligne de l'onglet Flottes |
 
+### Briques de la colonisation stratégique (Phase 16)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `ColonizationRules` (nouveau) | coût de colonisation | fonctions statiques pures (même esprit que `CombatResolver`/`EmpirePlacement`) : `RequiredInfantry = 1 + population/1500 + (développement+1)/2` (1 à 6 unités sur les plages générées) et `InfantryLost = Clamp(⌈requis × (1.25 − stabilité)⌉, 1, requis)` — population et développement pilotent l'exigence (« plus développé = plus d'infanterie »), la stabilité pilote les pertes |
+| Proxy « défenses » | interprétation du brief | aucun champ de défense n'existe sur `StarSystemState`, et un système libre n'a par construction aucune garnison : le **niveau de développement** sert de mesure de ce qu'il faut surmonter — exactement le rôle qu'il joue déjà comme bonus de terrain défensif dans la formule de combat |
+| Échelle des pertes | 1..6 unités, pas 5..150 soldats | le brief raisonne en soldats ; le jeu compte en unités avec un plafond de 10 par flotte (Phase 14). L'exigence reste donc toujours réalisable en une seule flotte, aucun système n'est incolonisable |
+| `MilitaryService.TryMoveFleet` (étendu) | refus en amont | un départ vers un système libre est refusé si la flotte n'embarque pas l'Infanterie requise — même philosophie que les plafonds de la Phase 14 : ne jamais laisser partir un voyage voué à l'échec. Sûr parce que les statistiques d'un système libre ne changent jamais (rien ne les fait évoluer tant qu'il n'a pas de propriétaire) |
+| `MilitaryService.ResolveColonization` (nouveau) | installation | consomme `InfantryLost` fantassins ; **les colons ne se dissolvent plus systématiquement** (comportement d'avant cette phase) : le reste de la flotte devient la garnison de la nouvelle colonie. Une flotte qui n'embarquait que le strict nécessaire disparaît toujours entièrement |
+| Verrou d'invasion dans `ResolveBattle` | point 9 du brief | gagner la bataille ne suffit plus : sans Infanterie survivante, la garnison adverse est bien détruite mais le système reste à son propriétaire et les vainqueurs repartent. Une frappe de Chasseurs seuls reste donc une tactique valable (rôle « combat spatial »), simplement sans conquête. Corrige au passage un défaut préexistant : une victoire à la Pyrrhus sans survivant créait une garnison vide fantôme |
+| `MilitaryDecisionMaker` — trois corrections IA | indissociables du verrou | (1) l'IA vise le voisin libre **le moins exigeant** au lieu du premier trouvé (sinon elle bloque indéfiniment sur un système trop peuplé) ; (2) sa cible de garnison monte à `2 + exigence du voisin` quand un système libre est à portée — sans quoi le Pacifiste (cible 2) ne pourrait *jamais* coloniser — et elle recrute de l'Infanterie en priorité tant qu'elle n'en a pas assez, ce qui règle le cas du Militariste qui ne recrutait que l'unité la plus puissante et n'aurait donc jamais eu un seul fantassin ; (3) `SplitAttackForce` ne réserve plus la *dernière* Infanterie à domicile, sinon toute force d'attaque serait incapable d'occuper ce qu'elle conquiert |
+| `SystemColonizedEvent` (étendu) | rapport | nouveau champ `InfantryLost`. Rayon d'impact quasi nul : un seul émetteur, un seul abonné (test) — `TerritoryOverlayController` sonde `OwnerId` sans s'abonner |
+
+> **Aucun changement de sauvegarde, de scène ni d'interface `IMilitaryService`** : la phase
+> n'introduit aucun état persistant, et les trois doublures de test d'`IMilitaryService`
+> restent intactes.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -598,14 +616,14 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (434 tests, tous packages confondus).
+Voir §5 pour le compte total (451 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-15 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes et amiraux
+## 5. Tester les Phases 2-16 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux et colonisation
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -679,6 +697,11 @@ Dans la fenêtre Game :
   avec son nombre d'unités). Le nombre de systèmes « Independant » doit **diminuer au fil du
   temps** si vous laissez tourner l'horloge assez longtemps — les IA colonisent leurs voisins
   libres. Toucher le fond vide referme le panneau.
+- **Touchez un système « Independant »** : le panneau affiche en plus, depuis la Phase 16,
+  « Colonisation : X Infanterie requise » et le nombre de colons perdus à l'installation. Le
+  chiffre doit varier d'un système à l'autre — un système peu peuplé et peu développé exige
+  1 unité, un système à 4000 M d'habitants et développement 5 en exige 6 — et les pertes doivent
+  être d'autant plus lourdes que la stabilité affichée est basse.
 - **Touchez votre système d'origine** (celui portant le nom de votre empire) : le même
   panneau affiche en plus une section Économie (bouton **Investir**, coût croissant, et un
   bouton par type de bâtiment — « (construit) » et inactif une fois bâti, production visible
@@ -691,10 +714,15 @@ Dans la fenêtre Game :
   Frégate, Croiseur, Cuirassé, chacun avec sa description de rôle affichée en dessous —, un
   bouton par système voisin pour y envoyer toute la garnison). Recruter au-delà de 10 unités
   sur un même système doit être refusé (message en console) : le plafond par flotte introduit
-  en Phase 14. Envoyer une garnison vers un système libre le colonise à l'arrivée ; vers un
-  système ennemi, déclenche une bataille — le résultat
-  (victoire/défaite, pertes des deux camps) est systématiquement journalisé dans la console,
-  même panneau fermé.
+  en Phase 14. Envoyer une garnison vers un système libre le colonise à l'arrivée **si elle
+  transporte assez d'Infanterie** (Phase 16) — sinon le départ est refusé avec un message en
+  console nommant l'exigence ; à l'arrivée, les colons perdus sont décomptés et le reste de la
+  flotte devient la garnison de la nouvelle colonie (visible dans l'onglet Flottes). Vers un
+  système ennemi, déclenche une bataille — le résultat (victoire/défaite, pertes des deux
+  camps) est systématiquement journalisé dans la console, même panneau fermé. **Une victoire
+  sans Infanterie survivante détruit la garnison adverse mais ne capture pas le système**
+  (console : « victoire sans occupation ») : essayez d'attaquer avec une flotte de Chasseurs
+  seuls pour le vérifier.
 - **Touchez le système d'origine d'une IA** : le panneau doit afficher le nom de cet empire
   comme propriétaire, et sa garnison si elle en a recruté une — confirmation visuelle que
   l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
@@ -740,7 +768,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 434 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 451 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -800,12 +828,20 @@ facteur de taille ; seule logique de cette phase qui ne touche ni `OnGUI` ni le 
 fond, les halos et les labels restent vérifiables seulement en Play Mode, voir plus bas) ;
 `AdmiralTests` (Phase 15 — déterminisme du hachage, décorrélation par `ownerId` et par
 `fleetId`, bornes valides des trois bonus, exactement un malus garanti, nom jamais vide, variété
-sur un grand échantillon, aller-retour exact du constructeur direct). La Phase 14 (refonte des
-flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
+sur un grand échantillon, aller-retour exact du constructeur direct) ; `ColonizationRulesTests`
+(Phase 16 — exigence toujours entre 1 et 6 sur l'intégralité des plages générées, monotonie en
+population et en développement, pertes toujours entre 1 et l'exigence, pertes décroissantes avec
+la stabilité, consommation totale à stabilité minimale, valeurs de référence). La Phase 14
+(refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
 `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de vaisseaux)
 étendent des classes existantes, listées ci-dessus à leur phase d'origine ; l'onglet Flottes de
 `ManagementWindowController` reste, comme le reste de `Espace.UI`, vérifiable seulement en Play
-Mode.
+Mode. La Phase 16 étend de même `MilitaryServiceTests` (refus de départ faute d'Infanterie,
+reste de la flotte en garnison sur la colonie, dissolution quand la flotte n'embarquait que le
+strict nécessaire, victoire sans Infanterie qui ne capture pas, victoire avec Infanterie qui
+capture toujours) et `MilitaryDecisionMakerTests` (l'IA vise le voisin le moins exigeant, recrute
+au-delà de sa cible de personnalité quand un système libre est à portée, recrute de l'Infanterie
+en guerre quand elle n'en a aucune).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -847,6 +883,11 @@ flottes en déplacement simultané lié aux paliers de Logistique complétés) �
 `ManagementWindowController` reste, lui aussi, vérifiable seulement en Play Mode. La Phase 15
 recoupe le mélange de bits d'`Admiral.Compute` (déterminisme, décorrélation par `fleetId` et par
 `ownerId`, bornes des trois bonus, contrainte « exactement un malus » sur un grand échantillon).
+La Phase 16 recoupe les deux formules de `ColonizationRules` sur l'intégralité des plages
+générées (exigence bornée à 1..6, monotonie en population et en développement, pertes bornées à
+1..exigence et décroissantes avec la stabilité), plus la propriété structurante qui rend l'IA
+viable : la cible de garnison effective dans le pire cas (2 gardées + 6 requises = 8) reste sous
+le plafond de 10 unités par flotte de la Phase 14.
 
 ---
 
@@ -869,7 +910,7 @@ recoupe le mélange de bits d'`Admiral.Compute` (déterminisme, décorrélation 
 | 13 | Choix de faction et de système de départ | ✅ terminée |
 | 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | ✅ terminée |
 | 15 | Amiraux (bonus/malus, un par flotte) | ✅ terminée |
-| 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | à venir |
+| 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | ✅ terminée |
 | 17 | Déplacement longue distance + rencontres spatiales | à venir |
 | 18 | IA plus dynamique, ajustée aux nouvelles règles | à venir |
 

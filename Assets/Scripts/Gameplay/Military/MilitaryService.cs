@@ -49,6 +49,15 @@ namespace Espace.Gameplay.Military
     /// La colonisation d'un systeme non possede reste, elle, entierement libre.
     /// </para>
     /// <para>
+    /// <b>Colonisation et invasion (Phase 16) :</b> coloniser un systeme libre exige
+    /// desormais un nombre d'Infanterie fonction de sa population et de son developpement, et
+    /// en consomme une partie a l'installation (voir <see cref="ColonizationRules"/> et
+    /// <see cref="ResolveColonization"/>) ; l'exigence est verifiee des le depart dans
+    /// <see cref="TryMoveFleet"/>. Symetriquement, remporter une bataille ne capture le
+    /// systeme que s'il reste de l'Infanterie pour l'occuper — sans quoi la garnison adverse
+    /// est detruite mais le territoire ne change pas de main.
+    /// </para>
+    /// <para>
     /// <b>Amiraux (Phase 15) :</b> chaque <see cref="Fleet"/> a un <see cref="Admiral"/>
     /// genere automatiquement a sa creation (voir <see cref="Fleet"/>) dont les bonus/malus
     /// s'ajoutent aux facteurs existants — attaque dans <see cref="ComputeAttackerModifier"/>,
@@ -257,6 +266,22 @@ namespace Espace.Gameplay.Military
                 return false;
             }
 
+            // Colonisation (Phase 16) : verifiee au depart plutot qu'a l'arrivee, meme
+            // philosophie que les plafonds de la Phase 14 — ne jamais laisser partir un
+            // voyage voue a l'echec. Les statistiques d'un systeme libre ne changent jamais
+            // (rien ne les fait evoluer tant qu'il n'a pas de proprietaire), donc l'exigence
+            // calculee ici vaut encore a l'arrivee.
+            if (destination.OwnerId == StarSystemState.UnownedOwnerId)
+            {
+                int requiredInfantry = ColonizationRules.RequiredInfantry(destination);
+                if (fleet.Composition.Infantry < requiredInfantry)
+                {
+                    error = $"Colonisation refusee : {requiredInfantry} Infanterie requise pour {destination.Name}, "
+                        + $"cette flotte n'en transporte que {fleet.Composition.Infantry}.";
+                    return false;
+                }
+            }
+
             if (destination.OwnerId != StarSystemState.UnownedOwnerId
                 && destination.OwnerId != fleet.OwnerId
                 && _diplomacy.GetStatus(fleet.OwnerId, destination.OwnerId) != DiplomaticStatus.War)
@@ -390,11 +415,7 @@ namespace Espace.Gameplay.Military
 
             if (system.OwnerId == StarSystemState.UnownedOwnerId)
             {
-                system.OwnerId = fleet.OwnerId;
-                // Les colons ne restent pas une armee mobile : la flotte se dissout dans la
-                // colonie qu'elle vient de fonder.
-                _fleets.Remove(fleet);
-                _eventBus.Publish(new SystemColonizedEvent(destinationId, fleet.OwnerId));
+                ResolveColonization(fleet, system);
                 return;
             }
 
@@ -406,6 +427,75 @@ namespace Espace.Gameplay.Military
             }
 
             ResolveBattle(fleet, system);
+        }
+
+        /// <summary>
+        /// Installation d'une flotte sur un systeme libre (Phase 16) : consomme
+        /// <see cref="ColonizationRules.InfantryLost"/> unites d'Infanterie, le reste de la
+        /// flotte devenant la garnison de la nouvelle colonie.
+        /// <para>
+        /// <b>Les colons ne se dissolvent plus systematiquement</b> (comportement d'avant la
+        /// Phase 16) : seuls les fantassins consommes par l'installation restent sur place.
+        /// Une flotte qui n'embarquait que le strict necessaire disparait donc toujours
+        /// entierement, mais une flotte plus fournie laisse une vraie garnison.
+        /// </para>
+        /// <para>
+        /// <b>Le repli en cas d'Infanterie insuffisante est de la ceinture-bretelles :</b>
+        /// <see cref="TryMoveFleet"/> refuse deja le depart, et le cas est en pratique
+        /// inatteignable (les statistiques d'un systeme libre ne changent jamais, aucun
+        /// systeme ne redevient libre, la composition d'une flotte est figee en vol). Il est
+        /// traite quand meme plutot que de laisser une colonisation gratuite passer si l'une
+        /// de ces trois hypotheses tombait un jour.
+        /// </para>
+        /// </summary>
+        private void ResolveColonization(Fleet fleet, StarSystemState system)
+        {
+            int required = ColonizationRules.RequiredInfantry(system);
+
+            if (fleet.Composition.Infantry < required)
+            {
+                GameLog.Warning(
+                    $"[Colonization] {system.Name} : {required} Infanterie requise, la flotte {fleet.Name} n'en a que "
+                    + $"{fleet.Composition.Infantry}. Repli sur le systeme d'origine.");
+                RetreatToOrigin(fleet, system);
+                return;
+            }
+
+            int lost = ColonizationRules.InfantryLost(system);
+            system.OwnerId = fleet.OwnerId;
+            fleet.SetComposition(fleet.Composition - UnitBundle.Of(UnitType.Infantry, lost));
+
+            GameLog.Info(
+                $"[Colonization] {system.Name} colonise par l'empire {fleet.OwnerId} "
+                + $"(population {system.Population} M, developpement {system.DevelopmentLevel}, stabilite {system.Stability:0.00}) : "
+                + $"{required} Infanterie engagee, {lost} perdue a l'installation.");
+
+            if (fleet.Composition.IsEmpty)
+            {
+                // Toute la flotte s'est fondue dans la colonie qu'elle vient de fonder.
+                _fleets.Remove(fleet);
+            }
+            else
+            {
+                fleet.CompleteMove(system.Id);
+                MergeIntoStationedFleet(fleet);
+            }
+
+            _eventBus.Publish(new SystemColonizedEvent(system.Id, fleet.OwnerId, lost));
+        }
+
+        /// <summary>Renvoie <paramref name="fleet"/> vers son systeme d'origine, ou la retire si elle n'a plus rien a replier. Partage par la retraite apres defaite et le repli de colonisation.</summary>
+        private void RetreatToOrigin(Fleet fleet, StarSystemState from)
+        {
+            if (fleet.Composition.IsEmpty)
+            {
+                _fleets.Remove(fleet);
+                return;
+            }
+
+            StarSystemId retreatTo = fleet.OriginSystemId;
+            GameDate retreatArrival = ComputeArrivalDate(from, _map.GetSystem(retreatTo), fleet);
+            fleet.BeginMove(retreatTo, retreatArrival, isRetreating: true);
         }
 
         private void ResolveBattle(Fleet attackerFleet, StarSystemState system)
@@ -440,8 +530,22 @@ namespace Espace.Gameplay.Military
                     _fleets.Remove(defenderFleet);
                 }
 
-                system.OwnerId = attackerFleet.OwnerId;
                 attackerFleet.SetComposition(outcome.AttackerSurvivors);
+
+                // Invasion (Phase 16, point 9 du brief) : gagner la bataille spatiale ne suffit
+                // pas a prendre le systeme, il faut de l'Infanterie survivante pour l'occuper.
+                // Une frappe de Chasseurs seuls reste une tactique valable — elle detruit la
+                // garnison adverse — mais laisse le systeme a son proprietaire.
+                if (outcome.AttackerSurvivors.Infantry <= 0)
+                {
+                    GameLog.Info(
+                        $"[Battle] {system.Name} : victoire sans occupation — aucune Infanterie survivante pour envahir, "
+                        + "le systeme reste a son proprietaire.");
+                    RetreatToOrigin(attackerFleet, system);
+                    return;
+                }
+
+                system.OwnerId = attackerFleet.OwnerId;
                 attackerFleet.CompleteMove(system.Id);
                 MergeIntoStationedFleet(attackerFleet);
                 return;
@@ -452,16 +556,8 @@ namespace Espace.Gameplay.Military
                 defenderFleet.SetComposition(outcome.DefenderSurvivors);
             }
 
-            if (outcome.AttackerSurvivors.IsEmpty)
-            {
-                _fleets.Remove(attackerFleet);
-                return;
-            }
-
-            StarSystemId retreatTo = attackerFleet.OriginSystemId;
             attackerFleet.SetComposition(outcome.AttackerSurvivors);
-            GameDate retreatArrival = ComputeArrivalDate(system, _map.GetSystem(retreatTo), attackerFleet);
-            attackerFleet.BeginMove(retreatTo, retreatArrival, isRetreating: true);
+            RetreatToOrigin(attackerFleet, system);
         }
 
         /// <summary>Moral approxime par la stabilite du systeme d'origine de l'attaquant, module par le commandement de sa personnalite et le bonus d'attaque de son Amiral (Phase 15).</summary>

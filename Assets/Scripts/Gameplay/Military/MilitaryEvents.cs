@@ -48,10 +48,14 @@ namespace Espace.Gameplay.Military
         public readonly StarSystemId SystemId;
         public readonly int EmpireId;
 
-        public SystemColonizedEvent(StarSystemId systemId, int empireId)
+        /// <summary>Unites d'Infanterie consommees par l'installation (Phase 16, voir <see cref="ColonizationRules.InfantryLost"/>).</summary>
+        public readonly int InfantryLost;
+
+        public SystemColonizedEvent(StarSystemId systemId, int empireId, int infantryLost)
         {
             SystemId = systemId;
             EmpireId = empireId;
+            InfantryLost = infantryLost;
         }
     }
 

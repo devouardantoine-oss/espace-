@@ -94,6 +94,12 @@ namespace Espace.UI
 
             DrawIdentity(system);
 
+            if (system.OwnerId == StarSystemState.UnownedOwnerId)
+            {
+                GUILayout.Space(6);
+                DrawColonizationInfo(system);
+            }
+
             bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
             if (ownedByPlayer && _economy != null)
             {
@@ -109,6 +115,21 @@ namespace Espace.UI
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// Cout de colonisation d'un systeme libre (Phase 16). Appelle directement les regles
+        /// pures <see cref="ColonizationRules"/> plutot que de passer par une methode de
+        /// service : <c>Espace.UI</c> reference deja <c>Espace.Gameplay</c>, et il n'y a aucun
+        /// etat a interroger.
+        /// </summary>
+        private void DrawColonizationInfo(StarSystemState system)
+        {
+            int required = ColonizationRules.RequiredInfantry(system);
+            int lost = ColonizationRules.InfantryLost(system);
+
+            GUILayout.Label($"Colonisation : {required} Infanterie requise", UITheme.Label);
+            GUILayout.Label($"dont {lost} perdue(s) a l'installation", UITheme.MutedLabel);
         }
 
         private void DrawIdentity(StarSystemState system)
