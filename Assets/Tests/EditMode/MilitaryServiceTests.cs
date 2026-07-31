@@ -1050,7 +1050,11 @@ namespace Espace.Tests.EditMode
 
             Assert.IsTrue(baselineMoved, baselineError);
             Assert.IsTrue(boostedMoved, boostedError);
-            Assert.Less(boostedFleet.ArrivalDate.Value, baselineFleet.ArrivalDate.Value, "+50% de vitesse doit reduire la duree du trajet.");
+            // Comparaison sur l'indice de jour : Assert.Less n'accepte que des types numeriques,
+            // pas un GameDate — meme si celui-ci definit bien ses operateurs de comparaison.
+            Assert.Less(
+                boostedFleet.ArrivalDate.Value.ToDayIndex(), baselineFleet.ArrivalDate.Value.ToDayIndex(),
+                "+50% de vitesse doit reduire la duree du trajet.");
         }
 
         [Test]
