@@ -31,13 +31,43 @@ namespace Espace.Tests.EditMode
             field.SetValue(target, value);
         }
 
-        private static readonly UnitTypeDefinition[] Catalog =
+        /// <summary>
+        /// Catalogue recree avant chaque test.
+        /// <para>
+        /// <b>Surtout pas un <c>static readonly</c> initialise a la volee :</b> un
+        /// <see cref="ScriptableObject"/> est un objet natif Unity, detruit au rechargement du
+        /// domaine (recompilation, entree en Play Mode). L'enveloppe manageee survit dans le
+        /// champ statique mais pointe alors sur un objet detruit, que Unity fait passer pour
+        /// <c>null</c> — <c>CombatResolver</c> ignore silencieusement ces entrees et renvoie une
+        /// puissance nulle, faisant echouer la moitie de cette classe de facon impossible a
+        /// reproduire d'une machine a l'autre. Les creer dans <c>SetUp</c> et les detruire dans
+        /// <c>TearDown</c> est le seul cycle de vie fiable.
+        /// </para>
+        /// </summary>
+        private UnitTypeDefinition[] Catalog;
+
+        [SetUp]
+        public void SetUp()
         {
-            MakeUnitType(UnitType.Infantry, 10f),
-            MakeUnitType(UnitType.Armored, 25f),
-            MakeUnitType(UnitType.SpecialForces, 40f),
-            MakeUnitType(UnitType.Fighter, 60f),
-        };
+            Catalog = new[]
+            {
+                MakeUnitType(UnitType.Infantry, 10f),
+                MakeUnitType(UnitType.Armored, 25f),
+                MakeUnitType(UnitType.SpecialForces, 40f),
+                MakeUnitType(UnitType.Fighter, 60f),
+            };
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (UnitTypeDefinition unitType in Catalog)
+            {
+                Object.DestroyImmediate(unitType);
+            }
+
+            Catalog = null;
+        }
 
         [Test]
         public void ComputePower_SumsQuantityTimesPowerAcrossTypes()

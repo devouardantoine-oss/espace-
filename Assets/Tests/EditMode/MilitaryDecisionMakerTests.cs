@@ -165,17 +165,23 @@ namespace Espace.Tests.EditMode
             return military;
         }
 
-        private void GiveCredits(EconomyService economy, StarSystemState system, int empireId, float minimumAmount)
+        /// <summary>
+        /// Cree directement <paramref name="amount"/> de <b>chaque</b> ressource dans le tresor
+        /// de <paramref name="empireId"/>.
+        /// <para>
+        /// <b>Un octroi direct, pas une journee de production simulee.</b> L'ancienne version
+        /// gonflait la richesse du systeme et publiait un jour de jeu, ce qui ne produisait que
+        /// des <i>credits</i> — alors qu'une unite coute aussi des minerais, eux issus de la
+        /// population (1000 habitants = 10 minerais par jour, soit exactement de quoi recruter
+        /// une seule unite). Tout test recrutant deux unites ou plus echouait donc sur
+        /// « Ressources insuffisantes », pour une raison sans aucun rapport avec ce qu'il
+        /// verifiait. <c>Grant</c> est deterministe et ne depend d'aucun reglage d'economie.
+        /// </para>
+        /// </summary>
+        private static void GiveResources(IEconomyService economy, int empireId, float amount)
         {
-            int originalWealth = system.Wealth;
-            float originalTax = economy.GetTaxRate(empireId);
-
-            system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
-            economy.SetTaxRate(empireId, 1f);
-            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
-
-            system.Wealth = originalWealth;
-            economy.SetTaxRate(empireId, originalTax);
+            economy.Grant(empireId, new ResourceBundle(
+                credits: amount, minerals: amount, energy: amount, food: amount, influence: amount));
         }
 
         private void RecruitAndComplete(MilitaryService military, StarSystemState system, UnitTypeDefinition unitType, int count)
@@ -211,7 +217,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId); // TargetGarrisonSize = 8
 
             MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
@@ -228,7 +234,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             RecruitAndComplete(military, home, infantry, 2); // Pacifist : TargetGarrisonSize = 2, deja atteinte
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
@@ -247,7 +253,7 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, creditsCost: 20f);
             UnitTypeDefinition specialForces = MakeUnitType(UnitType.SpecialForces, power: 40f, creditsCost: 30f);
             MilitaryService military = MakeMilitary(map, economy, infantry, specialForces);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId); // PrefersStrongestUnit = true
 
             MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
@@ -265,7 +271,7 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, creditsCost: 20f);
             UnitTypeDefinition specialForces = MakeUnitType(UnitType.SpecialForces, power: 40f, creditsCost: 30f);
             MilitaryService military = MakeMilitary(map, economy, infantry, specialForces);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId); // PrefersStrongestUnit = false
 
             MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
@@ -285,7 +291,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // Cible libre Pop 1000 / Dev 3 -> 3 Infanterie requises (Phase 16), plus les 2 gardees a domicile.
             RecruitAndComplete(military, home, infantry, 5);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
@@ -314,7 +320,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // 2 Infanterie : il en faudrait 3 pour coloniser plus 2 a garder a domicile (Phase 16).
             RecruitAndComplete(military, home, infantry, 2);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
@@ -336,7 +342,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             RecruitAndComplete(military, home, infantry, 2); // deja a la cible de personnalite
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
@@ -385,7 +391,7 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, creditsCost: 20f, mineralsCost: 0f);
             UnitTypeDefinition battleship = MakeUnitType(UnitType.Battleship, power: 90f, creditsCost: 30f, mineralsCost: 0f);
             MilitaryService military = MakeMilitary(map, economy, infantry, battleship);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(battleship: 2)); // aucune Infanterie
             _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
@@ -409,7 +415,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, NeighborEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
             military.RestoreGarrison(home.Id, NeighborEmpireId, new UnitBundle(infantry: 50));
             RecruitAndComplete(military, enemy, infantry, 1); // adversaire quasi sans defense
@@ -433,8 +439,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
-            GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
             RecruitAndComplete(military, enemy, infantry, 1);
@@ -461,8 +467,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
-            GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // Garnison mixte restauree directement (au-dela du plafond de recrutement de 10, Phase 14).
             // Total (9) >= TargetGarrisonSize du Militariste (8) : le recrutement ne doit pas primer sur l'attaque.
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 2, fighter: 4, cruiser: 3));
@@ -494,8 +500,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
-            GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
+            GiveResources(economy, NeighborEmpireId, 1000f);
             // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
             RecruitAndComplete(military, enemy, infantry, 1);
@@ -521,7 +527,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
             // Garnison encore sous la cible du Militariste (8) : le recrutement doit primer.
             RecruitAndComplete(military, home, infantry, 1);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
@@ -546,7 +552,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, capital, AiEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f);
             military.RestoreGarrison(capital.Id, AiEmpireId, new UnitBundle(infantry: 8));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
@@ -573,7 +579,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 2000f);
+            GiveResources(economy, AiEmpireId, 2000f);
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
@@ -600,7 +606,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 2000f);
+            GiveResources(economy, AiEmpireId, 2000f);
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
@@ -636,7 +642,7 @@ namespace Espace.Tests.EditMode
             // Vitesse tres faible : les flottes envoyees restent en vol pendant tout le test.
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 0.01f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, AiEmpireId, 3000f);
+            GiveResources(economy, AiEmpireId, 3000f);
             // Bien au-dessus de la cible du Militariste (8) : le recrutement ne doit jamais
             // primer sur la colonisation dans ce scenario, meme apres deux departs.
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));

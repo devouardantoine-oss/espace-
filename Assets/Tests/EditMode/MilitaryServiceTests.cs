@@ -180,17 +180,23 @@ namespace Espace.Tests.EditMode
         }
 
         /// <summary>Donne au tresor de <paramref name="empireId"/> au moins <paramref name="minimumAmount"/> de Credits.</summary>
-        private void GiveCredits(EconomyService economy, StarSystemState system, int empireId, float minimumAmount)
+        /// <summary>
+        /// Cree directement <paramref name="amount"/> de <b>chaque</b> ressource dans le tresor
+        /// de <paramref name="empireId"/>.
+        /// <para>
+        /// <b>Un octroi direct, pas une journee de production simulee.</b> L'ancienne version
+        /// gonflait la richesse du systeme et publiait un jour de jeu, ce qui ne produisait que
+        /// des <i>credits</i> — alors qu'une unite coute aussi des minerais, eux issus de la
+        /// population (1000 habitants = 10 minerais par jour, soit exactement de quoi recruter
+        /// une seule unite). Tout test recrutant deux unites ou plus echouait donc sur
+        /// « Ressources insuffisantes », pour une raison sans aucun rapport avec ce qu'il
+        /// verifiait. <c>Grant</c> est deterministe et ne depend d'aucun reglage d'economie.
+        /// </para>
+        /// </summary>
+        private static void GiveResources(IEconomyService economy, int empireId, float amount)
         {
-            int originalWealth = system.Wealth;
-            float originalTax = economy.GetTaxRate(empireId);
-
-            system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
-            economy.SetTaxRate(empireId, 1f);
-            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
-
-            system.Wealth = originalWealth;
-            economy.SetTaxRate(empireId, originalTax);
+            economy.Grant(empireId, new ResourceBundle(
+                credits: amount, minerals: amount, energy: amount, food: amount, influence: amount));
         }
 
         // --- Construction / validation --------------------------------------------
@@ -232,7 +238,7 @@ namespace Espace.Tests.EditMode
             GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
             home.DevelopmentLevel = 0;
             EconomyService economy = MakeEconomy(map);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             MilitaryService military = MakeMilitary(map, economy, MakeUnitType(UnitType.SpecialForces, minDevelopment: 2));
 
             bool success = military.TryRecruitUnits(home.Id, military.UnitCatalog[0], 1, out string error);
@@ -281,7 +287,7 @@ namespace Espace.Tests.EditMode
         {
             GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
             EconomyService economy = MakeEconomy(map);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             float before = economy.GetTreasury(PlayerId).Credits;
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, creditsCost: 50f, mineralsCost: 20f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
@@ -300,7 +306,7 @@ namespace Espace.Tests.EditMode
         {
             GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
             EconomyService economy = MakeEconomy(map);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, recruitmentDays: 3);
             MilitaryService military = MakeMilitary(map, economy, infantry);
 
@@ -336,7 +342,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 1);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
 
@@ -476,7 +482,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             // 3 Infanterie : l'exigence de colonisation du systeme voisin (Pop 1000, Dev 3) depuis la Phase 16.
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
@@ -501,7 +507,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f); // arrivee en 1 jour
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             // Voisin Pop 1000 / Dev 3 / Stab 1 -> 3 Infanterie requises, 1 perdue a l'installation (Phase 16).
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
@@ -532,7 +538,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 2); // 2 < 3 requises
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
 
@@ -553,7 +559,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 1);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
             military.TryMoveFleet(fleet, neighbor.Id, out _);
@@ -576,7 +582,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
 
             RecruitAndComplete(military, neighbor, infantry, 3); // garnison existante sur la destination
             RecruitAndComplete(military, home, infantry, 2);
@@ -598,7 +604,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
             _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
@@ -676,8 +682,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
-            GiveCredits(economy, neighbor, OtherEmpireId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
+            GiveResources(economy, OtherEmpireId, 1000f);
 
             RecruitAndComplete(military, home, infantry, 2); // attaquant faible
             // Plafond de 10 unites par flotte (Phase 14) : la garnison ecrasante du defenseur
@@ -707,8 +713,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
-            GiveCredits(economy, neighbor, OtherEmpireId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
+            GiveResources(economy, OtherEmpireId, 1000f);
 
             RecruitAndComplete(military, home, infantry, 1);
             // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
@@ -731,8 +737,8 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
-            GiveCredits(economy, neighbor, OtherEmpireId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
+            GiveResources(economy, OtherEmpireId, 1000f);
 
             RecruitAndComplete(military, home, infantry, 10);
             RecruitAndComplete(military, neighbor, infantry, 10); // meme puissance brute
@@ -752,7 +758,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
 
@@ -770,7 +776,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 3);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
             _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.Alliance);
@@ -790,7 +796,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 2);
 
             bool success = military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 5), out Fleet detached, out string error);
@@ -807,7 +813,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 5);
 
             bool success = military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 2), out Fleet detached, out string error);
@@ -825,7 +831,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 2);
 
             military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 2), out _, out _);
@@ -843,7 +849,7 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, upkeepPerDay: 2f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             home.Wealth = 0; // isole l'entretien de toute production ce jour-la
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 3);
 
             float before = economy.GetTreasury(PlayerId).Credits;
@@ -862,7 +868,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, upkeepPerDay: 999f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 1);
             home.Wealth = 0;
             economy.SetTaxRate(PlayerId, 0f);
@@ -904,7 +910,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 9); // garnison a 9
 
             bool success = military.TryRecruitUnits(home.Id, infantry, 2, out string error);
@@ -920,7 +926,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 9);
 
             bool success = military.TryRecruitUnits(home.Id, infantry, 1, out string error);
@@ -935,7 +941,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
 
             // Deux ordres de 5 (encore en attente, pas encore dans la garnison) : le troisieme doit etre refuse.
             Assert.IsTrue(military.TryRecruitUnits(home.Id, infantry, 5, out _));
@@ -994,7 +1000,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 1);
             RecruitAndComplete(military, neighbor, infantry, 1);
 
@@ -1011,7 +1017,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 1);
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
@@ -1160,7 +1166,7 @@ namespace Espace.Tests.EditMode
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
+            GiveResources(economy, PlayerId, 1000f);
             RecruitAndComplete(military, home, infantry, 5);
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet garrison);
 

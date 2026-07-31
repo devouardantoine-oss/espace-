@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using Espace.Core;
 
 namespace Espace.UI
@@ -12,6 +13,14 @@ namespace Espace.UI
     /// ni <c>ServiceLocator</c> — elle est donc testable en EditMode et recoupee
     /// independamment en Python, contrairement au reste de cette phase (purement de
     /// l'agencement visuel, verifiable seulement en Play Mode par l'utilisateur).
+    /// </para>
+    /// <para>
+    /// <b>Toutes les mises en forme numeriques passent par <see cref="CultureInfo.InvariantCulture"/> :</b>
+    /// sans cela, le separateur decimal suit la langue du systeme et la meme valeur s'affiche
+    /// « 1.5k » sur un poste anglais et « 1,5k » sur un poste francais. Le projet tient au
+    /// determinisme complet — meme entree, meme sortie, sur n'importe quelle machine — et un
+    /// affichage dependant du panneau de configuration de l'utilisateur y contrevient
+    /// directement, en plus de rendre les tests infidelisables.
     /// </para>
     /// </summary>
     public static class HudFormatter
@@ -37,15 +46,15 @@ namespace Espace.UI
 
             if (magnitude < ThousandThreshold)
             {
-                return $"{sign}{magnitude:0}";
+                return sign + magnitude.ToString("0", CultureInfo.InvariantCulture);
             }
 
             if (magnitude < MillionThreshold)
             {
-                return $"{sign}{magnitude / 1000f:0.0}k";
+                return sign + (magnitude / 1000f).ToString("0.0", CultureInfo.InvariantCulture) + "k";
             }
 
-            return $"{sign}{magnitude / MillionThreshold:0.0}M";
+            return sign + (magnitude / MillionThreshold).ToString("0.0", CultureInfo.InvariantCulture) + "M";
         }
 
         /// <summary>Comme <see cref="FormatResource"/>, prefixe de "+" si strictement positif (ex. un revenu net).</summary>
@@ -60,6 +69,6 @@ namespace Espace.UI
         }
 
         /// <summary>Fraction (0..1) en pourcentage entier, ex. 0.42 -> "42%".</summary>
-        public static string FormatPercent(float fraction) => $"{fraction * 100f:0}%";
+        public static string FormatPercent(float fraction) => (fraction * 100f).ToString("0", CultureInfo.InvariantCulture) + "%";
     }
 }

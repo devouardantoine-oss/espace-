@@ -321,7 +321,7 @@ namespace Espace.Tests.EditMode
             bool success = service.TryStartConstruction(system.Id, building, out string error);
 
             Assert.IsFalse(success);
-            StringAssert.Contains("appartient", error);
+            StringAssert.Contains("proprietaire", error);
         }
 
         [Test]
@@ -521,7 +521,7 @@ namespace Espace.Tests.EditMode
             bool success = service.TryInvestInDevelopment(system.Id, out string error);
 
             Assert.IsFalse(success);
-            StringAssert.Contains("appartient", error);
+            StringAssert.Contains("proprietaire", error);
         }
 
         // --- Multi-empire (Phase 5) --------------------------------------------
