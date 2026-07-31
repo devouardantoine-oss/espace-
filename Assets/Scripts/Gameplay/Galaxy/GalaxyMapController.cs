@@ -43,7 +43,8 @@ namespace Espace.Gameplay.Galaxy
                 return;
             }
 
-            _map = GalaxyGenerator.Generate(config.ToGenerationParameters());
+            GalaxyGenerationParameters parameters = config.ToGenerationParameters();
+            _map = GalaxyGenerator.Generate(parameters);
             GameLog.Info($"[GalaxyMap] Galaxie generee : {_map.Systems.Count} systemes, {_map.Links.Count} routes hyperspatiales.");
 
             // Publiee sous son type concret (comme GameManager en Phase 1) : d'autres
@@ -54,9 +55,13 @@ namespace Espace.Gameplay.Galaxy
                 ServiceLocator.Register(_map);
             }
 
-            Dictionary<StarSystemId, Vector3> worldPositions = BuildMarkers(_map);
+            GalaxyBackgroundFactory.Build(gameObject, parameters);
+
+            Dictionary<StarSystemId, Vector3> worldPositions = BuildMarkers(_map, parameters.Seed);
             BuildLinkRenderer(_map, worldPositions);
-            SetupCamera();
+            GalaxyCameraController cameraController = SetupCamera();
+            BuildTerritoryOverlay(_map, worldPositions);
+            BuildSystemLabels(_map, worldPositions, cameraController);
         }
 
         /// <summary>
@@ -76,7 +81,7 @@ namespace Espace.Gameplay.Galaxy
         }
 
         /// <summary>Instancie un marqueur par systeme et retourne leurs positions monde, indexees par identifiant.</summary>
-        private Dictionary<StarSystemId, Vector3> BuildMarkers(GalaxyMap map)
+        private Dictionary<StarSystemId, Vector3> BuildMarkers(GalaxyMap map, int seed)
         {
             var systemsRoot = new GameObject("Systems").transform;
             systemsRoot.SetParent(transform, worldPositionStays: false);
@@ -94,7 +99,8 @@ namespace Espace.Gameplay.Galaxy
                 markerObject.transform.position = worldPosition;
 
                 var marker = markerObject.AddComponent<StarSystemMarker>();
-                marker.Initialize(system, circleSprite);
+                StarSystemVisualProfile profile = StarSystemVisualProfile.Compute(system, seed);
+                marker.Initialize(system, circleSprite, profile);
             }
 
             return worldPositions;
@@ -111,13 +117,13 @@ namespace Espace.Gameplay.Galaxy
         }
 
         /// <summary>Attache camera et selection tactile a la camera principale de la scene.</summary>
-        private void SetupCamera()
+        private GalaxyCameraController SetupCamera()
         {
             Camera mainCamera = Camera.main;
             if (mainCamera == null)
             {
                 GameLog.Error("[GalaxyMapController] Aucune camera principale (tag MainCamera) dans la scene.");
-                return;
+                return null;
             }
 
             mainCamera.orthographic = true;
@@ -126,6 +132,33 @@ namespace Espace.Gameplay.Galaxy
             cameraController.Initialize(config.GalaxyRadius);
 
             mainCamera.gameObject.AddComponent<GalaxySelectionController>();
+
+            return cameraController;
+        }
+
+        /// <summary>Instancie le halo de territoire par empire (Phase 12).</summary>
+        private void BuildTerritoryOverlay(GalaxyMap map, Dictionary<StarSystemId, Vector3> worldPositions)
+        {
+            var overlayObject = new GameObject("TerritoryOverlay");
+            overlayObject.transform.SetParent(transform, worldPositionStays: false);
+
+            var overlay = overlayObject.AddComponent<TerritoryOverlayController>();
+            overlay.Initialize(map, worldPositions);
+        }
+
+        /// <summary>Instancie les labels de nom/details bascules par le zoom (Phase 12).</summary>
+        private void BuildSystemLabels(GalaxyMap map, Dictionary<StarSystemId, Vector3> worldPositions, GalaxyCameraController cameraController)
+        {
+            if (cameraController == null)
+            {
+                return;
+            }
+
+            var labelsObject = new GameObject("SystemLabelController");
+            labelsObject.transform.SetParent(transform, worldPositionStays: false);
+
+            var labelController = labelsObject.AddComponent<SystemLabelController>();
+            labelController.Initialize(map, worldPositions, cameraController, Camera.main);
         }
     }
 }

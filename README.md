@@ -14,18 +14,28 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 11 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 12 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
 > colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
 > commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
 > (7 domaines, 3 paliers chacun, bonus sur la production, le combat, la vitesse des flottes et
 > les gains d'opinion), espionnage (cinq missions déterministes selon un rapport de puissance),
 > une sauvegarde JSON automatique (la partie reprend exactement où elle en était après une
-> fermeture ou une mise en arrière-plan, sur un seul fichier local), et désormais une
-> interface complète : menu principal, barre d'état permanente, panneau de système contextuel,
-> fenêtre de gestion à onglets et menu pause — le jeu se pilote enfin de bout en bout sans
-> dérouler la console. La génération de la galaxie est déterministe (graine fixe) pour que la
-> même galaxie réapparaisse d'une session à l'autre.
+> fermeture ou une mise en arrière-plan, sur un seul fichier local), une interface complète
+> (menu principal, barre d'état permanente, panneau de système contextuel, fenêtre de gestion à
+> onglets et menu pause), et désormais une carte galactique immersive : fond spatial (étoiles,
+> nébuleuses) procédural, systèmes stylés (couleur, anneaux, lunes, taille, légère animation,
+> tous déterministes), halos de territoire par couleur d'empire, et noms/détails affichés
+> automatiquement selon le niveau de zoom. La génération de la galaxie (et son fond) est
+> déterministe (graine fixe) pour que la même galaxie réapparaisse d'une session à l'autre.
+>
+> **Refonte V1 en cours (inspirée de Star Wars dans ses mécaniques, avec des noms 100%
+> originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
+> Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
+> du jeu — carte immersive (Phase 12, ci-dessus), choix de faction/système de départ,
+> refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie),
+> amiraux, colonisation stratégique, déplacement longue distance et rencontres spatiales, IA
+> plus dynamique. Un seul système complexe à la fois, comme depuis la Phase 1.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -487,6 +497,28 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 > « Nouvelle partie » doit explicitement lui redemander de repartir de la date de début plutôt
 > que de laisser filer celle de la partie précédente.
 
+### Briques de la carte galactique immersive (Phase 12)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `StarSystemVisualProfile` | style visuel déterministe | fonction statique pure : teinte (parmi une palette de 8 couleurs curatées), présence d'un anneau (~30%), nombre de lunes (0-2), facteur de taille — dérivés d'un hachage de bits (variante de la finalisation MurmurHash3 32 bits) de l'identifiant du système et de la graine, jamais de `UnityEngine.Random` ; testable en EditMode et recoupé en Python |
+| `GalaxyBackgroundFactory` | fond spatial | texture procédurale unique (étoiles éparses par hachage par pixel, nébuleuses par bruit de Perlin modulé par des taches radiales), déterministe depuis la même graine que la galaxie — même technique que `RuntimeSpriteFactory` (pas de texture importée) |
+| `RuntimeSpriteFactory` (étendu) | sprites anneau/lune | `GetRingSprite()` (disque avec un trou, contour adouci des deux côtés) et `GetMoonSprite()` (réutilise `GetCircleSprite()`, une lune n'étant qu'un petit disque) |
+| `StarSystemMarker` (étendu) | style et légère animation | applique `StarSystemVisualProfile` (teinte modulée par le développement, taille, anneau et lunes en enfants du marqueur), rotation lente de l'anneau — purement cosmétique, aucun impact sur la simulation |
+| `TerritoryOverlayController` | halo de territoire par empire | un halo par système, mis à jour par **sondage** (`Update`, pas d'abonnement à un événement précis) : au moins deux événements distincts peuvent changer un propriétaire (`SystemColonizedEvent`, `BattleResolvedEvent`) et rien ne garantit qu'il n'y en aura pas d'autres — comparer le `OwnerId` courant à une valeur mise en cache reste correct quelle que soit la cause du changement, pour un coût négligeable (une centaine de comparaisons d'entiers par frame) ; légère pulsation d'alpha |
+| `SystemLabelController` | noms/détails selon le zoom | `TextMesh` (composant intégré au moteur, pas TextMeshPro — aucun asset à importer) par système, visibilité et contenu basculés par seuils **relatifs** du zoom courant (`GalaxyCameraController.MinOrthographicSize`/`MaxOrthographicSize`, nouvellement exposés) : éloigné = rien, moyen = nom, proche = nom + population/développement |
+| `SystemInfoPanelController` (corrigé) | bouton Investir | désactivé et remplacé par « Développement maximal atteint » à développement 5/5, au lieu de rester cliquable pour échouer silencieusement côté service (`EconomyService.TryInvestInDevelopment` bloquait déjà correctement le paiement — seul l'état du bouton était en cause) |
+
+> **Terminologie « système » vs « planète » :** vérifiée sur l'ensemble du code et de
+> l'interface — aucune trace de « planète » n'existait déjà (`StarSystemState`/« système »
+> partout depuis la Phase 2). Rien à renommer ; la structure reste prête à accueillir
+> plusieurs planètes par système plus tard (voir la remarque suivante).
+>
+> **Prêt pour plusieurs planètes par système, sans réécriture :** `StarSystemVisualProfile`,
+> le fond et les halos de territoire raisonnent tous en termes de « système », jamais de
+> « planète unique » — un système pourra un jour exposer une liste de planètes/lunes/colonies
+> sans que cette couche visuelle ait à changer de forme.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -507,39 +539,14 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (389 tests, tous packages confondus).
+Voir §5 pour le compte total (395 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-11 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde et interface
-
-**Ouvrir `Assets/Scenes/GalaxyMap.unity` et appuyer sur Play.** La console doit afficher,
-sans erreur ni warning :
-
-```
-[Bootstrap] Configuration appliquee (cible : 60 FPS).
-[Bootstrap] 4 services enregistres.
-[FSM] Entree dans BootState
-[FSM] Sortie de BootState
-[FSM] Entree dans MainMenuState - le socle est operationnel.
-[GalaxyMap] Galaxie generee : 100 systemes, ~125 routes hyperspatiales.
-[Economy] Demarree avec 5 types de batiments disponibles.
-[Empires] Federation de l'Aube (joueur) : systeme d'origine <nom>.
-[Empires] Sanctuaire de Vharin (Pacifist) : systeme d'origine <nom>.
-[Empires] Essaim de Kethra (Expansionist) : systeme d'origine <nom>.
-[Empires] Ligue Marchande d'Oskar (Mercantile) : systeme d'origine <nom>.
-[Empires] Bastion de Drathmoor (Militarist) : systeme d'origine <nom>.
-[Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
-[Empires] 6 empires crees.
-[Military] Demarree avec 4 types d'unites disponibles.
-[Diplomacy] Demarree.
-[Research] Demarree avec 21 paliers de recherche disponibles.
-[Espionage] Demarree.
-[Save] Demarree (<chemin>/savegame.json).
-```
+## 5. Tester les Phases 2-12 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface et carte immersive
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -574,8 +581,19 @@ test). La console doit afficher, sans erreur ni warning :
 ```
 
 Dans la fenêtre Game :
-- **100 points colorés** (plus clairs = plus développés) répartis dans un disque, reliés par
-  un réseau de fines lignes (routes hyperspatiales).
+- **Un fond spatial** (étoiles éparses, nébuleuses colorées en filaments) derrière toute la
+  carte, et **100 systèmes visuellement variés** (plus clairs = plus développés, teintes
+  différentes, certains avec un anneau qui tourne lentement, certains avec 1-2 lunes,
+  tailles différentes) répartis dans un disque, reliés par un réseau de fines lignes (routes
+  hyperspatiales). Le fond et le style de chaque système sont **identiques d'une session à
+  l'autre** (mêmes graine que la galaxie).
+- Les systèmes que vous ou une IA possédez affichent un **halo de couleur autour du
+  marqueur** (couleur propre à chaque empire) : les frontières de chaque territoire doivent
+  être visibles d'un coup d'œil, sans avoir à cliquer.
+- **Zoomez arrière (molette ou pincement) :** seuls les points/halos restent visibles, aucun
+  nom. **Zoomez à un niveau moyen :** le nom de chaque système visible apparaît
+  automatiquement au-dessus, sans clic. **Zoomez proche :** une ligne de population et de
+  développement s'ajoute sous le nom.
 - **Glisser** (clic maintenu + déplacer, ou glisser au doigt) déplace la caméra ; **molette**
   (éditeur) ou **pincement à deux doigts** (mobile) zoome, avec des bornes qui empêchent de
   sortir de la galaxie ou de zoomer à l'infini.
@@ -594,7 +612,9 @@ Dans la fenêtre Game :
 - **Touchez votre système d'origine** (celui portant le nom de votre empire) : le même
   panneau affiche en plus une section Économie (bouton **Investir**, coût croissant, et un
   bouton par type de bâtiment — « (construit) » et inactif une fois bâti, production visible
-  dans le trésor une fois la construction achevée) et une section Armée (garnison et
+  dans le trésor une fois la construction achevée). Investissez jusqu'à développement 5/5 :
+  le bouton doit alors se désactiver et afficher « Développement maximal atteint », sans
+  jamais débiter de crédits au-delà. Section Armée ensuite (garnison et
   puissance estimée, un bouton par type d'unité pour recruter, un bouton par système voisin
   pour y envoyer toute la garnison). Envoyer une garnison vers un système libre le colonise à
   l'arrivée ; vers un système ennemi, déclenche une bataille — le résultat (victoire/défaite,
@@ -635,7 +655,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 389 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 395 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -676,7 +696,10 @@ de l'horloge ; robustesse face à un fichier absent ou corrompu sans jamais leve
 les méthodes `Restore*` ne publient aucun événement) ; `HudFormatterTests` et
 `SaveFileLocatorTests` (Phase 11 — formatage des dates/montants/pourcentages, chemin et
 existence du fichier de sauvegarde ; seule logique de cette phase qui ne touche ni `OnGUI` ni
-`ServiceLocator`, donc la seule testable en EditMode — voir plus bas).
+`ServiceLocator`, donc la seule testable en EditMode) ; `StarSystemVisualProfileTests`
+(Phase 12 — déterminisme, variété sur 100 systèmes, bornes valides du nombre de lunes et du
+facteur de taille ; seule logique de cette phase qui ne touche ni `OnGUI` ni le rendu — le
+fond, les halos et les labels restent vérifiables seulement en Play Mode, voir plus bas).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -703,7 +726,11 @@ script Python recoupe tout de même la logique de filtrage de `SaveService.Captu
 entrées valent la peine d'être écrites) et la fidélité d'un aller-retour JSON. La Phase 11
 recoupe de la même façon le formatage de `HudFormatter` (abréviations k/M, arrondi des
 pourcentages) — le reste de cette phase (agencement `OnGUI`) est de la présentation pure,
-vérifiable seulement en Play Mode, pas par un script indépendant.
+vérifiable seulement en Play Mode, pas par un script indépendant. La Phase 12 recoupe le
+mélange de bits et la dérivation des attributs visuels de `StarSystemVisualProfile`
+(déterminisme, bornes, variété sur un grand échantillon, proportion d'anneaux proche du
+réglage configuré) — le fond spatial, les halos de territoire et les labels de zoom restent,
+eux, du rendu pur, non testables en EditMode comme le reste du rendu du projet.
 
 ---
 
@@ -722,14 +749,29 @@ vérifiable seulement en Play Mode, pas par un script indépendant.
 | 9 | Espionnage (agents, sabotage, vol de technologie) | ✅ terminée |
 | 10 | Sauvegarde JSON automatique | ✅ terminée |
 | 11 | Interface complète (menu, écrans de gestion, HUD) | ✅ terminée |
-| 12 | Équilibrage | à venir |
+| 12 | Carte galactique immersive (fond, systèmes stylés, territoires, zoom) + corrections | ✅ terminée |
+| 13 | Choix de faction et de système de départ | à venir |
+| 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | à venir |
+| 15 | Amiraux (bonus/malus, un par flotte) | à venir |
+| 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | à venir |
+| 17 | Déplacement longue distance + rencontres spatiales | à venir |
+| 18 | IA plus dynamique, ajustée aux nouvelles règles | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
-complexe à la fois (consigne du brief) : la Phase 11 n'a touché à aucune formule ni règle de
-jeu — tous les systèmes du brief (économie, diplomatie, recherche, espionnage, guerre) étaient
-déjà implémentés et persistants ; elle leur donne une interface complète (menu, HUD, panneau
-de système, fenêtre de gestion, menu pause) pour la première fois pilotable de bout en bout
-sans dérouler la console. Il ne reste que le réglage des valeurs numériques (Phase 12).
+complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
+l'ancienne Phase 12 « Équilibrage », éclatée en sept phases après une demande de refonte
+étendue (carte immersive, choix de faction, flottes, amiraux, colonisation, déplacement, IA)
+formulée une fois le jeu testé pour la première fois dans l'éditeur. Les points 7 (technologie
+→ nombre de flottes), 8 (refonte des flottes) et 9 (rôles des vaisseaux) de cette demande sont
+regroupés en une seule Phase 14 : « flotte » doit devenir une entité persistante et nommée
+avant qu'un plafond ou un rôle par type de vaisseau ait un sens, les séparer forcerait à
+réécrire deux fois la même chose. L'IA (Phase 18) est volontairement traitée en dernier : elle
+pilote déjà économie/recherche/espionnage/diplomatie/armée une fois par mois chacune, et la
+retoucher avant la refonte des flottes/colonisation/déplacement obligerait à la retoucher une
+seconde fois une fois ces mécaniques changées. La vision multi-planètes par système (demandée
+pour une version future) n'est pas une phase à part : c'est une contrainte de conception
+respectée dans chacune des phases ci-dessus plutôt qu'une fonctionnalité à construire
+maintenant.
 
 ---
 

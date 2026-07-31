@@ -23,7 +23,11 @@ namespace Espace.Gameplay.Galaxy
         private const int TextureSize = 64;
         private const float PixelsPerUnit = 64f;
 
+        /// <summary>Rayon interieur de l'anneau, en fraction du rayon exterieur (voir <see cref="GetRingSprite"/>).</summary>
+        private const float RingInnerRadiusFraction = 0.6f;
+
         private static Sprite _cachedCircleSprite;
+        private static Sprite _cachedRingSprite;
 
         /// <summary>
         /// Sprite d'un disque plein avec anti-aliasing simple sur le contour, centre sur son pivot.
@@ -72,5 +76,66 @@ namespace Espace.Gameplay.Galaxy
 
             return _cachedCircleSprite;
         }
+
+        /// <summary>
+        /// Sprite d'un anneau plein (disque avec un trou), centre sur son pivot. Destine a etre
+        /// place autour d'un marqueur de systeme (Phase 12) avec une echelle non uniforme
+        /// (X != Y) pour donner l'illusion d'une ellipse vue en perspective, sans texture
+        /// d'ellipse dediee.
+        /// </summary>
+        public static Sprite GetRingSprite()
+        {
+            if (_cachedRingSprite != null)
+            {
+                return _cachedRingSprite;
+            }
+
+            var texture = new Texture2D(TextureSize, TextureSize, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GeneratedRing",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            float center = (TextureSize - 1) * 0.5f;
+            float outerRadius = TextureSize * 0.5f;
+            float innerRadius = outerRadius * RingInnerRadiusFraction;
+            var pixels = new Color32[TextureSize * TextureSize];
+
+            for (int y = 0; y < TextureSize; y++)
+            {
+                for (int x = 0; x < TextureSize; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+
+                    // Meme contour adouci que GetCircleSprite, applique sur les deux bords
+                    // (interieur et exterieur) de la bande.
+                    float outerAlpha = Mathf.Clamp01(outerRadius - distance);
+                    float innerAlpha = Mathf.Clamp01(distance - innerRadius);
+                    float alpha = Mathf.Min(outerAlpha, innerAlpha);
+
+                    pixels[y * TextureSize + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _cachedRingSprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, TextureSize, TextureSize),
+                new Vector2(0.5f, 0.5f),
+                PixelsPerUnit);
+            _cachedRingSprite.name = "GeneratedRingSprite";
+
+            return _cachedRingSprite;
+        }
+
+        /// <summary>
+        /// Sprite d'une lune : le meme disque plein que <see cref="GetCircleSprite"/>, reutilise
+        /// tel quel (une lune n'est qu'un petit systeme mis a l'echelle et deplace) plutot que
+        /// de dupliquer une texture identique sous un autre nom.
+        /// </summary>
+        public static Sprite GetMoonSprite() => GetCircleSprite();
     }
 }

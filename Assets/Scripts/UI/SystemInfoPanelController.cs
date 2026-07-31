@@ -29,6 +29,9 @@ namespace Espace.UI
         private const int PanelHeight = 420;
         private const int Gap = 10;
 
+        /// <summary>Meme borne que <c>EconomyService.MaxDevelopmentLevel</c> (non exposee sur l'interface) : desactive le bouton Investir au lieu de laisser <c>TryInvestInDevelopment</c> echouer silencieusement.</summary>
+        private const int MaxDevelopmentLevel = 5;
+
         private IEventBus _eventBus;
         private GalaxyMap _map;
         private EmpireRegistry _empireRegistry;
@@ -112,7 +115,7 @@ namespace Espace.UI
         {
             GUILayout.Label(system.Name, UITheme.Title);
             GUILayout.Label($"Population : {system.Population} M   |   Richesse : {system.Wealth}/100", UITheme.Label);
-            GUILayout.Label($"Developpement : {system.DevelopmentLevel}/5   |   Stabilite : {HudFormatter.FormatPercent(system.Stability)}", UITheme.Label);
+            GUILayout.Label($"Developpement : {system.DevelopmentLevel}/{MaxDevelopmentLevel}   |   Stabilite : {HudFormatter.FormatPercent(system.Stability)}", UITheme.Label);
             GUILayout.Label($"Proprietaire : {OwnerLabel(system.OwnerId)}", UITheme.Label);
             GUILayout.Label($"Gisements : {(system.ResourceDeposits.Length == 0 ? "aucun" : string.Join(", ", system.ResourceDeposits))}", UITheme.MutedLabel);
             GUILayout.Label($"Routes hyperspatiales : {_map.GetNeighbors(system.Id).Count}", UITheme.MutedLabel);
@@ -123,14 +126,20 @@ namespace Espace.UI
         {
             GUILayout.Label("Economie", UITheme.Title);
 
-            float investCost = _economy.GetInvestmentCost(system.Id);
-            if (GUILayout.Button($"Investir dans le developpement ({investCost:0} Cr)", UITheme.Button))
+            bool atMaxDevelopment = system.DevelopmentLevel >= MaxDevelopmentLevel;
+            string investLabel = atMaxDevelopment
+                ? "Developpement maximal atteint"
+                : $"Investir dans le developpement ({_economy.GetInvestmentCost(system.Id):0} Cr)";
+
+            GUI.enabled = !atMaxDevelopment;
+            if (GUILayout.Button(investLabel, UITheme.Button) && !atMaxDevelopment)
             {
                 if (!_economy.TryInvestInDevelopment(system.Id, out string error))
                 {
                     GameLog.Warning($"[Economy] {error}");
                 }
             }
+            GUI.enabled = true;
 
             foreach (BuildingType building in _economy.BuildingCatalog)
             {

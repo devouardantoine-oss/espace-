@@ -41,6 +41,17 @@ namespace Espace.Gameplay.Galaxy
         private Vector2 _panBoundsMin;
         private Vector2 _panBoundsMax;
 
+        /// <summary>Taille orthographique minimale (zoom le plus proche). Voir <see cref="minOrthographicSize"/>.</summary>
+        public float MinOrthographicSize => minOrthographicSize;
+
+        /// <summary>
+        /// Taille orthographique maximale (zoom le plus eloigne), deduite du rayon de la
+        /// galaxie par <see cref="Initialize"/>. Utilisee par <see cref="SystemLabelController"/>
+        /// (Phase 12) pour definir des seuils de niveau de detail relatifs plutot que des
+        /// valeurs absolues qui ne conviendraient qu'a une taille de galaxie precise.
+        /// </summary>
+        public float MaxOrthographicSize => _maxOrthographicSize;
+
         private bool _isDragging;
         private Vector3 _dragAnchorWorld;
         private float _lastPinchDistance = -1f;
