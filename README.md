@@ -92,7 +92,7 @@ une fois tous les réglages du projet :
 | Espace colorimétrique | Linear |
 | Active Input Handling | Input System Package (New) |
 | Build Settings | `Bootstrap.unity` en scène 0 |
-| Android | IL2CPP, ARM64, min SDK 24 |
+| Android | IL2CPP, ARM64, min SDK 26 (Unity 6 refuse toute valeur inférieure) |
 | iOS | IL2CPP, cible minimale 13.0 |
 
 **Pourquoi un script plutôt que des `ProjectSettings/*.asset` versionnés ?** Ces fichiers

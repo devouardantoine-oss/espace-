@@ -171,12 +171,18 @@ namespace Espace.Editor
         /// <summary>
         /// Android : IL2CPP + ARM64 sont exiges par Google Play, et IL2CPP est nettement
         /// plus rapide que Mono sur le code de simulation.
+        /// <para>
+        /// <b>API 26 minimum</b> : Unity 6 refuse desormais toute valeur inferieure et
+        /// journalise une erreur sans appliquer le reglage. La valeur d'origine (24, choisie en
+        /// Phase 1 sous une version anterieure de l'editeur) etait donc devenue inoperante.
+        /// Android 8.0 date de 2017 et couvre la quasi-totalite du parc en service.
+        /// </para>
         /// </summary>
         private static void ConfigureAndroid()
         {
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, ApplicationIdentifier);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         }
 
