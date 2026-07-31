@@ -14,8 +14,10 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 17 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
-> 6 empires (1 joueur + 5 IA), armées (sept types d'unités dont quatre classes de vaisseaux —
+> **Statut : Phase 18 terminée — refonte V1 complète.** Carte galactique (100 systèmes),
+> horloge de jeu, économie, 6 empires (1 joueur + 5 IA dont chacune **gère l'intégralité de son
+> territoire** et s'étend au-delà de ses voisins immédiats, avec un rayon d'expansion propre à
+> sa personnalité), armées (sept types d'unités dont quatre classes de vaisseaux —
 > Chasseurs, Frégate, Croiseur, Cuirassé —, flottes nommées et commandées chacune par un Amiral
 > aux bonus/malus propres, plafonnées à 10 unités, nombre de flottes en campagne simultanée lié
 > à la recherche en Logistique, recrutement, résolution automatique des combats, une
@@ -44,10 +46,10 @@ ravitaillement, terrain, commandement).
 > originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
 > Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
 > du jeu — carte immersive (Phase 12), choix de faction/système de départ (Phase 13), refonte
-> des flottes (Phase 14), amiraux (Phase 15), colonisation stratégique (Phase 16) et
-> déplacement longue distance avec rencontres spatiales (Phase 17, ci-dessus) sont terminées ;
-> reste une IA plus dynamique, ajustée à toutes ces nouvelles règles. Un seul système complexe
-> à la fois, comme depuis la Phase 1.
+> des flottes (Phase 14), amiraux (Phase 15), colonisation stratégique (Phase 16), déplacement
+> longue distance avec rencontres spatiales (Phase 17) et IA dynamique ajustée à toutes ces
+> nouvelles règles (Phase 18, ci-dessus) : **la refonte est terminée**. Un seul système complexe
+> à la fois, de la Phase 1 à la Phase 18.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -128,7 +130,7 @@ Assets/
 │   ├── Gameplay/                 # → Espace.Gameplay (référence Core + Data)
 │   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection, itinéraires hyperspatiaux
 │   │   ├── Economy/              #     production, bâtiments, impôts, investissement
-│   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
+│   │   ├── Empires/              #     identité, personnalités, territoire, décisions IA autonomes
 │   │   ├── Military/             #     unités, flottes, amiraux, combat automatique, colonisation, déplacement, rencontres
 │   │   ├── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
 │   │   ├── Research/             #     domaines, paliers, points, bonus par domaine
@@ -626,6 +628,34 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 | `IEncounterService` **séparée** de `IMilitaryService`, enregistrée sur la même instance | limitation de la casse | le `ServiceLocator` est indexé par type, un même objet peut donc s'enregistrer sous deux clés. `IMilitaryService` ne gagne que les 3 membres de sauvegarde, soit 3 lignes par doublure de test au lieu de 5, dans les 3 fichiers qui en hébergent une |
 | `SystemInfoPanelController` (étendu) | ciblage | « Déplacer une flotte » arme un mode de ciblage ; la sélection suivante est la destination (annulée par un clic dans le vide). L'état armé vit **hors** de `_selectedSystemId` et est consommé **avant** sa réécriture, et la flotte source est revalidée au moment du clic |
 
+### Briques de l'IA dynamique (Phase 18)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `EmpireHoldings` (nouveau) | ce qu'un empire possède | fonctions statiques pures (même esprit que `EmpirePlacement`/`ColonizationRules`) : `OwnedSystems`, `Capital`, `TotalPower`, `NeighboringEmpires`, `FirstBorderSystemOf`. **Remplace les cinq copies privées de `FindPrimarySystem`** — chacun des cinq decision makers embarquait la sienne, renvoyant le *premier* système de `map.Systems` appartenant à l'empire et raisonnant uniquement dessus. Sans conséquence tant qu'un empire n'avait qu'un système ; depuis que la colonisation fonctionne réellement (Phase 16), cela voulait dire des colonies jamais développées, jamais garnisonnées, et une IA qui cessait définitivement de s'étendre une fois les voisins directs de sa capitale pris |
+| `Capital` = le système **le plus développé** | départage sur le plus petit identifiant | une colonie naît au développement 0 : elle ne peut donc jamais déloger la capitale par accident — ce que « le premier système trouvé » faisait dès qu'une colonie tombait à un indice plus faible que la vraie capitale, l'IA se mettant alors à gérer un caillou vide en laissant son centre à l'abandon. Le critère suit malgré tout l'empire si sa capitale historique est conquise |
+| `FleetRouting.IsTraversableWaypoint` | source **unique** de la règle de traversée | utilisée à la fois par `MilitaryService.TryPlanRoute`, qui calcule l'itinéraire réel, et par le parcours de l'IA. Les laisser diverger ferait choisir à l'IA des destinations que le service refuserait ensuite : elle gaspillerait son mois, et pire, elle aurait déjà détaché une flotte pour rien |
+| `FleetRouting.HopDistances` (nouveau) | **un seul parcours en largeur multi-source par empire et par mois** | le point CPU de la phase. Interroger le pathfinder pour chaque cible possible ferait, sur 100 systèmes et 5 IA, cinq cents Dijkstra O(V²) par mois de jeu. Un parcours en largeur depuis *tous* les systèmes possédés donne en **un** passage O(V+E) la distance en sauts **et** le système possédé le plus proche pour chaque cible. L'IA a besoin de comparer des candidats, pas de connaître l'itinéraire exact — `TryMoveFleet` calculera de toute façon le vrai chemin pondéré par la distance au moment du départ |
+| Système non traversable : **atteint mais jamais dépassé** | cohérence avec la Phase 17 | un système ennemi entre dans le résultat (on peut vouloir l'attaquer) mais ses propres voisins ne sont pas explorés à travers lui. C'est la règle « le prédicat ne s'applique pas aux extrémités » transposée au parcours en largeur — sans elle, l'IA planifierait des trajets à travers le territoire d'un tiers, que `TryPlanRoute` refuse |
+| `ExpansionPlanner` (nouveau) | choix de cible **validé avant tout détachement** | **le correctif le plus important de la phase.** `TryDetachFleet` n'a pas d'inverse : le code d'avant détachait puis appelait `TryMoveFleet`, et si le déplacement échouait la flotte détachée restait **orpheline et stationnée** à côté de la garnison, qui se fragmentait un peu plus chaque mois. Défaut préexistant, quasi inoffensif tant que tout était adjacent et vérifié d'avance — mais avec des cibles à plusieurs sauts et un plafond de deux flottes, l'échec devient le cas courant. Le plafond est donc consulté (`CanDeployAnotherFleet`) et la composition validée **avant** de détacher quoi que ce soit |
+| Cible de colonisation | exigence en Infanterie la plus basse, puis le moins de sauts, puis l'identifiant | trois critères **totalement ordonnés** : aucune égalité ne subsiste, donc aucun tirage n'est nécessaire pour départager — et le résultat ne dépend pas de l'ordre d'itération du dictionnaire. L'exigence passe avant la distance parce qu'un système trop peuplé reste hors de portée pendant des dizaines de mois, alors qu'un système abordable trois sauts plus loin est colonisable tout de suite : c'est l'extension à toute la galaxie de la correction de la Phase 16 |
+| Cible offensive | le système ennemi **le moins défendu** atteignable, mêmes départages | l'IA cesse de se casser indéfiniment les dents sur le premier voisin de sa liste quand un système sans garnison est à portée. Contrairement à la colonisation, une cible déjà visée n'est pas exclue : deux vagues successives sur le même système ennemi sont une concentration de force légitime |
+| Une cible de colonisation déjà visée est **exclue** | plafond de deux flottes | viser deux fois le même système libre gaspillerait la moitié de la capacité d'expansion de l'empire : la seconde flotte arriverait sur un système devenu le sien et se contenterait de renforcer la garnison de la première. Ce sont ses **propres** flottes que l'IA consulte — aucune information qu'elle ne possède pas légitimement |
+| Recrutement sur le système **le plus loin de sa cible** | pas simplement « le moins défendu » | viser le système le plus faible en valeur absolue produit un blocage : il atteint sa petite cible de colonie, le recrutement s'arrête, et le système d'où devrait partir la prochaine vague de colons — dont la cible est relevée par l'exigence de sa cible de colonisation — n'est jamais renforcé, l'empire cessant alors toute activité. Comparer des **écarts à la cible** fait converger *chaque* système vers la sienne. C'est aussi, gratuitement, le comportement défensif de la phase : un système vidé par un départ de flotte ou décimé par une bataille affiche le plus gros déficit et passe en tête |
+| **Aucune réaction à une flotte ennemie en approche** | limitation v1 documentée | il faudrait scanner les flottes de tous les rivaux, c'est-à-dire donner à l'IA une **omniscience** que le joueur n'a pas — alors que le projet a justement un système d'espionnage pour que l'information se mérite. Le rééquilibrage par le déficit couvre l'essentiel du besoin sans tricher |
+| Cible de garnison : pleine sur la capitale, **moitié (au moins 2) sur les colonies** | entretien | appliquer la cible pleine partout multiplierait l'entretien par le nombre de systèmes : un Militariste à cinq systèmes viserait 40 unités, soit jusqu'à 200 crédits par jour, et se ruinerait. Le plafonnement ramène ce pire cas à 24. La capitale reste le bastion, les colonies n'ont qu'une garnison de tenue |
+| `DevelopsCapitalFirst` (nouveau champ de personnalité) | rattrapage ou bastion | `GetInvestmentCost = (niveau + 1) × 200`, donc développer un système en retard est **toujours** moins cher que pousser plus haut celui qui est déjà en tête : le rattrapage est aussi la stratégie efficace, et c'est le défaut. Seul le Militariste fait exception — ses Cuirassés exigent un `MinimumDevelopmentLevel` de 4, cinq systèmes médiocres ne lui en donneraient jamais un seul. Corollaire noté dans le code : **aucun repli sur un autre système n'est nécessaire**, puisque l'investissement sur le système le moins développé est par construction le moins cher de l'empire — s'il n'est pas finançable, aucun autre ne l'est |
+| `ExpansionRange` (nouveau champ de personnalité, en sauts) | Pacifiste 2, Commerçante 3, Militariste et Opportuniste 4, Expansionniste 6 | la différence de comportement la plus visible de la phase : l'Expansionniste essaime loin, le Pacifiste ne quitte pas ses abords immédiats. Borne aussi le parcours en largeur, donc le coût CPU |
+| « Une seule action par appel » **conservée**, mais le système est choisi | rythme de dépense | passer à « une action par système » multiplierait le rythme de dépense par le nombre de systèmes et viderait le trésor d'un empire étendu. Choisir dynamiquement la bonne cible garde le rythme constant, la lisibilité de l'observation, et corrige quand même la famine des colonies |
+| `DiplomacyDecisionMaker` compare des **puissances d'empire** | plus des garnisons de système | avec plusieurs systèmes, comparer deux garnisons isolées ne mesure plus rien, et un rival ne bordant que les colonies n'existait tout simplement pas aux yeux de la diplomatie — ni pacte, ni guerre, ni paix possible avec lui. Effet de bord voulu : les écarts deviennent plus marqués, donc les déclarations de guerre et les demandes de paix plus tranchées. Sur une partie où chaque empire n'a qu'un système, `TotalPower` vaut exactement l'ancienne valeur, et les seuils réglés avant cette phase gardent leur sens |
+| Déclaration de guerre laissée à l'**adjacence** (élargie à tous les systèmes possédés) | garantit une guerre exploitable | un empire limitrophe est toujours joignable : l'itinéraire vers un voisin direct ne compte aucune étape intermédiaire et échappe donc au filtre de traversabilité. Aucune vérification d'itinéraire supplémentaire n'est nécessaire, et l'IA ne peut pas se retrouver dans une guerre qu'elle n'a aucun moyen de mener |
+| `EspionageService` et l'onglet Espionnage visent eux aussi la **capitale** | cohérence | le « système de référence » du contre-espionnage était le premier trouvé dans l'ordre de la carte — souvent une colonie vide dont le contre-espionnage quasi nul rendait toutes les missions triviales. Le service, l'affichage et le choix de l'IA doivent désigner le même système, sinon l'IA raisonne sur une difficulté qui n'est pas celle qu'elle rencontre |
+
+> **Aucun état IA persistant, aucun changement de sauvegarde** (`GameSaveData.Version` reste à
+> 4) : toutes les décisions sont recalculées chaque mois à partir de la carte et des services.
+> Une IA sans mémoire ne peut ni désynchroniser une sauvegarde, ni s'obstiner sur un objectif
+> devenu caduc. `IMilitaryService` ne gagne qu'un membre, `CanDeployAnotherFleet`.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -646,14 +676,14 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (459 tests, tous packages confondus).
+Voir §5 pour le compte total (506 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-17 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux, colonisation et déplacement longue distance
+## 5. Tester les Phases 2-18 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux, colonisation, déplacement longue distance et IA dynamique
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -774,6 +804,15 @@ Dans la fenêtre Game :
 - **Touchez le système d'origine d'une IA** : le panneau doit afficher le nom de cet empire
   comme propriétaire, et sa garnison si elle en a recruté une — confirmation visuelle que
   l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
+- **Vérifiez l'IA dynamique (Phase 18)** : laissez tourner l'horloge en Maximum sur plusieurs
+  années de jeu. Les IA doivent **posséder plusieurs systèmes** (onglet Empires), et leurs
+  colonies doivent monter en développement et recevoir une garnison — avant cette phase, elles
+  restaient éternellement au développement 0 et sans la moindre unité. L'onglet Flottes montre
+  des trajets IA de **plusieurs sauts** : elles ne se limitent plus à leurs voisins directs.
+  L'**Expansionniste doit visiblement s'étendre plus loin que le Pacifiste** (rayons de 6 et 2
+  sauts), et le **Militariste doit avoir le système le plus développé** de la galaxie plutôt
+  que plusieurs systèmes moyens — c'est la seule personnalité qui concentre son effort sur sa
+  capitale.
 - **Le bouton « Gestion »** ouvre une fenêtre centrale à six onglets (`ManagementWindowController`) :
   - **Empires** : les 6 empires (nom, rôle — « Vous » pour le joueur, la personnalité pour
     chaque IA —, nombre de systèmes, Credits). En accélérant l'horloge (Maximum), les Credits
@@ -816,7 +855,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 459 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 506 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -886,7 +925,13 @@ aucun chemin si le filtre bloque tous les intermédiaires, **le prédicat ne s'a
 extrémités**, départage déterministe) ; `EncounterRulesTests` (Phase 17 — issues disponibles par
 statut diplomatique, jamais de Piraterie envers un allié ou sous pacte, le Pacifiste
 (`AggressionThreshold` nul) ne choisit jamais Combattre ni Piraterie, repli sous le seuil de
-rapport de force, commerce si traité commercial, déterminisme, aucune division par zéro). La
+rapport de force, commerce si traité commercial, déterminisme, aucune division par zéro). `EmpireHoldingsTests`, `FleetRoutingTests` et `ExpansionPlannerTests` (Phase 18 — capitale =
+le système le plus développé et jamais délogée par une colonie neuve, puissance sommée sur tout
+le territoire, voisins déduits de **tous** les systèmes possédés ; parcours en largeur
+multi-source avec la bonne origine, système étranger **atteint mais jamais traversé**, rayon
+d'expansion respecté, déterminisme ; cible la moins exigeante à portée, **aucun plan renvoyé
+tant que la garnison ne suffit pas** — donc aucun détachement orphelin —, réserve conservée,
+offensive sur le système ennemi le moins défendu, aucune offensive hors état de guerre). La
 Phase 14
 (refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
 `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de vaisseaux)
@@ -905,7 +950,13 @@ entre flottes du même empire, un repli issu d'une rencontre ne re-déclenche pa
 en attente de décision compte toujours comme déployée) et `SaveServiceTests` (aller-retour d'une
 flotte en transit avec itinéraire, étape, dates, nom et Amiral ; **recharger deux fois ne
 duplique pas les flottes en vol**) ; `EncounterWindowController` reste, comme tout `Espace.UI`,
-vérifiable seulement en Play Mode.
+vérifiable seulement en Play Mode. La Phase 18 étend enfin `MilitaryDecisionMakerTests` (recrute
+sur le système le plus loin de sa cible et non sur la capitale, colonise au-delà des voisins
+directs, **un point de passage n'est jamais colonisé**, et surtout **plafond de flottes atteint →
+aucun détachement**), `AIDecisionMakerTests` (investit sur le système le moins développé, le
+Militariste sur sa capitale, départage sur l'identifiant à développement égal) et
+`DiplomacyDecisionMakerTests` (un rival ne bordant qu'une colonie est bien pris en compte,
+puissance sommée sur tout le territoire, aucun empire limitrophe → aucune action).
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -959,7 +1010,15 @@ par le prédicat) ; le même script recoupe l'arithmétique de durée — arrond
 distance cumulée, monotonie étape par étape, plancher d'un jour par étape, et le fait qu'un
 trajet de 3 sauts de 10 unités à vitesse 4 coûte 8 jours là où un arrondi par étape en coûterait
 9 — puis vérifie que le couloir de test des rencontres garantit bien un chevauchement des deux
-flottes pour **les neuf combinaisons** de bonus de vitesse d'Amiral possibles.
+flottes pour **les neuf combinaisons** de bonus de vitesse d'Amiral possibles. La Phase 18
+réimplémente à son tour le parcours en largeur multi-source à partir de la seule description du
+plan et le confronte sur des graphes construits pour piéger l'implémentation (deux sources
+concurrentes, système étranger terminal, contournement forcé d'un tiers, rayon borné), vérifie
+que la règle de choix de cible à trois critères est un **ordre total** — donc insensible à
+l'ordre d'itération du dictionnaire, ce qui dispense de tout départage aléatoire —, et chiffre
+les deux propriétés qui rendent l'IA viable : un parcours unique en O(V+E) contre les ~10⁶
+opérations qu'un Dijkstra par candidat coûterait chaque mois, et une cible de garnison ramenée
+de 40 à 24 unités pour un Militariste à cinq systèmes.
 
 ---
 
@@ -984,7 +1043,7 @@ flottes pour **les neuf combinaisons** de bonus de vitesse d'Amiral possibles.
 | 15 | Amiraux (bonus/malus, un par flotte) | ✅ terminée |
 | 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | ✅ terminée |
 | 17 | Déplacement longue distance (itinéraire automatique, durée selon la distance) + rencontres spatiales | ✅ terminée |
-| 18 | IA plus dynamique, ajustée aux nouvelles règles | à venir |
+| 18 | IA plus dynamique (multi-système, expansion longue distance, rayon par personnalité) | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
@@ -994,10 +1053,11 @@ formulée une fois le jeu testé pour la première fois dans l'éditeur. Les poi
 → nombre de flottes), 8 (refonte des flottes) et 9 (rôles des vaisseaux) de cette demande sont
 regroupés en une seule Phase 14 : « flotte » doit devenir une entité persistante et nommée
 avant qu'un plafond ou un rôle par type de vaisseau ait un sens, les séparer forcerait à
-réécrire deux fois la même chose. L'IA (Phase 18) est volontairement traitée en dernier : elle
+réécrire deux fois la même chose. L'IA (Phase 18) a été volontairement traitée en dernier : elle
 pilote déjà économie/recherche/espionnage/diplomatie/armée une fois par mois chacune, et la
-retoucher avant la refonte des flottes/colonisation/déplacement obligerait à la retoucher une
-seconde fois une fois ces mécaniques changées. La vision multi-planètes par système (demandée
+retoucher avant la refonte des flottes/colonisation/déplacement aurait obligé à la retoucher une
+seconde fois une fois ces mécaniques changées — ce qui s'est vérifié, la Phase 18 consistant
+précisément à rattraper les Phases 16 et 17 dans les cinq decision makers. La vision multi-planètes par système (demandée
 pour une version future) n'est pas une phase à part : c'est une contrainte de conception
 respectée dans chacune des phases ci-dessus plutôt qu'une fonctionnalité à construire
 maintenant.

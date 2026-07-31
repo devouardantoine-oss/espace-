@@ -91,6 +91,7 @@ namespace Espace.Tests.EditMode
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
             public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null) { }
+            public bool CanDeployAnotherFleet(int empireId) => true;
             public IReadOnlyList<Fleet> GetFleetsInTransit() => Array.Empty<Fleet>();
             public void ClearFleetsInTransit() { }
             public void RestoreFleetInTransit(

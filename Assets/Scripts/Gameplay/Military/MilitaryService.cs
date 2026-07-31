@@ -291,12 +291,9 @@ namespace Espace.Gameplay.Military
                 return false;
             }
 
-            // Une flotte immobilisee par une rencontre compte dans le plafond : sans quoi laisser
-            // une rencontre en attente serait un moyen de lancer une flotte supplementaire.
-            int deployedFleetCount = _fleets.FindAll(f => f.OwnerId == fleet.OwnerId && f.Status != FleetStatus.Stationed).Count;
-            int fleetCap = BaseSimultaneousFleetCap + ResearchTierCount(fleet.OwnerId, ResearchDomain.Logistics);
-            if (deployedFleetCount >= fleetCap)
+            if (!CanDeployAnotherFleet(fleet.OwnerId))
             {
+                int fleetCap = FleetCapOf(fleet.OwnerId);
                 error = $"Plafond de flottes en deplacement simultane atteint ({fleetCap}) : recherchez la Logistique pour en deployer davantage.";
                 return false;
             }
@@ -362,8 +359,22 @@ namespace Espace.Gameplay.Military
         {
             return HyperlanePathfinder.TryFindPath(
                 _map, fleet.CurrentSystemId, destinationSystemId,
-                waypoint => waypoint.OwnerId == StarSystemState.UnownedOwnerId || waypoint.OwnerId == fleet.OwnerId,
+                waypoint => FleetRouting.IsTraversableWaypoint(waypoint, fleet.OwnerId),
                 out route);
+        }
+
+        /// <inheritdoc />
+        public bool CanDeployAnotherFleet(int empireId)
+        {
+            // Une flotte immobilisee par une rencontre compte dans le plafond : sans quoi laisser
+            // une rencontre en attente serait un moyen de lancer une flotte supplementaire.
+            int deployedFleetCount = _fleets.FindAll(f => f.OwnerId == empireId && f.Status != FleetStatus.Stationed).Count;
+            return deployedFleetCount < FleetCapOf(empireId);
+        }
+
+        private int FleetCapOf(int empireId)
+        {
+            return BaseSimultaneousFleetCap + ResearchTierCount(empireId, ResearchDomain.Logistics);
         }
 
         /// <inheritdoc />

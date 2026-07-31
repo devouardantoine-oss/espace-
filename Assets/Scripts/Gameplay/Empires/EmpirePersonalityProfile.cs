@@ -102,12 +102,39 @@ namespace Espace.Gameplay.Empires
         /// <summary>Mission que cette personnalité tente en priorité quand l'espionnage est jugé favorable. Sans effet si <see cref="EspionageThreshold"/> est <c>null</c>.</summary>
         public readonly EspionageMissionType PreferredEspionageMission;
 
+        /// <summary>
+        /// Si vrai, concentre construction et investissement sur la capitale ; sinon rattrape
+        /// systématiquement le système possédé le moins développé (Phase 18).
+        /// <para>
+        /// Le rattrapage est le défaut parce que c'est aussi la stratégie la moins chère —
+        /// <c>GetInvestmentCost = (niveau + 1) × coût</c>, donc développer un système en retard
+        /// coûte toujours moins que pousser plus haut celui qui est déjà en tête. Le Militariste
+        /// fait exception : ses meilleures unités exigent un <c>MinimumDevelopmentLevel</c> de 4,
+        /// il lui faut un bastion très développé plutôt que cinq systèmes médiocres.
+        /// </para>
+        /// </summary>
+        public readonly bool DevelopsCapitalFirst;
+
+        /// <summary>
+        /// Distance maximale, en sauts hyperspatiaux, à laquelle cette personnalité envoie une
+        /// flotte de colonisation ou d'attaque (Phase 18).
+        /// <para>
+        /// La différence de comportement la plus visible de la phase : l'Expansionniste essaime
+        /// loin, le Pacifiste ne quitte pas ses abords immédiats. Borne aussi le parcours de
+        /// <see cref="Espace.Gameplay.Military.FleetRouting.HopDistances"/>, donc le coût CPU.
+        /// </para>
+        /// </summary>
+        public readonly int ExpansionRange;
+
         public EmpirePersonalityProfileData(
             float PreferredTaxRate, ResourceType[] BuildPriority, bool PicksCheapestAffordable, float InvestmentEagerness,
             int TargetGarrisonSize, bool PrefersStrongestUnit, float? AggressionThreshold, float CommandModifier,
             float MinOpinionToAcceptPact, float ProactivePactOpinionThreshold, float PeacePowerRatioThreshold,
-            ResearchDomain[] ResearchPriority, float? EspionageThreshold, EspionageMissionType PreferredEspionageMission)
+            ResearchDomain[] ResearchPriority, float? EspionageThreshold, EspionageMissionType PreferredEspionageMission,
+            bool DevelopsCapitalFirst, int ExpansionRange)
         {
+            this.DevelopsCapitalFirst = DevelopsCapitalFirst;
+            this.ExpansionRange = ExpansionRange;
             this.PreferredTaxRate = PreferredTaxRate;
             this.BuildPriority = BuildPriority;
             this.PicksCheapestAffordable = PicksCheapestAffordable;
@@ -169,6 +196,14 @@ namespace Espace.Gameplay.Empires
     /// avant d'envahir), l'Opportuniste influence les gouvernements (le moyen le plus
     /// discret, cohérent avec son seuil de risque le plus bas).
     /// </para>
+    /// <para>
+    /// <b>Territoire (Phase 18) :</b> l'IA gérant enfin l'ensemble de ses systèmes, deux
+    /// paramètres décident de sa façon de s'étendre. Le rayon d'expansion range les
+    /// personnalités du casanier au conquérant — Pacifiste 2 sauts, Commerçante 3,
+    /// Militariste et Opportuniste 4, Expansionniste 6 —, et seul le Militariste concentre
+    /// son développement sur sa capitale (ses Cuirassés exigent un développement 4 ; les
+    /// autres rattrapent leurs colonies, ce qui est aussi le moins cher).
+    /// </para>
     /// </summary>
     public static class EmpirePersonalityProfile
     {
@@ -199,7 +234,9 @@ namespace Espace.Gameplay.Empires
                             ResearchDomain.Industry, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
                         },
                         EspionageThreshold: null,
-                        PreferredEspionageMission: EspionageMissionType.StealTechnology);
+                        PreferredEspionageMission: EspionageMissionType.StealTechnology,
+                        DevelopsCapitalFirst: false,
+                        ExpansionRange: 2);
 
                 case EmpirePersonality.Expansionist:
                     // Impots bas (economise pour la croissance future), priorite au
@@ -224,7 +261,9 @@ namespace Espace.Gameplay.Empires
                             ResearchDomain.Energy, ResearchDomain.Diplomacy, ResearchDomain.Weapons, ResearchDomain.Espionage
                         },
                         EspionageThreshold: 1.5f,
-                        PreferredEspionageMission: EspionageMissionType.Sabotage);
+                        PreferredEspionageMission: EspionageMissionType.Sabotage,
+                        DevelopsCapitalFirst: false,
+                        ExpansionRange: 6);
 
                 case EmpirePersonality.Mercantile:
                     // Impots eleves, priorite absolue aux Credits puis a l'Energie. Garnison
@@ -248,7 +287,9 @@ namespace Espace.Gameplay.Empires
                             ResearchDomain.Energy, ResearchDomain.Logistics, ResearchDomain.Espionage, ResearchDomain.Weapons
                         },
                         EspionageThreshold: 1.3f,
-                        PreferredEspionageMission: EspionageMissionType.StealTechnology);
+                        PreferredEspionageMission: EspionageMissionType.StealTechnology,
+                        DevelopsCapitalFirst: false,
+                        ExpansionRange: 3);
 
                 case EmpirePersonality.Militarist:
                     // Impots moyens-eleves, priorite au Minerai et a l'Energie (materiel des
@@ -272,7 +313,9 @@ namespace Espace.Gameplay.Empires
                             ResearchDomain.Energy, ResearchDomain.Economy, ResearchDomain.Espionage, ResearchDomain.Diplomacy
                         },
                         EspionageThreshold: 1.2f,
-                        PreferredEspionageMission: EspionageMissionType.DiscoverArmies);
+                        PreferredEspionageMission: EspionageMissionType.DiscoverArmies,
+                        DevelopsCapitalFirst: true,
+                        ExpansionRange: 4);
 
                 case EmpirePersonality.Opportunist:
                     // Impots moyens, aucun ordre fixe : saisit ce qui est finançable au
@@ -297,7 +340,9 @@ namespace Espace.Gameplay.Empires
                             ResearchDomain.Weapons, ResearchDomain.Industry, ResearchDomain.Energy, ResearchDomain.Logistics
                         },
                         EspionageThreshold: 1.0f,
-                        PreferredEspionageMission: EspionageMissionType.InfluenceGovernment);
+                        PreferredEspionageMission: EspionageMissionType.InfluenceGovernment,
+                        DevelopsCapitalFirst: false,
+                        ExpansionRange: 4);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(personality), personality, "Personnalite inconnue.");

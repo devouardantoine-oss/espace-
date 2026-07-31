@@ -531,5 +531,128 @@ namespace Espace.Tests.EditMode
             Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId, "Pas de colonisation ce tour : le recrutement a eu lieu.");
             Assert.AreEqual(NeighborEmpireId, enemy.OwnerId, "Pas d'attaque ce tour non plus.");
         }
+
+        // --- Multi-systeme et longue distance (Phase 18) ---------------------------------
+
+        [Test]
+        public void DecideAndAct_RecruitsOnTheSystemFurthestBelowItsTarget()
+        {
+            // Capitale (developpement 3, garnison pleine) et colonie vide. Avant la Phase 18,
+            // l'IA recrutait toujours sur le premier systeme trouve et la colonie restait
+            // eternellement sans garnison.
+            StarSystemState capital = MakeSystem(0, Vector2.zero, AiEmpireId, developmentLevel: 3);
+            StarSystemState colony = MakeSystem(1, new Vector2(1f, 0f), AiEmpireId, developmentLevel: 0);
+            var map = new GalaxyMap(new[] { capital, colony }, new[] { new HyperlaneLink(capital.Id, colony.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, capital, AiEmpireId, 1000f);
+            military.RestoreGarrison(capital.Id, AiEmpireId, new UnitBundle(infantry: 8));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(1, military.GetGarrison(colony.Id, AiEmpireId).TotalCount, "La colonie vide doit etre renforcee en priorite.");
+            Assert.AreEqual(8, military.GetGarrison(capital.Id, AiEmpireId).TotalCount, "La capitale etait deja a sa cible.");
+        }
+
+        [Test]
+        public void DecideAndAct_ColonizesBeyondDirectNeighbours()
+        {
+            // home - relais(libre) - cible(libre) : la cible est a deux sauts. Avant la Phase 18
+            // l'IA ne regardait que ses voisins directs et n'aurait vise que le relais.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            // Relais tres developpe (exigence 4) et cible vierge (exigence 1) : l'exigence
+            // passe avant la distance, donc la cible lointaine doit l'emporter.
+            StarSystemState relay = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 5);
+            StarSystemState target = MakeSystem(2, new Vector2(2f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 0);
+            var map = new GalaxyMap(
+                new[] { home, relay, target },
+                new[] { new HyperlaneLink(home.Id, relay.Id), new HyperlaneLink(relay.Id, target.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, AiEmpireId, 2000f);
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+
+            IReadOnlyList<Fleet> inTransit = military.GetFleetsInTransit();
+            Assert.AreEqual(1, inTransit.Count, "Une flotte de colonisation doit etre partie.");
+            Assert.AreEqual(3, inTransit[0].Route.Count, "L'itineraire doit compter les deux etapes, relais inclus.");
+        }
+
+        [Test]
+        public void DecideAndAct_WaypointIsNeverColonized()
+        {
+            // Le relais traverse en chemin doit rester libre : seule la destination finale
+            // declenche une resolution d'arrivee (regle etablie en Phase 17).
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            // Relais tres developpe (exigence 4) et cible vierge (exigence 1) : l'exigence
+            // passe avant la distance, donc la cible lointaine doit l'emporter.
+            StarSystemState relay = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 5);
+            StarSystemState target = MakeSystem(2, new Vector2(2f, 0f), StarSystemState.UnownedOwnerId, developmentLevel: 0);
+            var map = new GalaxyMap(
+                new[] { home, relay, target },
+                new[] { new HyperlaneLink(home.Id, relay.Id), new HyperlaneLink(relay.Id, target.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, AiEmpireId, 2000f);
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            for (int day = 0; day < 10; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(day + 1)));
+            }
+
+            Assert.AreEqual(StarSystemState.UnownedOwnerId, relay.OwnerId, "Un point de passage n'est jamais colonise.");
+            Assert.AreEqual(AiEmpireId, target.OwnerId, "La destination finale, elle, est bien colonisee.");
+        }
+
+        [Test]
+        public void DecideAndAct_FleetCapReached_DetachesNothing()
+        {
+            // Le defaut le plus couteux corrige par la Phase 18 : TryDetachFleet n'a pas
+            // d'inverse, donc detacher puis se voir refuser le depart laissait une flotte
+            // orpheline stationnee a cote de la garnison, qui se fragmentait chaque mois.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            StarSystemState freeA = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId);
+            StarSystemState freeB = MakeSystem(2, new Vector2(0f, 1f), StarSystemState.UnownedOwnerId);
+            StarSystemState freeC = MakeSystem(3, new Vector2(-1f, 0f), StarSystemState.UnownedOwnerId);
+            var map = new GalaxyMap(
+                new[] { home, freeA, freeB, freeC },
+                new[]
+                {
+                    new HyperlaneLink(home.Id, freeA.Id),
+                    new HyperlaneLink(home.Id, freeB.Id),
+                    new HyperlaneLink(home.Id, freeC.Id),
+                });
+            EconomyService economy = MakeEconomy(map);
+            // Vitesse tres faible : les flottes envoyees restent en vol pendant tout le test.
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 0.01f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, AiEmpireId, 3000f);
+            // Bien au-dessus de la cible du Militariste (8) : le recrutement ne doit jamais
+            // primer sur la colonisation dans ce scenario, meme apres deux departs.
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            // Deux colonisations consecutives saturent le plafond de base (2 flottes).
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            Assert.AreEqual(2, military.GetFleetsInTransit().Count, "Le plafond de base doit etre atteint.");
+
+            int fleetsBefore = military.GetFleetsForEmpire(AiEmpireId).Count;
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+
+            Assert.AreEqual(
+                fleetsBefore, military.GetFleetsForEmpire(AiEmpireId).Count,
+                "Plafond atteint : aucune flotte supplementaire ne doit etre detachee, meme immobile.");
+        }
     }
 }

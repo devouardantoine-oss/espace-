@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
@@ -24,6 +25,26 @@ namespace Espace.Gameplay.Diplomacy
     /// Economie -> Diplomatie -> Militaire) : une guerre declaree ce mois-ci peut donc etre
     /// exploitee par l'armee ce meme mois, sans attendre le mois suivant.
     /// </para>
+    /// <para>
+    /// <b>Raisonne sur des empires entiers depuis la Phase 18.</b> Jusque-la ce module
+    /// comparait la garnison d'<i>un</i> systeme a la garnison d'<i>un</i> systeme adverse et
+    /// ne connaissait que les voisins de ce systeme : des que les deux camps possedent
+    /// plusieurs systemes, le rapport de force ainsi mesure ne veut plus rien dire, et un rival
+    /// ne bordant que les colonies n'existait tout simplement pas a ses yeux — ni pacte, ni
+    /// guerre, ni paix possible avec lui. Il compare desormais des
+    /// <see cref="EmpireHoldings.TotalPower"/> et parcourt tous les empires limitrophes du
+    /// territoire (<see cref="EmpireHoldings.NeighboringEmpires"/>). Effet de bord voulu : les
+    /// ecarts deviennent plus marques, donc les declarations de guerre et les demandes de paix
+    /// plus tranchees. Sur une partie ou chaque empire n'a qu'un systeme, les valeurs sont
+    /// exactement les anciennes.
+    /// </para>
+    /// <para>
+    /// <b>La declaration de guerre reste fondee sur l'adjacence :</b> un empire limitrophe est
+    /// toujours joignable, puisqu'un itineraire vers un voisin direct ne compte aucune etape
+    /// intermediaire et echappe donc au filtre de traversabilite de
+    /// <see cref="Espace.Gameplay.Military.FleetRouting"/>. Declarer la guerre a qui l'on borde
+    /// garantit une guerre reellement exploitable, sans verification d'itineraire.
+    /// </para>
     /// </summary>
     public static class DiplomacyDecisionMaker
     {
@@ -37,63 +58,48 @@ namespace Espace.Gameplay.Diplomacy
 
         public static void DecideAndAct(Empire empire, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy)
         {
-            StarSystemState homeSystem = FindPrimarySystem(empire, map);
-            if (homeSystem == null)
+            List<int> neighborEmpires = EmpireHoldings.NeighboringEmpires(empire.Id, map);
+            if (neighborEmpires.Count == 0)
             {
                 return;
             }
 
             EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
+            float ownPower = EmpireHoldings.TotalPower(empire.Id, map, military);
 
-            if (TryProposePeace(empire, homeSystem, map, military, diplomacy, profile))
+            if (TryProposePeace(empire, neighborEmpires, ownPower, map, military, diplomacy, profile))
             {
                 return;
             }
 
-            if (profile.AggressionThreshold != null && TryDeclareWar(empire, homeSystem, map, military, diplomacy, profile))
+            if (profile.AggressionThreshold != null
+                && TryDeclareWar(empire, neighborEmpires, ownPower, map, military, diplomacy, profile))
             {
                 return;
             }
 
-            TryProposePact(empire, homeSystem, map, diplomacy, profile);
+            TryProposePact(empire, neighborEmpires, diplomacy, profile);
         }
 
-        private static StarSystemState FindPrimarySystem(Empire empire, GalaxyMap map)
-        {
-            foreach (StarSystemState system in map.Systems)
-            {
-                if (system.OwnerId == empire.Id)
-                {
-                    return system;
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>Propose la paix au premier voisin en guerre dont la puissance releguerait la sienne sous le seuil de lassitude de la personnalite.</summary>
+        /// <summary>Propose la paix au premier empire limitrophe en guerre dont la puissance relegue la sienne sous le seuil de lassitude de la personnalite.</summary>
         private static bool TryProposePeace(
-            Empire empire, StarSystemState system, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
+            Empire empire, List<int> neighborEmpires, float ownPower, GalaxyMap map,
+            IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
         {
-            float ownPower = military.EstimatePower(military.GetGarrison(system.Id, empire.Id));
-
-            foreach (StarSystemId neighborId in map.GetNeighbors(system.Id))
+            foreach (int otherId in neighborEmpires)
             {
-                if (!map.TryGetSystem(neighborId, out StarSystemState neighbor)
-                    || neighbor.OwnerId == StarSystemState.UnownedOwnerId
-                    || neighbor.OwnerId == empire.Id
-                    || diplomacy.GetStatus(empire.Id, neighbor.OwnerId) != DiplomaticStatus.War)
+                if (diplomacy.GetStatus(empire.Id, otherId) != DiplomaticStatus.War)
                 {
                     continue;
                 }
 
-                float enemyPower = military.EstimatePower(military.GetGarrison(neighborId, neighbor.OwnerId));
+                float enemyPower = EmpireHoldings.TotalPower(otherId, map, military);
                 if (enemyPower > 0f && ownPower / enemyPower >= profile.PeacePowerRatioThreshold)
                 {
                     continue;
                 }
 
-                if (diplomacy.TrySubmitProposal(empire.Id, neighbor.OwnerId, ProposalType.PeaceTreaty, default, default, null, null, out _))
+                if (diplomacy.TrySubmitProposal(empire.Id, otherId, ProposalType.PeaceTreaty, default, default, null, null, out _))
                 {
                     return true;
                 }
@@ -102,29 +108,25 @@ namespace Espace.Gameplay.Diplomacy
             return false;
         }
 
-        /// <summary>Declare la guerre au premier voisin en Paix simple dont la puissance estimee est ecrasee par la sienne.</summary>
+        /// <summary>Declare la guerre au premier empire limitrophe en Paix simple dont la puissance totale est ecrasee par la sienne.</summary>
         private static bool TryDeclareWar(
-            Empire empire, StarSystemState system, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
+            Empire empire, List<int> neighborEmpires, float ownPower, GalaxyMap map,
+            IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
         {
-            float ownPower = military.EstimatePower(military.GetGarrison(system.Id, empire.Id));
-
-            foreach (StarSystemId neighborId in map.GetNeighbors(system.Id))
+            foreach (int otherId in neighborEmpires)
             {
-                if (!map.TryGetSystem(neighborId, out StarSystemState neighbor)
-                    || neighbor.OwnerId == StarSystemState.UnownedOwnerId
-                    || neighbor.OwnerId == empire.Id
-                    || diplomacy.GetStatus(empire.Id, neighbor.OwnerId) != DiplomaticStatus.Peace)
+                if (diplomacy.GetStatus(empire.Id, otherId) != DiplomaticStatus.Peace)
                 {
                     continue;
                 }
 
-                float enemyPower = military.EstimatePower(military.GetGarrison(neighborId, neighbor.OwnerId));
+                float enemyPower = EmpireHoldings.TotalPower(otherId, map, military);
                 if (enemyPower > 0f && ownPower < enemyPower * profile.AggressionThreshold.Value)
                 {
                     continue;
                 }
 
-                if (diplomacy.TryDeclareWar(empire.Id, neighbor.OwnerId, out _))
+                if (diplomacy.TryDeclareWar(empire.Id, otherId, out _))
                 {
                     return true;
                 }
@@ -133,26 +135,19 @@ namespace Espace.Gameplay.Diplomacy
             return false;
         }
 
-        /// <summary>Propose un Pacte de non-agression (ou une Alliance si un pacte est deja en vigueur et la relation excellente) au premier voisin suffisamment apprecie.</summary>
+        /// <summary>Propose un Pacte de non-agression (ou une Alliance si un pacte est deja en vigueur et la relation excellente) au premier empire limitrophe suffisamment apprecie.</summary>
         private static bool TryProposePact(
-            Empire empire, StarSystemState system, GalaxyMap map, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
+            Empire empire, List<int> neighborEmpires, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
         {
-            foreach (StarSystemId neighborId in map.GetNeighbors(system.Id))
+            foreach (int otherId in neighborEmpires)
             {
-                if (!map.TryGetSystem(neighborId, out StarSystemState neighbor)
-                    || neighbor.OwnerId == StarSystemState.UnownedOwnerId
-                    || neighbor.OwnerId == empire.Id)
-                {
-                    continue;
-                }
-
-                float opinion = diplomacy.GetOpinion(empire.Id, neighbor.OwnerId);
+                float opinion = diplomacy.GetOpinion(empire.Id, otherId);
                 if (opinion < profile.ProactivePactOpinionThreshold)
                 {
                     continue;
                 }
 
-                DiplomaticStatus status = diplomacy.GetStatus(empire.Id, neighbor.OwnerId);
+                DiplomaticStatus status = diplomacy.GetStatus(empire.Id, otherId);
                 ProposalType type;
                 if (status == DiplomaticStatus.NonAggressionPact && opinion >= profile.ProactivePactOpinionThreshold + AllianceOpinionBonus)
                 {
@@ -167,7 +162,7 @@ namespace Espace.Gameplay.Diplomacy
                     continue;
                 }
 
-                if (diplomacy.TrySubmitProposal(empire.Id, neighbor.OwnerId, type, default, default, null, null, out _))
+                if (diplomacy.TrySubmitProposal(empire.Id, otherId, type, default, default, null, null, out _))
                 {
                     return true;
                 }

@@ -42,6 +42,7 @@ namespace Espace.Tests.EditMode
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
             public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null) { }
+            public bool CanDeployAnotherFleet(int empireId) => true;
             public IReadOnlyList<Fleet> GetFleetsInTransit() => Array.Empty<Fleet>();
             public void ClearFleetsInTransit() { }
             public void RestoreFleetInTransit(
@@ -298,6 +299,69 @@ namespace Espace.Tests.EditMode
 
             Assert.Contains((AiId, NeighborId, ProposalType.PeaceTreaty), _diplomacy.SubmittedProposals);
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count, "Une seule action par appel : la demande de paix a deja eu lieu.");
+        }
+
+        // --- Multi-systeme (Phase 18) -----------------------------------------------------
+
+        [Test]
+        public void DecideAndAct_RivalBorderingOnlyAColony_IsStillConsidered()
+        {
+            // capitale(0) - colonie(1) - rival(2). Avant la Phase 18, la diplomatie ne
+            // regardait que les voisins d'un seul systeme : ce rival n'existait pas a ses yeux,
+            // aucune guerre ni aucun pacte n'etait possible avec lui.
+            StarSystemState capital = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState colony = MakeSystem(1, new Vector2(1f, 0f), AiId);
+            StarSystemState rival = MakeSystem(2, new Vector2(2f, 0f), NeighborId);
+            var map = new GalaxyMap(
+                new[] { capital, colony, rival },
+                new[] { new HyperlaneLink(capital.Id, colony.Id), new HyperlaneLink(colony.Id, rival.Id) });
+
+            _military.SetGarrison(AiId, 100);
+            _military.SetGarrison(NeighborId, 1);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+
+            Assert.Contains((AiId, NeighborId), _diplomacy.DeclaredWars);
+        }
+
+        [Test]
+        public void DecideAndAct_PowerIsSummedOverEveryOwnedSystem()
+        {
+            // La doublure renvoie la meme garnison pour chaque systeme d'un empire : l'IA a
+            // deux systemes de 6 unites (total 12), le rival un seul de 10. Le Militariste
+            // exige 1.1x, soit 11 : la guerre n'est declarable qu'en sommant les deux systemes.
+            StarSystemState capital = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState colony = MakeSystem(1, new Vector2(1f, 0f), AiId);
+            StarSystemState rival = MakeSystem(2, new Vector2(2f, 0f), NeighborId);
+            var map = new GalaxyMap(
+                new[] { capital, colony, rival },
+                new[] { new HyperlaneLink(capital.Id, colony.Id), new HyperlaneLink(colony.Id, rival.Id) });
+
+            _military.SetGarrison(AiId, 6);
+            _military.SetGarrison(NeighborId, 10);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+
+            Assert.Contains((AiId, NeighborId), _diplomacy.DeclaredWars,
+                "12 (deux systemes) contre 10 x 1.1 = 11 : la guerre passe. 6 seul ne l'aurait pas permis.");
+        }
+
+        [Test]
+        public void DecideAndAct_NoNeighboringEmpire_DoesNothing()
+        {
+            StarSystemState capital = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState free = MakeSystem(1, new Vector2(1f, 0f), StarSystemState.UnownedOwnerId);
+            var map = new GalaxyMap(new[] { capital, free }, new[] { new HyperlaneLink(capital.Id, free.Id) });
+
+            _military.SetGarrison(AiId, 100);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+
+            Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
+            Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count);
         }
     }
 }

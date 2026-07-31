@@ -12,10 +12,17 @@ namespace Espace.Gameplay.Espionage
     /// scene.
     /// </para>
     /// <para>
-    /// <b>Pas besoin d'adjacence :</b> contrairement a <see cref="Espace.Gameplay.Military.MilitaryDecisionMaker"/>
-    /// (limite aux voisins directs faute de deplacement de flotte multi-sauts), l'espionnage
-    /// n'implique aucun trajet physique — ce module considere donc tous les autres empires du
-    /// <c>EmpireRegistry</c>, pas seulement les voisins de carte.
+    /// <b>Pas besoin d'adjacence :</b> l'espionnage n'implique aucun trajet physique — ce
+    /// module considere tous les autres empires du <c>EmpireRegistry</c>, pas seulement les
+    /// voisins de carte, et sans se soucier du rayon d'expansion des personnalites.
+    /// </para>
+    /// <para>
+    /// <b>Cible la capitale de l'adversaire depuis la Phase 18</b> (<see cref="EmpireHoldings.Capital"/>,
+    /// le systeme le plus developpe) plutot que le premier de ses systemes rencontre dans
+    /// l'ordre de la carte. Une fois la colonisation reellement en service (Phase 16), « le
+    /// premier trouve » designait un systeme arbitraire, souvent une colonie vide : le
+    /// contre-espionnage y est faible, ce qui rendait les missions trop faciles, et saboter un
+    /// caillou sans population n'avait aucun interet strategique.
     /// </para>
     /// <para>
     /// <b>S'arrete des la premiere mission reussie :</b> tente la mission preferee de la
@@ -45,36 +52,23 @@ namespace Espace.Gameplay.Espionage
                     continue;
                 }
 
-                StarSystemId? targetSystemId = FindPrimarySystemId(target.Id, map);
-                if (targetSystemId == null)
+                StarSystemState targetSystem = EmpireHoldings.Capital(target.Id, map);
+                if (targetSystem == null)
                 {
                     continue;
                 }
 
-                float counterPower = espionage.GetCounterEspionagePower(target.Id, targetSystemId.Value);
+                float counterPower = espionage.GetCounterEspionagePower(target.Id, targetSystem.Id);
                 if (ownPower < counterPower * profile.EspionageThreshold.Value)
                 {
                     continue;
                 }
 
-                if (TryExecuteMission(empire.Id, target.Id, targetSystemId.Value, profile.PreferredEspionageMission, espionage))
+                if (TryExecuteMission(empire.Id, target.Id, targetSystem.Id, profile.PreferredEspionageMission, espionage))
                 {
                     return;
                 }
             }
-        }
-
-        private static StarSystemId? FindPrimarySystemId(int empireId, GalaxyMap map)
-        {
-            foreach (StarSystemState system in map.Systems)
-            {
-                if (system.OwnerId == empireId)
-                {
-                    return system.Id;
-                }
-            }
-
-            return null;
         }
 
         private static bool TryExecuteMission(

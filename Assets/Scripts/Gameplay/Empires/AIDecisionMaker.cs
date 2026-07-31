@@ -20,6 +20,15 @@ namespace Espace.Gameplay.Empires
     /// lisible à observer (impossible de distinguer "elle a décidé X" de "elle a tout fait
     /// d'un coup") et moins représentative d'une gestion progressive.
     /// </para>
+    /// <para>
+    /// <b>Multi-système depuis la Phase 18 :</b> l'action reste unique, mais le système sur
+    /// lequel elle porte est désormais <i>choisi</i> (voir <see cref="ChooseDevelopmentTarget"/>)
+    /// au lieu d'être toujours le premier système trouvé. Passer à « une action par système »
+    /// aurait multiplié le rythme de dépense par le nombre de systèmes et vidé le trésor d'un
+    /// empire étendu ; choisir la bonne cible garde le rythme constant tout en corrigeant le
+    /// vrai défaut — des colonies laissées au développement 0 et sans aucun bâtiment,
+    /// indéfiniment, depuis que la colonisation fonctionne (Phase 16).
+    /// </para>
     /// </summary>
     public static class AIDecisionMaker
     {
@@ -30,40 +39,73 @@ namespace Espace.Gameplay.Empires
         /// </summary>
         public static void DecideAndAct(Empire empire, GalaxyMap map, IEconomyService economy)
         {
-            StarSystemState homeSystem = FindPrimarySystem(empire, map);
-            if (homeSystem == null)
-            {
-                return;
-            }
-
             EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
 
-            economy.SetTaxRate(empire.Id, profile.PreferredTaxRate);
-
-            if (TryBuild(empire, homeSystem, economy, profile))
+            StarSystemState target = ChooseDevelopmentTarget(empire, map, profile);
+            if (target == null)
             {
                 return;
             }
 
-            TryInvest(empire, homeSystem, economy, profile);
+            // Le taux d'imposition est un réglage d'empire, pas de système : il est réaffirmé
+            // une seule fois quelle que soit la cible retenue.
+            economy.SetTaxRate(empire.Id, profile.PreferredTaxRate);
+
+            // Aucun repli sur un autre système n'est nécessaire, et ce n'est pas un oubli : la
+            // règle de rattrapage ne peut pas faire perdre un mois. Une colonie neuve ne peut
+            // souvent rien construire (aucun bâtiment n'atteint son niveau de développement
+            // requis), mais elle peut toujours être développée — et son investissement, coûtant
+            // `(niveau + 1) × 200`, est par construction le moins cher de l'empire. Si elle
+            // n'est pas finançable, aucun autre système ne l'est non plus.
+            if (TryBuild(empire, target, economy, profile))
+            {
+                return;
+            }
+
+            TryInvest(empire, target, economy, profile);
         }
 
         /// <summary>
-        /// Le seul système possédé par l'empire pour l'instant (aucune colonisation avant la
-        /// Phase 6). Retourne le premier trouvé si, un jour, un empire venait à en posséder
-        /// plusieurs — évite un plantage plutôt que de présupposer l'unicité en dur.
+        /// Le système sur lequel porter l'effort de ce mois, ou <c>null</c> si l'empire n'en
+        /// possède aucun (situation normale après une conquête totale, pas une erreur).
+        /// <para>
+        /// <b>Rattrapage par défaut, capitale pour le Militariste</b> (Phase 18). Le rattrapage
+        /// — viser le système possédé le moins développé — est aussi la stratégie la moins
+        /// chère, puisque <c>GetInvestmentCost</c> vaut <c>(niveau + 1) × coût</c> : un système
+        /// en retard coûte toujours moins à faire progresser que celui qui est déjà en tête.
+        /// Le Militariste fait exception parce que ses meilleures unités exigent un
+        /// <c>MinimumDevelopmentLevel</c> de 4 : cinq systèmes médiocres ne lui donneraient
+        /// jamais un seul Cuirassé.
+        /// </para>
+        /// <para>
+        /// Départage sur le plus petit identifiant, comme partout ailleurs : le projet ne
+        /// contient aucun tirage au runtime.
+        /// </para>
         /// </summary>
-        private static StarSystemState FindPrimarySystem(Empire empire, GalaxyMap map)
+        private static StarSystemState ChooseDevelopmentTarget(Empire empire, GalaxyMap map, EmpirePersonalityProfileData profile)
         {
+            if (profile.DevelopsCapitalFirst)
+            {
+                return EmpireHoldings.Capital(empire.Id, map);
+            }
+
+            StarSystemState leastDeveloped = null;
             foreach (StarSystemState system in map.Systems)
             {
-                if (system.OwnerId == empire.Id)
+                if (system.OwnerId != empire.Id)
                 {
-                    return system;
+                    continue;
+                }
+
+                if (leastDeveloped == null
+                    || system.DevelopmentLevel < leastDeveloped.DevelopmentLevel
+                    || (system.DevelopmentLevel == leastDeveloped.DevelopmentLevel && system.Id.Value < leastDeveloped.Id.Value))
+                {
+                    leastDeveloped = system;
                 }
             }
 
-            return null;
+            return leastDeveloped;
         }
 
         private static bool TryBuild(Empire empire, StarSystemState system, IEconomyService economy, EmpirePersonalityProfileData profile)

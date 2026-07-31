@@ -47,6 +47,19 @@ namespace Espace.Gameplay.Military
         bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error);
 
         /// <summary>
+        /// Reste-t-il a <paramref name="empireId"/> une place sous le plafond de flottes en
+        /// deplacement simultane (Phase 18) ?
+        /// <para>
+        /// <b>A consulter avant tout detachement :</b> <see cref="TryDetachFleet"/> n'a pas
+        /// d'inverse, donc detacher puis se voir refuser <see cref="TryMoveFleet"/> laisse une
+        /// flotte orpheline stationnee a cote de la garnison. Avec des trajets longue distance
+        /// de plusieurs semaines, le plafond est atteint la plupart du temps : le verifier
+        /// d'avance est la seule facon de ne pas fragmenter les garnisons mois apres mois.
+        /// </para>
+        /// </summary>
+        bool CanDeployAnotherFleet(int empireId);
+
+        /// <summary>
         /// Retire <paramref name="unitsToDetach"/> de la garnison de <paramref name="empireId"/>
         /// sur <paramref name="systemId"/> pour en faire une nouvelle flotte stationnee sur le
         /// meme systeme, prete a etre envoyee ailleurs via <see cref="TryMoveFleet"/> — sans

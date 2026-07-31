@@ -301,5 +301,96 @@ namespace Espace.Tests.EditMode
             Assert.AreEqual(1, service.GetBuildings(system.Id).Count);
             Assert.AreEqual(3, system.DevelopmentLevel, "Un seul type d'action par appel : la construction a eu lieu, pas l'investissement.");
         }
+
+        // --- Multi-systeme (Phase 18) -----------------------------------------------------
+
+        /// <summary>Systeme possede a un identifiant choisi, pour composer un empire a plusieurs systemes.</summary>
+        private static StarSystemState MakeOwnedSystemWithId(int id, int ownerId, int developmentLevel, int wealth = 500)
+        {
+            var system = new StarSystemState(
+                new StarSystemId(id), $"S{id}", new Vector2(id * 10f, 0f), 1000, wealth, developmentLevel, 1f, Array.Empty<ResourceType>());
+            system.OwnerId = ownerId;
+            return system;
+        }
+
+        [Test]
+        public void DecideAndAct_InvestsInTheLeastDevelopedSystem()
+        {
+            // Le defaut corrige par la Phase 18 : la colonie restait au developpement 0 a
+            // jamais, l'IA ne s'occupant que d'un seul systeme.
+            StarSystemState capital = MakeOwnedSystemWithId(0, AiEmpireId, developmentLevel: 3);
+            StarSystemState colony = MakeOwnedSystemWithId(1, AiEmpireId, developmentLevel: 0);
+            GalaxyMap map = MakeMap(capital, colony);
+            var service = new EconomyService(map, _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            GiveCredits(service, capital, AiEmpireId, 100000f);
+            Empire empire = MakeEmpire(EmpirePersonality.Expansionist);
+
+            AIDecisionMaker.DecideAndAct(empire, map, service);
+
+            Assert.AreEqual(1, colony.DevelopmentLevel, "La colonie en retard doit rattraper : c'est aussi le moins cher.");
+            Assert.AreEqual(3, capital.DevelopmentLevel, "Une seule action par appel.");
+        }
+
+        [Test]
+        public void DecideAndAct_Militarist_InvestsInItsCapitalInstead()
+        {
+            // Seule personnalite a DevelopsCapitalFirst : ses meilleures unites exigent un
+            // developpement 4, cinq systemes mediocres ne lui donneraient aucun Cuirasse.
+            StarSystemState capital = MakeOwnedSystemWithId(0, AiEmpireId, developmentLevel: 3);
+            StarSystemState colony = MakeOwnedSystemWithId(1, AiEmpireId, developmentLevel: 0);
+            GalaxyMap map = MakeMap(capital, colony);
+            var service = new EconomyService(map, _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            GiveCredits(service, capital, AiEmpireId, 100000f);
+            Empire empire = MakeEmpire(EmpirePersonality.Militarist);
+
+            AIDecisionMaker.DecideAndAct(empire, map, service);
+
+            Assert.AreEqual(4, capital.DevelopmentLevel, "Le Militariste concentre son effort sur son bastion.");
+            Assert.AreEqual(0, colony.DevelopmentLevel);
+        }
+
+        [Test]
+        public void DecideAndAct_UndevelopedColony_IsAlwaysAffordableToDevelop()
+        {
+            // La regle de rattrapage ne peut jamais faire perdre un mois : une colonie neuve ne
+            // peut souvent rien construire (aucun batiment n'atteint son developpement requis),
+            // mais son investissement — (niveau + 1) x 200 — est par construction le moins cher
+            // de l'empire. Aucun repli sur un autre systeme n'est donc necessaire.
+            StarSystemState capital = MakeOwnedSystemWithId(0, AiEmpireId, developmentLevel: 5);
+            StarSystemState colony = MakeOwnedSystemWithId(1, AiEmpireId, developmentLevel: 0);
+            BuildingType advancedBuilding = MakeBuildingType("Avance", ResourceType.Food, 3f, 50f, minDevelopment: 5);
+            GalaxyMap map = MakeMap(capital, colony);
+            var service = new EconomyService(map, _clock, _eventBus, new[] { advancedBuilding });
+            service.Initialize();
+            GiveCredits(service, capital, AiEmpireId, 100000f);
+            Empire empire = MakeEmpire(EmpirePersonality.Pacifist); // priorite Food, rattrapage
+
+            AIDecisionMaker.DecideAndAct(empire, map, service);
+
+            Assert.AreEqual(1, colony.DevelopmentLevel, "Le mois n'est jamais perdu : la colonie est developpee.");
+            Assert.AreEqual(0, service.GetBuildings(capital.Id).Count, "Une seule action par appel.");
+        }
+
+        [Test]
+        public void DecideAndAct_AllSystemsEquallyDeveloped_ActsOnTheLowestId()
+        {
+            // A developpement egal, le rattrapage et la capitale designent le meme systeme :
+            // le departage sur l'identifiant est la seule regle, aucun tirage.
+            StarSystemState first = MakeOwnedSystemWithId(0, AiEmpireId, developmentLevel: 2);
+            StarSystemState second = MakeOwnedSystemWithId(1, AiEmpireId, developmentLevel: 2);
+            GalaxyMap map = MakeMap(second, first); // ordre de carte volontairement inverse
+            var service = new EconomyService(map, _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            GiveCredits(service, first, AiEmpireId, 100000f);
+            Empire empire = MakeEmpire(EmpirePersonality.Expansionist);
+
+            AIDecisionMaker.DecideAndAct(empire, map, service);
+
+            Assert.AreEqual(3, first.DevelopmentLevel);
+            Assert.AreEqual(2, second.DevelopmentLevel);
+        }
+
     }
 }

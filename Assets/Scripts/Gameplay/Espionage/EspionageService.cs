@@ -3,6 +3,7 @@ using Espace.Core;
 using Espace.Data;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
+using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.Research;
@@ -295,17 +296,21 @@ namespace Espace.Gameplay.Espionage
             return best;
         }
 
+        /// <summary>
+        /// Systeme de reference d'un empire pour le calcul de contre-espionnage : sa capitale,
+        /// c'est-a-dire son systeme le plus developpe (Phase 18).
+        /// <para>
+        /// Avant cette phase, c'etait le premier systeme rencontre dans l'ordre de la carte —
+        /// arbitraire des que la colonisation fonctionne reellement (Phase 16), et souvent une
+        /// colonie vide dont le contre-espionnage quasi nul rendait toutes les missions
+        /// triviales. La capitale est aussi ce que vise desormais
+        /// <see cref="EspionageDecisionMaker"/> : les deux doivent designer le meme systeme,
+        /// sinon l'IA raisonne sur une difficulte qui n'est pas celle qu'elle rencontre.
+        /// </para>
+        /// </summary>
         private StarSystemState FindPrimarySystem(int empireId)
         {
-            foreach (StarSystemState system in _map.Systems)
-            {
-                if (system.OwnerId == empireId)
-                {
-                    return system;
-                }
-            }
-
-            return null;
+            return EmpireHoldings.Capital(empireId, _map);
         }
 
         private static float ResearchBonus(int empireId, ResearchDomain domain)

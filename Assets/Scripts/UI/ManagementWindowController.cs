@@ -495,17 +495,15 @@ namespace Espace.UI
             }
         }
 
+        /// <summary>
+        /// Systeme de reference affiche pour le contre-espionnage d'un empire : sa capitale
+        /// (Phase 18), exactement celui sur lequel <c>EspionageService</c> calcule reellement —
+        /// afficher un autre systeme donnerait au joueur un chiffre qui ne correspond a rien.
+        /// </summary>
         private StarSystemId? FindPrimarySystemId(int empireId)
         {
-            foreach (StarSystemState system in _map.Systems)
-            {
-                if (system.OwnerId == empireId)
-                {
-                    return system.Id;
-                }
-            }
-
-            return null;
+            StarSystemState capital = EmpireHoldings.Capital(empireId, _map);
+            return capital?.Id;
         }
 
         private static void LogIfFailed(string error)
