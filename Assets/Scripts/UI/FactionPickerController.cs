@@ -98,13 +98,12 @@ namespace Espace.UI
 
                 GUILayout.EndScrollView();
                 GUILayout.EndArea();
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
 
         private void DrawFactionStep()
         {

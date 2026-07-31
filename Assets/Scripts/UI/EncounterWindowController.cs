@@ -64,13 +64,12 @@ namespace Espace.UI
 
                 HoldClock();
                 DrawWindow(encounter);
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
 
         private void ResolveServices()
         {

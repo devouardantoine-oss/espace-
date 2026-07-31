@@ -187,13 +187,12 @@ namespace Espace.UI
 
                 GUILayout.EndScrollView();
                 GUILayout.EndArea();
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
 
         /// <summary>
         /// Cout de colonisation d'un systeme libre (Phase 16). Appelle directement les regles

@@ -102,13 +102,12 @@ namespace Espace.UI
 
                 GUILayout.EndHorizontal();
                 GUILayout.EndArea();
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
 
         private void ResolveServices()
         {

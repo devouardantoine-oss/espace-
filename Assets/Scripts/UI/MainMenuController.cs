@@ -75,13 +75,12 @@ namespace Espace.UI
                 }
 
                 GUILayout.EndArea();
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
 
         private void StartNewGame()
         {

@@ -14,8 +14,6 @@ namespace Espace.Tests.EditMode
     [TestFixture]
     public class HudFormatterTests
     {
-        private const float FloatTolerance = 0.001f;
-
         [Test]
         public void FormatDate_UsesReadableFrenchLayout()
         {
@@ -133,8 +131,17 @@ namespace Espace.Tests.EditMode
         {
             Assert.DoesNotThrow(() => SaveFileLocator.DeleteIfExists());
         }
+    }
 
-        // --- Mise a l'echelle de l'interface selon la densite d'ecran --------------------
+    /// <summary>
+    /// Verifie <see cref="UITheme.ComputeScale"/> : l'agrandissement de l'interface deduit de
+    /// la densite de l'ecran (correction mobile). La formule est isolee de <c>Screen</c>
+    /// justement pour etre verifiable ici, comme <see cref="HudFormatter"/>.
+    /// </summary>
+    [TestFixture]
+    public class UIThemeScaleTests
+    {
+        private const float FloatTolerance = 0.001f;
 
         [Test]
         public void ComputeScale_DesktopDensity_LeavesInterfaceUntouched()

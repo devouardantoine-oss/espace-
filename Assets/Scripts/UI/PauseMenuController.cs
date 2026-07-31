@@ -117,12 +117,11 @@ namespace Espace.UI
                 }
 
                 GUILayout.EndArea();
-
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
-}
+        }
     }
 }
