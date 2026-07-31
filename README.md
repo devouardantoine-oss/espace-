@@ -92,6 +92,7 @@ une fois tous les réglages du projet :
 | Espace colorimétrique | Linear |
 | Active Input Handling | Input System Package (New) |
 | Build Settings | `Bootstrap.unity` en scène 0, `GalaxyMap.unity` en scène 1 (indispensable : le jeu la charge par son nom, une scène absente de cette liste n'existe pas dans une application compilée) |
+| Orientation | paysage uniquement (Android et iOS) : la fenêtre de gestion fait 660 unités de large, en portrait l'échelle de l'interface devrait se brider pour la faire tenir et les boutons redeviendraient trop petits pour un doigt |
 | Android | IL2CPP, ARM64, min SDK 26 (Unity 6 refuse toute valeur inférieure) |
 | iOS | IL2CPP, cible minimale 13.0 |
 
@@ -676,7 +677,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (506 tests, tous packages confondus).
+Voir §5 pour le compte total (511 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -857,7 +858,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 506 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 511 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la

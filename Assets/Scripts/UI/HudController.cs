@@ -42,33 +42,42 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (_gameClock == null)
+            UITheme.BeginScaledLayout();
+            try
             {
-                ServiceLocator.TryGet(out _gameClock);
-            }
+                if (_gameClock == null)
+                {
+                    ServiceLocator.TryGet(out _gameClock);
+                }
 
-            if (_economy == null)
+                if (_economy == null)
+                {
+                    ServiceLocator.TryGet(out _economy);
+                }
+
+                var barRect = new Rect(0, 0, UITheme.ScreenWidth, BarHeight);
+                GUI.Box(barRect, string.Empty, UITheme.Header);
+
+                GUILayout.BeginArea(new Rect(8, 6, UITheme.ScreenWidth - 16, BarHeight - 8));
+                GUILayout.BeginHorizontal();
+
+                DrawClockSection();
+                GUILayout.Space(20);
+                DrawTreasurySection();
+
+                GUILayout.FlexibleSpace();
+
+                DrawWindowToggles();
+
+                GUILayout.EndHorizontal();
+                GUILayout.EndArea();
+
+            }
+            finally
             {
-                ServiceLocator.TryGet(out _economy);
+                UITheme.EndScaledLayout();
             }
-
-            var barRect = new Rect(0, 0, Screen.width, BarHeight);
-            GUI.Box(barRect, string.Empty, UITheme.Header);
-
-            GUILayout.BeginArea(new Rect(8, 6, Screen.width - 16, BarHeight - 8));
-            GUILayout.BeginHorizontal();
-
-            DrawClockSection();
-            GUILayout.Space(20);
-            DrawTreasurySection();
-
-            GUILayout.FlexibleSpace();
-
-            DrawWindowToggles();
-
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-        }
+}
 
         private void DrawClockSection()
         {

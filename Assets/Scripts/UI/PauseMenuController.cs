@@ -55,65 +55,74 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (!_visible)
+            UITheme.BeginScaledLayout();
+            try
             {
-                return;
-            }
-
-            if (_save == null) ServiceLocator.TryGet(out _save);
-            if (_sceneLoader == null) ServiceLocator.TryGet(out _sceneLoader);
-
-            var rect = new Rect((Screen.width - WindowWidth) / 2f, (Screen.height - WindowHeight) / 2f, WindowWidth, WindowHeight);
-            GUI.Box(rect, string.Empty, UITheme.Panel);
-
-            GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 8, WindowWidth - 20, WindowHeight - 16));
-
-            GUILayout.Label("Pause", UITheme.Title);
-            GUILayout.Space(8);
-
-            if (GUILayout.Button("Reprendre", UITheme.Button, GUILayout.Height(32)))
-            {
-                ToggleVisible();
-            }
-
-            GUI.enabled = _save != null;
-            if (GUILayout.Button("Sauvegarder maintenant", UITheme.Button, GUILayout.Height(32)))
-            {
-                _save.SaveNow();
-            }
-
-            if (GUILayout.Button("Recharger la sauvegarde", UITheme.Button, GUILayout.Height(32)))
-            {
-                _save.TryLoadAndApply(out string error);
-                if (error != null)
+                if (!_visible)
                 {
-                    GameLog.Warning($"[Save] {error}");
+                    return;
                 }
-            }
-            GUI.enabled = true;
 
-            GUILayout.Space(8);
+                if (_save == null) ServiceLocator.TryGet(out _save);
+                if (_sceneLoader == null) ServiceLocator.TryGet(out _sceneLoader);
 
-            if (GUILayout.Button("Menu principal", UITheme.Button, GUILayout.Height(32)))
-            {
-                _save?.SaveNow();
-                if (_sceneLoader != null)
+                var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+                GUI.Box(rect, string.Empty, UITheme.Panel);
+
+                GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 8, WindowWidth - 20, WindowHeight - 16));
+
+                GUILayout.Label("Pause", UITheme.Title);
+                GUILayout.Space(8);
+
+                if (GUILayout.Button("Reprendre", UITheme.Button, GUILayout.Height(32)))
                 {
-                    _sceneLoader.LoadScene("Bootstrap");
+                    ToggleVisible();
                 }
-                else
+
+                GUI.enabled = _save != null;
+                if (GUILayout.Button("Sauvegarder maintenant", UITheme.Button, GUILayout.Height(32)))
                 {
-                    GameLog.Error("[PauseMenu] ISceneLoader indisponible : impossible de retourner au menu principal.");
+                    _save.SaveNow();
                 }
-            }
 
-            if (GUILayout.Button("Quitter le jeu", UITheme.Button, GUILayout.Height(32)))
+                if (GUILayout.Button("Recharger la sauvegarde", UITheme.Button, GUILayout.Height(32)))
+                {
+                    _save.TryLoadAndApply(out string error);
+                    if (error != null)
+                    {
+                        GameLog.Warning($"[Save] {error}");
+                    }
+                }
+                GUI.enabled = true;
+
+                GUILayout.Space(8);
+
+                if (GUILayout.Button("Menu principal", UITheme.Button, GUILayout.Height(32)))
+                {
+                    _save?.SaveNow();
+                    if (_sceneLoader != null)
+                    {
+                        _sceneLoader.LoadScene("Bootstrap");
+                    }
+                    else
+                    {
+                        GameLog.Error("[PauseMenu] ISceneLoader indisponible : impossible de retourner au menu principal.");
+                    }
+                }
+
+                if (GUILayout.Button("Quitter le jeu", UITheme.Button, GUILayout.Height(32)))
+                {
+                    _save?.SaveNow();
+                    Application.Quit();
+                }
+
+                GUILayout.EndArea();
+
+            }
+            finally
             {
-                _save?.SaveNow();
-                Application.Quit();
+                UITheme.EndScaledLayout();
             }
-
-            GUILayout.EndArea();
-        }
+}
     }
 }

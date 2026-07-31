@@ -35,6 +35,114 @@ namespace Espace.UI
         public static readonly Color PositiveColor = new Color(0.45f, 0.80f, 0.55f, 1f);
         public static readonly Color NegativeColor = new Color(0.90f, 0.45f, 0.40f, 1f);
 
+        /// <summary>
+        /// Densite de reference : le point ou l'echelle vaut 1 et l'interface s'affiche telle
+        /// qu'elle a ete dimensionnee. 160 ppp est la densite de base d'Android (« mdpi »), ce
+        /// qui fait de <see cref="Scale"/> l'equivalent exact du facteur densite-independante
+        /// du systeme.
+        /// </summary>
+        private const float ReferenceDpi = 160f;
+
+        /// <summary>
+        /// Largeur logique minimale que l'interface doit pouvoir afficher : la fenetre de
+        /// gestion (660) plus une marge. L'echelle est plafonnee pour la garantir, sinon le
+        /// plus large des panneaux deborderait de l'ecran sur un telephone tenu en portrait.
+        /// </summary>
+        private const float MinimumLogicalWidth = 700f;
+
+        /// <summary>Garde-fou : au-dela, l'interface deviendrait grotesque sur une tres haute densite.</summary>
+        private const float MaximumScale = 4f;
+
+        private static float _cachedScale;
+        private static int _cachedForWidth;
+        private static int _cachedForHeight;
+        private static Matrix4x4 _previousMatrix;
+
+        /// <summary>
+        /// Facteur d'agrandissement de toute l'interface, deduit de la densite de l'ecran.
+        /// <para>
+        /// <b>Sans lui, l'interface est illisible sur telephone.</b> IMGUI dessine en pixels
+        /// physiques : un bouton de 30 pixels mesure 8 mm sur un ecran d'ordinateur a 96 ppp,
+        /// mais moins de 2 mm sur un telephone a 450 ppp — trois a quatre fois plus petit que
+        /// ce qu'un doigt peut viser. Le projet vise le mobile depuis la Phase 1 et n'avait
+        /// jamais pu le constater, faute d'appareil.
+        /// </para>
+        /// <para>
+        /// <b>Jamais en dessous de 1 :</b> sur un ecran d'ordinateur (~96 ppp), le rapport
+        /// vaudrait 0,6 et retrecirait une interface deja correctement dimensionnee. L'echelle
+        /// ne fait donc qu'agrandir, jamais l'inverse.
+        /// </para>
+        /// <para>
+        /// <b>Plafonnee pour que le plus large panneau tienne :</b> agrandir au-dela de
+        /// <c>largeurEcran / <see cref="MinimumLogicalWidth"/></c> ferait deborder la fenetre de
+        /// gestion. Mieux vaut des boutons un peu plus petits qu'une fenetre dont la moitie est
+        /// hors de l'ecran.
+        /// </para>
+        /// <para>
+        /// Recalculee des que la resolution change, ce qui couvre la rotation de l'appareil.
+        /// </para>
+        /// </summary>
+        public static float Scale
+        {
+            get
+            {
+                if (_cachedScale > 0f && _cachedForWidth == Screen.width && _cachedForHeight == Screen.height)
+                {
+                    return _cachedScale;
+                }
+
+                _cachedScale = ComputeScale(Screen.dpi, Screen.width);
+                _cachedForWidth = Screen.width;
+                _cachedForHeight = Screen.height;
+                return _cachedScale;
+            }
+        }
+
+        /// <summary>
+        /// La formule de <see cref="Scale"/>, isolee de <c>Screen</c> pour etre verifiable en
+        /// EditMode et recoupee independamment — meme separation que <c>HudFormatter</c>
+        /// vis-a-vis du reste de l'interface.
+        /// </summary>
+        /// <param name="dpi">Densite de l'ecran ; <c>0</c> ou negative signifie « inconnue ».</param>
+        /// <param name="screenWidthPixels">Largeur de l'ecran en pixels physiques.</param>
+        public static float ComputeScale(float dpi, int screenWidthPixels)
+        {
+            // Une densite inconnue ne se devine pas : on laisse l'interface telle quelle.
+            float densityScale = dpi > 1f ? dpi / ReferenceDpi : 1f;
+            float widthLimit = screenWidthPixels / MinimumLogicalWidth;
+
+            return Mathf.Clamp(Mathf.Min(densityScale, widthLimit), 1f, MaximumScale);
+        }
+
+        /// <summary>Largeur de l'ecran en unites d'interface : c'est elle qu'il faut utiliser pour positionner un panneau, jamais <c>Screen.width</c>.</summary>
+        public static float ScreenWidth => Screen.width / Scale;
+
+        /// <summary>Hauteur de l'ecran en unites d'interface : c'est elle qu'il faut utiliser pour positionner un panneau, jamais <c>Screen.height</c>.</summary>
+        public static float ScreenHeight => Screen.height / Scale;
+
+        /// <summary>
+        /// A appeler en toute premiere ligne d'un <c>OnGUI</c>, avec
+        /// <see cref="EndScaledLayout"/> dans un <c>finally</c> — les <c>OnGUI</c> du projet ont
+        /// des retours anticipes, et une matrice laissee en place deborderait sur le composant
+        /// dessine juste apres.
+        /// <para>
+        /// IMGUI applique l'inverse de <c>GUI.matrix</c> aux coordonnees des evenements : les
+        /// clics et les touchers restent donc alignes sur ce qui est affiche, sans conversion
+        /// manuelle.
+        /// </para>
+        /// </summary>
+        public static void BeginScaledLayout()
+        {
+            _previousMatrix = GUI.matrix;
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(Scale, Scale, 1f));
+        }
+
+        /// <summary>Restaure la matrice d'avant <see cref="BeginScaledLayout"/>.</summary>
+        public static void EndScaledLayout()
+        {
+            GUI.matrix = _previousMatrix;
+        }
+
         private static readonly Dictionary<Color, Texture2D> SolidTextures = new Dictionary<Color, Texture2D>();
 
         private static GUIStyle _panelStyle;

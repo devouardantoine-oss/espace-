@@ -40,39 +40,48 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (_factionPicker != null && _factionPicker.IsOpen)
+            UITheme.BeginScaledLayout();
+            try
             {
-                return;
+                if (_factionPicker != null && _factionPicker.IsOpen)
+                {
+                    return;
+                }
+
+                var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+                GUI.Box(rect, string.Empty, UITheme.Panel);
+
+                GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, WindowWidth - 24, WindowHeight - 20));
+
+                GUILayout.Label("ESPACE", UITheme.Title);
+                GUILayout.Label("Grande strategie galactique", UITheme.MutedLabel);
+                GUILayout.Space(16);
+
+                if (GUILayout.Button("Nouvelle partie", UITheme.Button, GUILayout.Height(36)))
+                {
+                    StartNewGame();
+                }
+
+                GUI.enabled = SaveFileLocator.Exists();
+                if (GUILayout.Button("Continuer", UITheme.Button, GUILayout.Height(36)))
+                {
+                    ContinueGame();
+                }
+                GUI.enabled = true;
+
+                if (GUILayout.Button("Quitter", UITheme.Button, GUILayout.Height(36)))
+                {
+                    Application.Quit();
+                }
+
+                GUILayout.EndArea();
+
             }
-
-            var rect = new Rect((Screen.width - WindowWidth) / 2f, (Screen.height - WindowHeight) / 2f, WindowWidth, WindowHeight);
-            GUI.Box(rect, string.Empty, UITheme.Panel);
-
-            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, WindowWidth - 24, WindowHeight - 20));
-
-            GUILayout.Label("ESPACE", UITheme.Title);
-            GUILayout.Label("Grande strategie galactique", UITheme.MutedLabel);
-            GUILayout.Space(16);
-
-            if (GUILayout.Button("Nouvelle partie", UITheme.Button, GUILayout.Height(36)))
+            finally
             {
-                StartNewGame();
+                UITheme.EndScaledLayout();
             }
-
-            GUI.enabled = SaveFileLocator.Exists();
-            if (GUILayout.Button("Continuer", UITheme.Button, GUILayout.Height(36)))
-            {
-                ContinueGame();
-            }
-            GUI.enabled = true;
-
-            if (GUILayout.Button("Quitter", UITheme.Button, GUILayout.Height(36)))
-            {
-                Application.Quit();
-            }
-
-            GUILayout.EndArea();
-        }
+}
 
         private void StartNewGame()
         {

@@ -198,15 +198,40 @@ namespace Espace.Editor
         /// </summary>
         private static void ConfigureAndroid()
         {
+            ConfigureLandscapeOrientation();
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, ApplicationIdentifier);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         }
 
+        /// <summary>
+        /// Verrouille l'application en paysage.
+        /// <para>
+        /// <b>Impose par la largeur de l'interface :</b> la fenetre de gestion mesure 660
+        /// unites de large. En portrait, <c>UITheme.Scale</c> doit se brider pour la faire
+        /// tenir, et les boutons redeviennent trop petits pour un doigt ; en paysage, la meme
+        /// fenetre tient largement et l'echelle peut suivre la densite reelle de l'ecran. Une
+        /// carte galactique et un tableau a sept onglets sont de toute facon des formes larges.
+        /// </para>
+        /// <para>
+        /// Reglage independant du reste : repasser <c>defaultInterfaceOrientation</c> sur
+        /// <c>AutoRotation</c> suffit a revenir en arriere, sans toucher au code de l'interface.
+        /// </para>
+        /// </summary>
+        private static void ConfigureLandscapeOrientation()
+        {
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+        }
+
         /// <summary>iOS : IL2CPP est le seul backend disponible ; on fixe la cible minimale.</summary>
         private static void ConfigureIos()
         {
+            ConfigureLandscapeOrientation();
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, ApplicationIdentifier);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.iOS, ScriptingImplementation.IL2CPP);
             PlayerSettings.iOS.targetOSVersionString = "13.0";

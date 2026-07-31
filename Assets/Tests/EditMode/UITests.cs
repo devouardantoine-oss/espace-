@@ -14,6 +14,8 @@ namespace Espace.Tests.EditMode
     [TestFixture]
     public class HudFormatterTests
     {
+        private const float FloatTolerance = 0.001f;
+
         [Test]
         public void FormatDate_UsesReadableFrenchLayout()
         {
@@ -130,6 +132,59 @@ namespace Espace.Tests.EditMode
         public void DeleteIfExists_NoFile_DoesNotThrow()
         {
             Assert.DoesNotThrow(() => SaveFileLocator.DeleteIfExists());
+        }
+
+        // --- Mise a l'echelle de l'interface selon la densite d'ecran --------------------
+
+        [Test]
+        public void ComputeScale_DesktopDensity_LeavesInterfaceUntouched()
+        {
+            // ~96 ppp donnerait un rapport de 0,6 : l'echelle ne doit jamais retrecir une
+            // interface deja correctement dimensionnee pour un ecran d'ordinateur.
+            Assert.AreEqual(1f, UITheme.ComputeScale(96f, 1920), FloatTolerance);
+        }
+
+        [Test]
+        public void ComputeScale_UnknownDensity_LeavesInterfaceUntouched()
+        {
+            // Screen.dpi vaut 0 quand le systeme ne la connait pas : on ne devine pas.
+            Assert.AreEqual(1f, UITheme.ComputeScale(0f, 1920), FloatTolerance);
+        }
+
+        [Test]
+        public void ComputeScale_PhoneDensity_EnlargesInterface()
+        {
+            // Redmi Note 13 Pro en paysage : 446 ppp / 160 = 2,79.
+            Assert.AreEqual(2.7875f, UITheme.ComputeScale(446f, 2712), FloatTolerance);
+        }
+
+        [Test]
+        public void ComputeScale_NarrowScreen_IsCappedSoTheWidestPanelStillFits()
+        {
+            // Le meme telephone en portrait : la densite reclamerait 2,79, mais la fenetre de
+            // gestion (660 unites) deborderait. L'echelle se bride a 1220/700 = 1,74.
+            float scale = UITheme.ComputeScale(446f, 1220);
+
+            Assert.Less(scale, 2.7875f, "L'echelle doit se brider sur un ecran etroit.");
+            Assert.GreaterOrEqual(1220 / scale, 660f, "Le plus large panneau doit toujours tenir.");
+        }
+
+        [TestCase(96f, 1920)]
+        [TestCase(446f, 1220)]
+        [TestCase(446f, 2712)]
+        [TestCase(264f, 2360)]
+        [TestCase(640f, 1440)]
+        public void ComputeScale_WidestPanelAlwaysFits(float dpi, int screenWidth)
+        {
+            // Propriete structurante : quelle que soit la machine, la fenetre de gestion doit
+            // rester entierement visible.
+            Assert.GreaterOrEqual(screenWidth / UITheme.ComputeScale(dpi, screenWidth), 660f);
+        }
+
+        [Test]
+        public void ComputeScale_ExtremeDensity_IsCappedToKeepTheInterfaceSane()
+        {
+            Assert.LessOrEqual(UITheme.ComputeScale(2000f, 8000), 4f);
         }
     }
 }

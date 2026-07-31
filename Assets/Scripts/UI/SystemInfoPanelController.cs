@@ -136,55 +136,64 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (!_selectedSystemId.HasValue)
+            UITheme.BeginScaledLayout();
+            try
             {
-                return;
-            }
+                if (!_selectedSystemId.HasValue)
+                {
+                    return;
+                }
 
-            if (_map == null && !ServiceLocator.TryGet(out _map))
+                if (_map == null && !ServiceLocator.TryGet(out _map))
+                {
+                    return;
+                }
+
+                if (!_map.TryGetSystem(_selectedSystemId.Value, out StarSystemState system))
+                {
+                    return;
+                }
+
+                if (_empireRegistry == null) ServiceLocator.TryGet(out _empireRegistry);
+                if (_economy == null) ServiceLocator.TryGet(out _economy);
+                if (_military == null) ServiceLocator.TryGet(out _military);
+
+                var rect = new Rect(Gap, UITheme.ScreenHeight - PanelHeight - Gap, PanelWidth, PanelHeight);
+                GUI.Box(rect, string.Empty, UITheme.Panel);
+
+                GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, PanelWidth - 16, PanelHeight - 12));
+                _scroll = GUILayout.BeginScrollView(_scroll);
+
+                DrawIdentity(system);
+
+                if (system.OwnerId == StarSystemState.UnownedOwnerId)
+                {
+                    GUILayout.Space(6);
+                    DrawColonizationInfo(system);
+                }
+
+                bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
+                if (ownedByPlayer && _economy != null)
+                {
+                    GUILayout.Space(6);
+                    DrawEconomyActions(system);
+                }
+
+                if (ownedByPlayer && _military != null)
+                {
+                    GUILayout.Space(6);
+                    DrawMilitaryActions(system);
+                }
+
+                GUILayout.EndScrollView();
+                GUILayout.EndArea();
+
+            }
+            finally
             {
-                return;
+                UITheme.EndScaledLayout();
             }
-
-            if (!_map.TryGetSystem(_selectedSystemId.Value, out StarSystemState system))
-            {
-                return;
-            }
-
-            if (_empireRegistry == null) ServiceLocator.TryGet(out _empireRegistry);
-            if (_economy == null) ServiceLocator.TryGet(out _economy);
-            if (_military == null) ServiceLocator.TryGet(out _military);
-
-            var rect = new Rect(Gap, Screen.height - PanelHeight - Gap, PanelWidth, PanelHeight);
-            GUI.Box(rect, string.Empty, UITheme.Panel);
-
-            GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, PanelWidth - 16, PanelHeight - 12));
-            _scroll = GUILayout.BeginScrollView(_scroll);
-
-            DrawIdentity(system);
-
-            if (system.OwnerId == StarSystemState.UnownedOwnerId)
-            {
-                GUILayout.Space(6);
-                DrawColonizationInfo(system);
-            }
-
-            bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
-            if (ownedByPlayer && _economy != null)
-            {
-                GUILayout.Space(6);
-                DrawEconomyActions(system);
-            }
-
-            if (ownedByPlayer && _military != null)
-            {
-                GUILayout.Space(6);
-                DrawMilitaryActions(system);
-            }
-
-            GUILayout.EndScrollView();
-            GUILayout.EndArea();
-        }
+}
 
         /// <summary>
         /// Cout de colonisation d'un systeme libre (Phase 16). Appelle directement les regles

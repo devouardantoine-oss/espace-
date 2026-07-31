@@ -72,30 +72,39 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (!_isOpen)
+            UITheme.BeginScaledLayout();
+            try
             {
-                return;
+                if (!_isOpen)
+                {
+                    return;
+                }
+
+                var rect = new Rect((UITheme.ScreenWidth - PanelWidth) / 2f, (UITheme.ScreenHeight - PanelHeight) / 2f, PanelWidth, PanelHeight);
+                GUI.Box(rect, string.Empty, UITheme.Panel);
+
+                GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, PanelWidth - 24, PanelHeight - 20));
+                _scroll = GUILayout.BeginScrollView(_scroll);
+
+                switch (_step)
+                {
+                    case Step.Faction:
+                        DrawFactionStep();
+                        break;
+                    case Step.System:
+                        DrawSystemStep();
+                        break;
+                }
+
+                GUILayout.EndScrollView();
+                GUILayout.EndArea();
+
             }
-
-            var rect = new Rect((Screen.width - PanelWidth) / 2f, (Screen.height - PanelHeight) / 2f, PanelWidth, PanelHeight);
-            GUI.Box(rect, string.Empty, UITheme.Panel);
-
-            GUILayout.BeginArea(new Rect(rect.x + 12, rect.y + 10, PanelWidth - 24, PanelHeight - 20));
-            _scroll = GUILayout.BeginScrollView(_scroll);
-
-            switch (_step)
+            finally
             {
-                case Step.Faction:
-                    DrawFactionStep();
-                    break;
-                case Step.System:
-                    DrawSystemStep();
-                    break;
+                UITheme.EndScaledLayout();
             }
-
-            GUILayout.EndScrollView();
-            GUILayout.EndArea();
-        }
+}
 
         private void DrawFactionStep()
         {

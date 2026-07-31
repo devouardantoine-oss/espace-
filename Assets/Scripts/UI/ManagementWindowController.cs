@@ -76,30 +76,39 @@ namespace Espace.UI
 
         private void OnGUI()
         {
-            if (!_visible)
+            UITheme.BeginScaledLayout();
+            try
             {
-                return;
+                if (!_visible)
+                {
+                    return;
+                }
+
+                ResolveServices();
+
+                var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+                GUI.Box(rect, string.Empty, UITheme.Panel);
+
+                GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, WindowWidth - 16, WindowHeight - 12));
+                GUILayout.BeginHorizontal();
+
+                DrawTabStrip();
+
+                GUILayout.BeginVertical();
+                _contentScroll = GUILayout.BeginScrollView(_contentScroll);
+                DrawActiveTabContent();
+                GUILayout.EndScrollView();
+                GUILayout.EndVertical();
+
+                GUILayout.EndHorizontal();
+                GUILayout.EndArea();
+
             }
-
-            ResolveServices();
-
-            var rect = new Rect((Screen.width - WindowWidth) / 2f, (Screen.height - WindowHeight) / 2f, WindowWidth, WindowHeight);
-            GUI.Box(rect, string.Empty, UITheme.Panel);
-
-            GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, WindowWidth - 16, WindowHeight - 12));
-            GUILayout.BeginHorizontal();
-
-            DrawTabStrip();
-
-            GUILayout.BeginVertical();
-            _contentScroll = GUILayout.BeginScrollView(_contentScroll);
-            DrawActiveTabContent();
-            GUILayout.EndScrollView();
-            GUILayout.EndVertical();
-
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-        }
+            finally
+            {
+                UITheme.EndScaledLayout();
+            }
+}
 
         private void ResolveServices()
         {
