@@ -183,6 +183,7 @@ namespace Espace.UI
                     continue;
                 }
 
+                GUILayout.BeginVertical();
                 if (GUILayout.Button($"{unitType.DisplayName}\n{unitType.CreditsCost:0} Cr", UITheme.Button))
                 {
                     if (!_military.TryRecruitUnits(system.Id, unitType, 1, out string error))
@@ -190,6 +191,12 @@ namespace Espace.UI
                         GameLog.Warning($"[Military] {error}");
                     }
                 }
+
+                if (!string.IsNullOrEmpty(unitType.RoleDescription))
+                {
+                    GUILayout.Label(unitType.RoleDescription, UITheme.MutedLabel, GUILayout.Width(90));
+                }
+                GUILayout.EndVertical();
             }
             GUILayout.EndHorizontal();
 

@@ -33,6 +33,14 @@ namespace Espace.Gameplay.Military
     {
         public int Id { get; }
         public int OwnerId { get; }
+
+        /// <summary>
+        /// Nom de la flotte (Phase 14), attribue automatiquement a la creation. Pas encore
+        /// renommable par le joueur faute de besoin exprime cette phase ; pas d'Amiral non
+        /// plus (voir Phase 15).
+        /// </summary>
+        public string Name { get; }
+
         public UnitBundle Composition { get; private set; }
         public FleetStatus Status { get; private set; }
 
@@ -52,9 +60,16 @@ namespace Espace.Gameplay.Military
         public bool IsRetreating { get; private set; }
 
         public Fleet(int id, int ownerId, StarSystemId stationedAt, UnitBundle composition)
+            : this(id, ownerId, stationedAt, composition, $"Flotte {id}")
+        {
+        }
+
+        /// <summary>Utilise par <c>SaveService</c> pour restaurer un nom de flotte existant plutot que d'en generer un nouveau.</summary>
+        public Fleet(int id, int ownerId, StarSystemId stationedAt, UnitBundle composition, string name)
         {
             Id = id;
             OwnerId = ownerId;
+            Name = string.IsNullOrEmpty(name) ? $"Flotte {id}" : name;
             CurrentSystemId = stationedAt;
             OriginSystemId = stationedAt;
             Composition = composition;

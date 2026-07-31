@@ -466,6 +466,9 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e5face00000000000000000000000541, type: 2}
   - {fileID: 11400000, guid: e5face00000000000000000000000542, type: 2}
   - {fileID: 11400000, guid: e5face00000000000000000000000543, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000001301, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000001302, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000001303, type: 2}
 --- !u!1 &800000
 GameObject:
   m_ObjectHideFlags: 0

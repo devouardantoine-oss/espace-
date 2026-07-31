@@ -15,7 +15,10 @@ namespace Espace.Tests.EditMode
             Assert.AreEqual(0, zero.Infantry);
             Assert.AreEqual(0, zero.Armored);
             Assert.AreEqual(0, zero.SpecialForces);
-            Assert.AreEqual(0, zero.SpaceFleet);
+            Assert.AreEqual(0, zero.Fighter);
+            Assert.AreEqual(0, zero.Frigate);
+            Assert.AreEqual(0, zero.Cruiser);
+            Assert.AreEqual(0, zero.Battleship);
             Assert.IsTrue(zero.IsEmpty);
             Assert.AreEqual(0, zero.TotalCount);
         }
@@ -23,21 +26,53 @@ namespace Espace.Tests.EditMode
         [Test]
         public void TotalCount_SumsAllTypes()
         {
-            var bundle = new UnitBundle(infantry: 3, armored: 2, specialForces: 1, spaceFleet: 4);
+            var bundle = new UnitBundle(infantry: 3, armored: 2, specialForces: 1, fighter: 4, frigate: 1, cruiser: 1, battleship: 1);
 
-            Assert.AreEqual(10, bundle.TotalCount);
+            Assert.AreEqual(13, bundle.TotalCount);
             Assert.IsFalse(bundle.IsEmpty);
         }
 
         [Test]
         public void Get_ReturnsComponentMatchingType()
         {
-            var bundle = new UnitBundle(infantry: 1, armored: 2, specialForces: 3, spaceFleet: 4);
+            var bundle = new UnitBundle(infantry: 1, armored: 2, specialForces: 3, fighter: 4, frigate: 5, cruiser: 6, battleship: 7);
 
             Assert.AreEqual(1, bundle.Get(UnitType.Infantry));
             Assert.AreEqual(2, bundle.Get(UnitType.Armored));
             Assert.AreEqual(3, bundle.Get(UnitType.SpecialForces));
-            Assert.AreEqual(4, bundle.Get(UnitType.SpaceFleet));
+            Assert.AreEqual(4, bundle.Get(UnitType.Fighter));
+            Assert.AreEqual(5, bundle.Get(UnitType.Frigate));
+            Assert.AreEqual(6, bundle.Get(UnitType.Cruiser));
+            Assert.AreEqual(7, bundle.Get(UnitType.Battleship));
+        }
+
+        [Test]
+        public void Of_CreatesSingleTypeBundle_ForNewShipTypes()
+        {
+            Assert.AreEqual(new UnitBundle(frigate: 5), UnitBundle.Of(UnitType.Frigate, 5));
+            Assert.AreEqual(new UnitBundle(cruiser: 5), UnitBundle.Of(UnitType.Cruiser, 5));
+            Assert.AreEqual(new UnitBundle(battleship: 5), UnitBundle.Of(UnitType.Battleship, 5));
+        }
+
+        [Test]
+        public void IsGreaterOrEqualTo_InsufficientOnNewShipType_ReturnsFalse()
+        {
+            var stock = new UnitBundle(cruiser: 1);
+            var need = new UnitBundle(cruiser: 2);
+
+            Assert.IsFalse(stock.IsGreaterOrEqualTo(need));
+        }
+
+        [Test]
+        public void Scale_AppliesToNewShipTypes()
+        {
+            var bundle = new UnitBundle(frigate: 5, cruiser: 5, battleship: 5);
+
+            UnitBundle scaled = bundle.Scale(0.5f);
+
+            Assert.AreEqual(2, scaled.Frigate);
+            Assert.AreEqual(2, scaled.Cruiser);
+            Assert.AreEqual(2, scaled.Battleship);
         }
 
         [Test]

@@ -332,7 +332,8 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, NeighborEmpireId, 1000f);
-            RecruitAndComplete(military, home, infantry, 50); // ecrasant, mais Pacifiste
+            // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
+            military.RestoreGarrison(home.Id, NeighborEmpireId, new UnitBundle(infantry: 50));
             RecruitAndComplete(military, enemy, infantry, 1); // adversaire quasi sans defense
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
@@ -356,7 +357,8 @@ namespace Espace.Tests.EditMode
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, AiEmpireId, 1000f);
             GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
-            RecruitAndComplete(military, home, infantry, 20);
+            // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
             RecruitAndComplete(military, enemy, infantry, 1);
             _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
@@ -365,6 +367,34 @@ namespace Espace.Tests.EditMode
 
             Assert.IsTrue(military.TryGetStationedFleet(home.Id, AiEmpireId, out Fleet remainingGarrison));
             Assert.Less(remainingGarrison.Composition.TotalCount, 20, "Une partie de la garnison doit avoir ete detachee pour attaquer.");
+        }
+
+        [Test]
+        public void DecideAndAct_Militarist_ReservesInfantryFirstAcrossAllSevenTypes()
+        {
+            // Garnison mixte incluant les nouveaux types de vaisseaux (Phase 14) : SplitAttackForce
+            // doit toujours garder l'Infanterie en priorite (elle apparait en premier dans
+            // UnitTypes.All) et envoyer le reste, quels que soient les types presents.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborEmpireId);
+            var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, AiEmpireId, 1000f);
+            GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
+            // Garnison mixte restauree directement (au-dela du plafond de recrutement de 10, Phase 14).
+            // Total (9) >= TargetGarrisonSize du Militariste (8) : le recrutement ne doit pas primer sur l'attaque.
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 2, fighter: 4, cruiser: 3));
+            RecruitAndComplete(military, enemy, infantry, 1);
+            _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+
+            Assert.IsTrue(military.TryGetStationedFleet(home.Id, AiEmpireId, out Fleet remainingGarrison));
+            Assert.AreEqual(2, remainingGarrison.Composition.Infantry, "Les 2 unites d'Infanterie doivent rester en reserve (MinimumGarrisonToKeep = 2).");
+            Assert.AreEqual(0, remainingGarrison.Composition.Fighter + remainingGarrison.Composition.Cruiser, "Le reste part attaquer.");
         }
 
         [Test]
@@ -381,7 +411,8 @@ namespace Espace.Tests.EditMode
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveCredits(economy, home, AiEmpireId, 1000f);
             GiveCredits(economy, enemy, NeighborEmpireId, 1000f);
-            RecruitAndComplete(military, home, infantry, 20);
+            // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
             RecruitAndComplete(military, enemy, infantry, 1);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 

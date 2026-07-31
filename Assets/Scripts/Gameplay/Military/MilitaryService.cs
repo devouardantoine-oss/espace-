@@ -35,9 +35,10 @@ namespace Espace.Gameplay.Military
     /// <para>
     /// <b>Recherche (Phase 8) :</b> le domaine Armement augmente <see cref="CommandModifierFor"/>
     /// (donc la puissance de combat, attaquant comme defenseur) et le domaine Logistique
-    /// accelere les deplacements de flotte (<see cref="ComputeArrivalDate"/>) — les deux via
-    /// <see cref="Espace.Gameplay.Research.IResearchService"/>, resolu paresseusement, sans
-    /// effet tant que rien n'a ete recherche.
+    /// accelere les deplacements de flotte (<see cref="ComputeArrivalDate"/>) et plafonne le
+    /// nombre de flottes en deplacement simultane (<see cref="TryMoveFleet"/>, Phase 14) — le
+    /// tout via <see cref="Espace.Gameplay.Research.IResearchService"/>, resolu paresseusement,
+    /// sans effet tant que rien n'a ete recherche.
     /// </para>
     /// <para>
     /// <b>Entree en territoire etranger conditionnee a la guerre (Phase 7) :</b>
@@ -52,6 +53,15 @@ namespace Espace.Gameplay.Military
     {
         /// <summary>Bonus de fortification par niveau de developpement du systeme defendu (« terrain »).</summary>
         private const float TerrainBonusPerDevelopmentLevel = 0.1f;
+
+        /// <summary>
+        /// Plafond d'unites par flotte (Phase 14, brief). Verifie au lancement du recrutement
+        /// (garnison actuelle + commandes deja en attente + quantite demandee) plutot qu'a sa
+        /// completion, pour ne jamais faire depenser des ressources pour un recrutement voue a
+        /// etre refuse. Les fusions de flottes a l'arrivee peuvent encore depasser ce plafond
+        /// (limitation v1 documentee, meme esprit que l'absence de pathfinding multi-sauts).
+        /// </summary>
+        private const int MaxUnitsPerFleet = 10;
 
         private readonly GalaxyMap _map;
         private readonly IGameClock _gameClock;
@@ -112,6 +122,12 @@ namespace Espace.Gameplay.Military
         }
 
         /// <inheritdoc />
+        public IReadOnlyList<Fleet> GetFleetsForEmpire(int empireId)
+        {
+            return _fleets.FindAll(f => f.OwnerId == empireId);
+        }
+
+        /// <inheritdoc />
         public UnitBundle GetGarrison(StarSystemId systemId, int empireId)
         {
             return TryGetStationedFleet(systemId, empireId, out Fleet fleet) ? fleet.Composition : UnitBundle.Zero;
@@ -156,6 +172,14 @@ namespace Espace.Gameplay.Military
                 return false;
             }
 
+            int currentGarrison = GetGarrison(systemId, system.OwnerId).TotalCount;
+            int pendingCount = SumPendingRecruitment(systemId, system.OwnerId);
+            if (currentGarrison + pendingCount + count > MaxUnitsPerFleet)
+            {
+                error = $"Plafond de {MaxUnitsPerFleet} unites par flotte atteint sur ce systeme.";
+                return false;
+            }
+
             var cost = new ResourceBundle(credits: unitType.CreditsCost * count, minerals: unitType.MineralsCost * count);
             if (!_economy.TrySpend(system.OwnerId, cost, out error))
             {
@@ -167,6 +191,21 @@ namespace Espace.Gameplay.Military
 
             error = null;
             return true;
+        }
+
+        /// <summary>Somme des quantites deja en commande de recrutement pour ce (systeme, proprietaire), pour verifier le plafond avant d'en ajouter une nouvelle.</summary>
+        private int SumPendingRecruitment(StarSystemId systemId, int ownerId)
+        {
+            int total = 0;
+            foreach (RecruitmentOrder order in _recruitmentOrders)
+            {
+                if (order.SystemId.Equals(systemId) && order.OwnerId == ownerId)
+                {
+                    total += order.Count;
+                }
+            }
+
+            return total;
         }
 
         /// <inheritdoc />
@@ -187,6 +226,14 @@ namespace Espace.Gameplay.Military
             if (fleet.Composition.IsEmpty)
             {
                 error = "Cette flotte ne contient aucune unite.";
+                return false;
+            }
+
+            int movingFleetCount = _fleets.FindAll(f => f.OwnerId == fleet.OwnerId && f.Status == FleetStatus.Moving).Count;
+            int fleetCap = 1 + ResearchTierCount(fleet.OwnerId, ResearchDomain.Logistics);
+            if (movingFleetCount >= fleetCap)
+            {
+                error = $"Plafond de flottes en deplacement simultane atteint ({fleetCap}) : recherchez la Logistique pour en deployer davantage.";
                 return false;
             }
 
@@ -444,6 +491,12 @@ namespace Espace.Gameplay.Military
             return ServiceLocator.TryGet(out IResearchService research) ? 1f + research.GetBonus(empireId, domain) : 1f;
         }
 
+        /// <summary>Nombre de paliers completes dans <paramref name="domain"/> pour <paramref name="empireId"/>, 0 si la recherche est indisponible. Meme resolution paresseuse que <see cref="ResearchMultiplier"/>.</summary>
+        private static int ResearchTierCount(int empireId, ResearchDomain domain)
+        {
+            return ServiceLocator.TryGet(out IResearchService research) ? research.GetCompletedTierCount(empireId, domain) : 0;
+        }
+
         private void MergeIntoStationedFleet(Fleet arrivingFleet)
         {
             Fleet existing = _fleets.Find(f =>
@@ -458,20 +511,22 @@ namespace Espace.Gameplay.Military
         }
 
         /// <inheritdoc />
-        public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition)
+        public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null)
         {
-            Fleet garrison = GetOrCreateStationedFleet(systemId, empireId);
+            Fleet garrison = GetOrCreateStationedFleet(systemId, empireId, fleetName);
             garrison.SetComposition(composition);
         }
 
-        private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId)
+        private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId, string fleetName = null)
         {
             if (TryGetStationedFleet(systemId, ownerId, out Fleet existing))
             {
                 return existing;
             }
 
-            var fleet = new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero);
+            Fleet fleet = string.IsNullOrEmpty(fleetName)
+                ? new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero)
+                : new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero, fleetName);
             _fleets.Add(fleet);
             return fleet;
         }

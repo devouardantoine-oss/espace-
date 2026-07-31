@@ -10,14 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000000511, type: 3}
-  m_Name: SpaceFleet
+  m_Name: Cruiser
   m_EditorClassIdentifier:
-  displayName: Flotte spatiale
-  unitType: 3
-  power: 60
-  speed: 10
-  creditsCost: 500
-  mineralsCost: 150
-  recruitmentDays: 10
-  upkeepPerDay: 4
-  minimumDevelopmentLevel: 2
+  displayName: Croiseur
+  unitType: 5
+  power: 55
+  speed: 9
+  creditsCost: 550
+  mineralsCost: 160
+  recruitmentDays: 9
+  upkeepPerDay: 3
+  minimumDevelopmentLevel: 3
+  roleDescription: Vaisseau de combat polyvalent.

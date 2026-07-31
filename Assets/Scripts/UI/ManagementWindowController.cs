@@ -17,6 +17,7 @@ namespace Espace.UI
     public enum ManagementTab
     {
         Empires,
+        Flottes,
         Diplomatie,
         Recherche,
         Espionnage,
@@ -65,6 +66,7 @@ namespace Espace.UI
         private IResearchService _research;
         private IEspionageService _espionage;
         private ISaveService _save;
+        private IMilitaryService _military;
 
         private string _lastSaveResult = string.Empty;
         private readonly Dictionary<int, UnitBundle> _lastDiscoveredArmies = new Dictionary<int, UnitBundle>();
@@ -108,6 +110,7 @@ namespace Espace.UI
             if (_research == null) ServiceLocator.TryGet(out _research);
             if (_espionage == null) ServiceLocator.TryGet(out _espionage);
             if (_save == null) ServiceLocator.TryGet(out _save);
+            if (_military == null) ServiceLocator.TryGet(out _military);
         }
 
         private void DrawTabStrip()
@@ -139,6 +142,9 @@ namespace Espace.UI
             {
                 case ManagementTab.Empires:
                     DrawEmpiresTab();
+                    break;
+                case ManagementTab.Flottes:
+                    DrawFlottesTab();
                     break;
                 case ManagementTab.Diplomatie:
                     DrawDiplomatieTab();
@@ -194,6 +200,46 @@ namespace Espace.UI
             }
 
             return count;
+        }
+
+        // --- Flottes (Phase 14) -----------------------------------------------------------
+
+        private void DrawFlottesTab()
+        {
+            GUILayout.Label("Flottes", UITheme.Title);
+
+            if (_military == null || _map == null)
+            {
+                GUILayout.Label("Service militaire indisponible.", UITheme.MutedLabel);
+                return;
+            }
+
+            IReadOnlyList<Fleet> fleets = _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId);
+            if (fleets.Count == 0)
+            {
+                GUILayout.Label("Aucune flotte.", UITheme.MutedLabel);
+                return;
+            }
+
+            foreach (Fleet fleet in fleets)
+            {
+                DrawFleetRow(fleet);
+            }
+        }
+
+        private void DrawFleetRow(Fleet fleet)
+        {
+            string location = fleet.Status == FleetStatus.Stationed
+                ? LocationLabel(fleet.CurrentSystemId)
+                : $"En route vers {LocationLabel(fleet.DestinationSystemId.Value)}";
+
+            GUILayout.Label($"{fleet.Name}  —  {location}  —  puissance ~{_military.EstimatePower(fleet.Composition):0}", UITheme.Label);
+            GUILayout.Label(fleet.Composition.ToString(), UITheme.MutedLabel);
+        }
+
+        private string LocationLabel(StarSystemId systemId)
+        {
+            return _map.TryGetSystem(systemId, out StarSystemState system) ? system.Name : systemId.ToString();
         }
 
         // --- Diplomatie --------------------------------------------------------------------

@@ -21,3 +21,4 @@ MonoBehaviour:
   recruitmentDays: 6
   upkeepPerDay: 1.5
   minimumDevelopmentLevel: 1
+  roleDescription: Ameliore les combats terrestres.

@@ -174,10 +174,14 @@ namespace Espace.Gameplay.Save
                     {
                         SystemId = system.Id.Value,
                         OwnerId = empire.Id,
+                        FleetName = fleet.Name,
                         Infantry = fleet.Composition.Infantry,
                         Armored = fleet.Composition.Armored,
                         SpecialForces = fleet.Composition.SpecialForces,
-                        SpaceFleet = fleet.Composition.SpaceFleet
+                        Fighter = fleet.Composition.Fighter,
+                        Frigate = fleet.Composition.Frigate,
+                        Cruiser = fleet.Composition.Cruiser,
+                        Battleship = fleet.Composition.Battleship
                     });
                 }
             }
@@ -301,7 +305,10 @@ namespace Espace.Gameplay.Save
             {
                 _military.RestoreGarrison(
                     new StarSystemId(garrisonData.SystemId), garrisonData.OwnerId,
-                    new UnitBundle(garrisonData.Infantry, garrisonData.Armored, garrisonData.SpecialForces, garrisonData.SpaceFleet));
+                    new UnitBundle(
+                        garrisonData.Infantry, garrisonData.Armored, garrisonData.SpecialForces,
+                        garrisonData.Fighter, garrisonData.Frigate, garrisonData.Cruiser, garrisonData.Battleship),
+                    garrisonData.FleetName);
             }
 
             foreach (DiplomaticStatusSaveData statusData in data.Diplomacy.Statuses)

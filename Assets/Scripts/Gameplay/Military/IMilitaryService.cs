@@ -18,6 +18,12 @@ namespace Espace.Gameplay.Military
         /// <summary>Toutes les flottes stationnees sur <paramref name="systemId"/>, tous proprietaires confondus.</summary>
         IReadOnlyList<Fleet> GetFleetsAt(StarSystemId systemId);
 
+        /// <summary>
+        /// Toutes les flottes de <paramref name="empireId"/>, stationnees ou en deplacement,
+        /// tous systemes confondus (Phase 14, onglet « Flottes » de la fenetre de gestion).
+        /// </summary>
+        IReadOnlyList<Fleet> GetFleetsForEmpire(int empireId);
+
         /// <summary>Composition de la garnison de <paramref name="empireId"/> sur <paramref name="systemId"/> (vide si aucune).</summary>
         UnitBundle GetGarrison(StarSystemId systemId, int empireId);
 
@@ -54,7 +60,8 @@ namespace Espace.Gameplay.Military
         /// de recrutement en cours ne font volontairement pas partie de la sauvegarde
         /// (limitation v1 documentee : la fenetre de risque est faible, l'autosauvegarde etant
         /// mensuelle et les trajets ne durant que quelques jours).
+        /// <para><paramref name="fleetName"/> restaure le nom sauvegarde (Phase 14) ; <c>null</c> ou vide en genere un nouveau.</para>
         /// </summary>
-        void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition);
+        void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null);
     }
 }

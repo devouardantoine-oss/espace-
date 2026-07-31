@@ -35,12 +35,13 @@ namespace Espace.Tests.EditMode
             public IReadOnlyList<UnitTypeDefinition> UnitCatalog => Array.Empty<UnitTypeDefinition>();
             public bool TryGetStationedFleet(StarSystemId systemId, int empireId, out Fleet fleet) { fleet = null; return false; }
             public IReadOnlyList<Fleet> GetFleetsAt(StarSystemId systemId) => Array.Empty<Fleet>();
+            public IReadOnlyList<Fleet> GetFleetsForEmpire(int empireId) => Array.Empty<Fleet>();
             public UnitBundle GetGarrison(StarSystemId systemId, int empireId) => _garrisonsByEmpire.TryGetValue(empireId, out UnitBundle bundle) ? bundle : UnitBundle.Zero;
             public float EstimatePower(UnitBundle composition) => composition.TotalCount;
             public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error) { error = "n/a"; return false; }
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
-            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition) { }
+            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null) { }
         }
 
         /// <summary>

@@ -474,7 +474,9 @@ namespace Espace.Tests.EditMode
             GiveCredits(economy, neighbor, OtherEmpireId, 1000f);
 
             RecruitAndComplete(military, home, infantry, 2); // attaquant faible
-            RecruitAndComplete(military, neighbor, infantry, 20); // defenseur tres fort
+            // Plafond de 10 unites par flotte (Phase 14) : la garnison ecrasante du defenseur
+            // est restauree directement plutot que recrutee, comme le ferait un chargement de sauvegarde.
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 20));
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
             _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
@@ -503,7 +505,8 @@ namespace Espace.Tests.EditMode
             GiveCredits(economy, neighbor, OtherEmpireId, 1000f);
 
             RecruitAndComplete(military, home, infantry, 1);
-            RecruitAndComplete(military, neighbor, infantry, 500); // ecrasant : l'attaquant est annihile
+            // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 500));
 
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
             _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
@@ -684,6 +687,119 @@ namespace Espace.Tests.EditMode
             MilitaryService military = MakeMilitary(map, economy);
 
             Assert.AreEqual(UnitBundle.Zero, military.GetGarrison(home.Id, PlayerId));
+        }
+
+        // --- Plafond de 10 unites par flotte (Phase 14) ---------------------------------
+
+        [Test]
+        public void TryRecruitUnits_WouldExceedFleetCap_Fails()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 9); // garnison a 9
+
+            bool success = military.TryRecruitUnits(home.Id, infantry, 2, out string error);
+
+            Assert.IsFalse(success, "9 + 2 depasse le plafond de 10.");
+            StringAssert.Contains("Plafond", error);
+        }
+
+        [Test]
+        public void TryRecruitUnits_ExactlyAtFleetCap_Succeeds()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 9);
+
+            bool success = military.TryRecruitUnits(home.Id, infantry, 1, out string error);
+
+            Assert.IsTrue(success, error);
+        }
+
+        [Test]
+        public void TryRecruitUnits_PendingOrdersCountTowardFleetCap()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+
+            // Deux ordres de 5 (encore en attente, pas encore dans la garnison) : le troisieme doit etre refuse.
+            Assert.IsTrue(military.TryRecruitUnits(home.Id, infantry, 5, out _));
+            Assert.IsTrue(military.TryRecruitUnits(home.Id, infantry, 5, out _));
+
+            bool success = military.TryRecruitUnits(home.Id, infantry, 1, out string error);
+
+            Assert.IsFalse(success, "Les commandes en attente comptent deja pour 10 unites.");
+            Assert.IsNotNull(error);
+        }
+
+        // --- Plafond de flottes en deplacement simultane, lie a la Logistique (Phase 14) ---
+
+        [Test]
+        public void TryMoveFleet_SecondFleetWithoutLogisticsResearch_Fails()
+        {
+            StarSystemState home = MakeSystem(0, Vector2.zero, PlayerId);
+            StarSystemState neighborA = MakeSystem(1, new Vector2(5f, 0f));
+            StarSystemState neighborB = MakeSystem(2, new Vector2(-5f, 0f));
+            var links = new[] { new HyperlaneLink(home.Id, neighborA.Id), new HyperlaneLink(home.Id, neighborB.Id) };
+            var map = new GalaxyMap(new[] { home, neighborA, neighborB }, links);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 2);
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet garrison);
+            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 1), out Fleet detached, out _);
+
+            bool firstMoveSucceeds = military.TryMoveFleet(garrison, neighborA.Id, out _);
+            bool secondMoveSucceeds = military.TryMoveFleet(detached, neighborB.Id, out string error);
+
+            Assert.IsTrue(firstMoveSucceeds);
+            Assert.IsFalse(secondMoveSucceeds, "Sans recherche en Logistique, une seule flotte peut etre en deplacement a la fois.");
+            Assert.IsNotNull(error);
+        }
+
+        // --- GetFleetsForEmpire (Phase 14) -----------------------------------------------
+
+        [Test]
+        public void GetFleetsForEmpire_ReturnsAllFleetsAcrossSystems()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor);
+            neighbor.OwnerId = PlayerId;
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 1);
+            RecruitAndComplete(military, neighbor, infantry, 1);
+
+            IReadOnlyList<Fleet> fleets = military.GetFleetsForEmpire(PlayerId);
+
+            Assert.AreEqual(2, fleets.Count);
+            Assert.IsFalse(military.GetFleetsForEmpire(OtherEmpireId).Count > 0);
+        }
+
+        [Test]
+        public void Fleet_GetsAutomaticName()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 1);
+
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+
+            Assert.IsFalse(string.IsNullOrEmpty(fleet.Name));
         }
 
         /// <summary>Recrute puis fait avancer le temps jusqu'a l'achevement, pour obtenir directement une garnison dans les tests.</summary>

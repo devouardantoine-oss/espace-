@@ -234,22 +234,28 @@ namespace Espace.Gameplay.Military
 
         /// <summary>
         /// Garde <paramref name="reserveCount"/> unites a domicile en priorisant l'Infanterie
-        /// (la moins utile a l'attaque), envoie le reste — les unites les plus fortes en premier.
+        /// (la moins utile a l'attaque), envoie le reste — les unites les plus fortes en
+        /// premier. Generique sur <see cref="UnitTypes.All"/> (Phase 14) : l'ordre de
+        /// l'enumeration <see cref="UnitType"/> reste volontairement du moins utile a
+        /// l'attaque (Infanterie) au plus puissant (Cuirasse).
         /// </summary>
         private static UnitBundle SplitAttackForce(UnitBundle garrison, int reserveCount)
         {
-            int reserveInfantry = Math.Min(garrison.Infantry, reserveCount);
-            int remaining = reserveCount - reserveInfantry;
+            int remaining = reserveCount;
+            UnitBundle reserve = UnitBundle.Zero;
 
-            int reserveArmored = Math.Min(garrison.Armored, remaining);
-            remaining -= reserveArmored;
+            foreach (UnitType type in UnitTypes.All)
+            {
+                if (remaining <= 0)
+                {
+                    break;
+                }
 
-            int reserveSpecialForces = Math.Min(garrison.SpecialForces, remaining);
-            remaining -= reserveSpecialForces;
+                int taken = Math.Min(garrison.Get(type), remaining);
+                reserve += UnitBundle.Of(type, taken);
+                remaining -= taken;
+            }
 
-            int reserveSpaceFleet = Math.Min(garrison.SpaceFleet, remaining);
-
-            var reserve = new UnitBundle(reserveInfantry, reserveArmored, reserveSpecialForces, reserveSpaceFleet);
             return garrison - reserve;
         }
     }

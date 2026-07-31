@@ -14,31 +14,33 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 13 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
-> 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
-> colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
-> commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
-> (7 domaines, 3 paliers chacun, bonus sur la production, le combat, la vitesse des flottes et
-> les gains d'opinion), espionnage (cinq missions déterministes selon un rapport de puissance),
-> une sauvegarde JSON automatique (la partie reprend exactement où elle en était après une
-> fermeture ou une mise en arrière-plan, sur un seul fichier local), une interface complète
-> (menu principal, barre d'état permanente, panneau de système contextuel, fenêtre de gestion à
-> onglets et menu pause), une carte galactique immersive (fond spatial procédural, systèmes
-> stylés, halos de territoire par couleur d'empire, noms/détails affichés selon le niveau de
-> zoom), et désormais un écran de choix en début de partie : le joueur choisit librement sa
-> faction parmi les 6 disponibles, puis son système de départ parmi les emplacements que
-> l'algorithme de placement proposerait — ce n'est plus toujours la même faction sur le même
-> système le plus proche du centre. La génération de la galaxie (et son fond) est déterministe
-> (graine fixe) pour que la même galaxie réapparaisse d'une session à l'autre.
+> **Statut : Phase 14 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> 6 empires (1 joueur + 5 IA), armées (sept types d'unités dont quatre classes de vaisseaux —
+> Chasseurs, Frégate, Croiseur, Cuirassé —, flottes nommées plafonnées à 10 unités, nombre de
+> flottes en campagne simultanée lié à la recherche en Logistique, recrutement, résolution
+> automatique des combats, colonisation), diplomatie (guerre/paix/alliances/pactes de
+> non-agression, opinion, traités commerciaux, embargos, ultimatums, échanges de ressources et
+> de territoires), recherche (7 domaines, 3 paliers chacun, bonus sur la production, le combat,
+> la vitesse des flottes et les gains d'opinion), espionnage (cinq missions déterministes selon
+> un rapport de puissance), une sauvegarde JSON automatique (la partie reprend exactement où
+> elle en était après une fermeture ou une mise en arrière-plan, sur un seul fichier local), une
+> interface complète (menu principal, barre d'état permanente, panneau de système contextuel,
+> fenêtre de gestion à onglets — dont un onglet Flottes — et menu pause), une carte galactique
+> immersive (fond spatial procédural, systèmes stylés, halos de territoire par couleur d'empire,
+> noms/détails affichés selon le niveau de zoom), et un écran de choix en début de partie : le
+> joueur choisit librement sa faction parmi les 6 disponibles, puis son système de départ parmi
+> les emplacements que l'algorithme de placement proposerait — ce n'est plus toujours la même
+> faction sur le même système le plus proche du centre. La génération de la galaxie (et son
+> fond) est déterministe (graine fixe) pour que la même galaxie réapparaisse d'une session à
+> l'autre.
 >
 > **Refonte V1 en cours (inspirée de Star Wars dans ses mécaniques, avec des noms 100%
 > originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
 > Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
-> du jeu — carte immersive (Phase 12) et choix de faction/système de départ (Phase 13,
-> ci-dessus) sont terminées ; restent la refonte des flottes (rôles des vaisseaux, flottes
-> nommées, plafond lié à la technologie), les amiraux, la colonisation stratégique, le
-> déplacement longue distance et les rencontres spatiales, et une IA plus dynamique. Un seul
-> système complexe à la fois, comme depuis la Phase 1.
+> du jeu — carte immersive (Phase 12), choix de faction/système de départ (Phase 13) et refonte
+> des flottes (Phase 14, ci-dessus) sont terminées ; restent les amiraux, la colonisation
+> stratégique, le déplacement longue distance et les rencontres spatiales, et une IA plus
+> dynamique. Un seul système complexe à la fois, comme depuis la Phase 1.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -267,8 +269,8 @@ meilleure preuve que la généralisation est correcte.
 
 | Classe | Rôle | Choix technique |
 |---|---|---|
-| `UnitType` / `UnitTypeDefinition` | contenu | 4 types (Infanterie, Blindés, Forces spéciales, Flotte spatiale), ScriptableObject — puissance, vitesse, coûts, durée de recrutement, entretien, développement minimal requis |
-| `UnitBundle` | quantité d'unités | même pattern que `ResourceBundle` (Phase 4) : 4 champs `int` nommés plutôt qu'un tableau, pour la même raison d'immuabilité réelle |
+| `UnitType` / `UnitTypeDefinition` | contenu | 7 types depuis la Phase 14 (Infanterie, Blindés, Forces spéciales, Chasseurs, Frégate, Croiseur, Cuirassé — remplace l'ancienne « Flotte spatiale » générique), ScriptableObject — puissance, vitesse, coûts, durée de recrutement, entretien, développement minimal requis, description de rôle |
+| `UnitBundle` | quantité d'unités | même pattern que `ResourceBundle` (Phase 4) : 7 champs `int` nommés (depuis la Phase 14, 4 à l'origine) plutôt qu'un tableau, pour la même raison d'immuabilité réelle |
 | `Fleet` | groupe d'unités | stationnée (garnison d'un système) ou en déplacement ; **au plus une flotte stationnée par (système, propriétaire)** — toute arrivée fusionne avec la garnison existante, ce qui évite à la résolution de combat de devoir combiner plusieurs flottes du même camp |
 | `CombatResolver` | résolution de bataille | **déterministe, sans hasard** : la puissance de chaque camp (quantité × puissance du catalogue, modulée par moral/commandement/terrain) décide du vainqueur ; la fraction de pertes de chaque camp est proportionnelle à la puissance adverse relative au total — testable sans stub de générateur aléatoire |
 | `IMilitaryService` / `MilitaryService` | armées de tous les empires | même architecture que `EconomyService` : recrutement en file (mirroring `BuildingInstance`), entretien journalier prélevé via `IEconomyService.TrySpend` (nouvelle méthode générique, réutilisée aussi par la construction/l'investissement pour éviter de dupliquer la logique de dépense) |
@@ -537,6 +539,33 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 > Cette phase n'a rien réécrit de leur logique — elle leur ajoute la capacité de recevoir un
 > choix, sans changer leur comportement par défaut.
 
+### Briques de la refonte des flottes (Phase 14)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `UnitType` (étendu) | 7 types d'unités | `SpaceFleet` (générique) remplacé par 4 classes de vaisseaux différenciées : Chasseurs, Frégate, Croiseur, Cuirassé — la seule fois où la règle « ne jamais réordonner/réutiliser une valeur » de l'enum est enfreinte (projet en cours, aucune sauvegarde à préserver ; voir `GameSaveData.Version`) |
+| `UnitBundle` (étendu) | 7 champs nommés | même pattern qu'avant (Phase 6), 3 champs de plus ; `Get`/`Of`/`Scale`/opérateurs/`ToString` étendus en conséquence |
+| `UnitTypeDefinition` (étendu) | description de rôle | nouveau champ `roleDescription`, affiché sous chaque bouton de recrutement (`SystemInfoPanelController`) — livre le rôle des vaisseaux du brief (Frégate transporte l'infanterie, Cuirassé transporte blindés/infanterie/chasseurs et frappe le plus fort, Chasseurs pour le combat spatial, Infanterie indispensable pour coloniser/envahir, Blindés pour le combat terrestre) **comme texte informatif seulement** — aucun verrouillage mécanique encore (dépend de la refonte de la colonisation, Phase 16) ; le Croiseur, sans rôle défini dans le brief, reçoit un rôle générique de vaisseau de combat polyvalent (choix de jugement documenté ici) |
+| `Fleet` (étendu) | nom de flotte | nouveau champ `Name`, attribué automatiquement à la création (`"Flotte {Id}"`) — pas encore d'Amiral (Phase 15) |
+| `MilitaryService.TryRecruitUnits` (étendu) | plafond de 10 unités par flotte | vérifié en amont du recrutement (garnison actuelle + commandes déjà en attente + quantité demandée), pas à sa complétion — évite de dépenser des ressources pour un recrutement voué à être refusé |
+| `MilitaryService.TryMoveFleet` (étendu) | plafond de flottes en campagne, lié à la Logistique | `1 + IResearchService.GetCompletedTierCount(empireId, ResearchDomain.Logistics)` flottes en `FleetStatus.Moving` simultanément par empire (pas le nombre total de flottes : les garnisons de chaque système possédé restent illimitées, sans quoi la colonisation serait bridée par la technologie) |
+| `IMilitaryService.GetFleetsForEmpire` (nouveau) | liste des flottes d'un empire | toutes les flottes d'un empire à travers la galaxie, stationnées ou en déplacement — alimente le nouvel onglet Flottes |
+| `MilitaryDecisionMaker.SplitAttackForce` (généralisé) | réserve/attaque sur 7 types | réécrit avec `UnitTypes.All` (au lieu d'une chaîne à 4 champs codés en dur) : comportement inchangé (Infanterie réservée en priorité), généralisé aux nouveaux types |
+| `ManagementWindowController` (étendu) | onglet Flottes | nom, position, composition résumée et puissance estimée de chaque flotte du joueur — même style à onglets que les 5 autres |
+| `GameSaveData.Version` 1→2 / `GarrisonSaveData` (étendu) | sauvegarde | `SpaceFleet` remplacé par les 4 nouveaux champs de vaisseaux, plus `FleetName` |
+
+> **Pourquoi un plafond de flottes « en déplacement » plutôt qu'un plafond du nombre total de
+> flottes ?** Le brief dit « Tech1 → 1 flotte, Tech2 → 2, etc. » Compter *tous* les objets
+> `Fleet` d'un empire (donc chaque garnison de chaque système possédé) bloquerait la
+> colonisation dès qu'un empire posséderait plus de systèmes que son palier technologique —
+> contraire à l'esprit du brief, qui vise le nombre de flottes qu'on peut mener en campagne à la
+> fois. Le plafond ne s'applique donc qu'aux flottes activement en transit.
+>
+> **Limitation v1 documentée :** les fusions de flottes à l'arrivée (renfort d'une garnison déjà
+> pleine) peuvent dépasser le plafond de 10 unités sans être bloquées — même esprit que
+> l'absence de calcul d'itinéraire multi-sauts (Phase 6) : un cas marginal qui n'exigeait pas de
+> logique de perte/refus supplémentaire cette phase.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -557,14 +586,14 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (405 tests, tous packages confondus).
+Voir §5 pour le compte total (416 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-12 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface et carte immersive
+## 5. Tester les Phases 2-14 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive et flottes
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -602,7 +631,7 @@ test). La console doit afficher, sans erreur ni warning :
 [Empires] Bastion de Drathmoor (Militarist) : systeme d'origine <nom>.
 [Empires] Cartel des Confins (Opportunist) : systeme d'origine <nom>.
 [Empires] 6 empires crees.
-[Military] Demarree avec 4 types d'unites disponibles.
+[Military] Demarree avec 7 types d'unites disponibles.
 [Diplomacy] Demarree.
 [Research] Demarree avec 21 paliers de recherche disponibles.
 [Espionage] Demarree.
@@ -644,18 +673,28 @@ Dans la fenêtre Game :
   dans le trésor une fois la construction achevée). Investissez jusqu'à développement 5/5 :
   le bouton doit alors se désactiver et afficher « Développement maximal atteint », sans
   jamais débiter de crédits au-delà. Section Armée ensuite (garnison et
-  puissance estimée, un bouton par type d'unité pour recruter, un bouton par système voisin
-  pour y envoyer toute la garnison). Envoyer une garnison vers un système libre le colonise à
-  l'arrivée ; vers un système ennemi, déclenche une bataille — le résultat (victoire/défaite,
-  pertes des deux camps) est systématiquement journalisé dans la console, même panneau fermé.
+  puissance estimée, un bouton par type d'unité pour recruter — 7 depuis la Phase 14 : Infanterie,
+  Blindés, Forces spéciales, Chasseurs, Frégate, Croiseur, Cuirassé, chacun avec sa description
+  de rôle affichée en dessous —, un bouton par système voisin pour y envoyer toute la garnison).
+  Recruter au-delà de 10 unités sur un même système doit être refusé (message en console) : le
+  plafond par flotte introduit en Phase 14. Envoyer une garnison vers un système libre le
+  colonise à l'arrivée ; vers un système ennemi, déclenche une bataille — le résultat
+  (victoire/défaite, pertes des deux camps) est systématiquement journalisé dans la console,
+  même panneau fermé.
 - **Touchez le système d'origine d'une IA** : le panneau doit afficher le nom de cet empire
   comme propriétaire, et sa garnison si elle en a recruté une — confirmation visuelle que
   l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
-- **Le bouton « Gestion »** ouvre une fenêtre centrale à cinq onglets (`ManagementWindowController`) :
+- **Le bouton « Gestion »** ouvre une fenêtre centrale à six onglets (`ManagementWindowController`) :
   - **Empires** : les 6 empires (nom, rôle — « Vous » pour le joueur, la personnalité pour
     chaque IA —, nombre de systèmes, Credits). En accélérant l'horloge (Maximum), les Credits
     des 5 IA doivent progresser **sans aucune intervention** — la preuve la plus directe que
     l'IA fonctionne.
+  - **Flottes** *(Phase 14)* : liste des flottes du joueur, chacune avec son nom (« Flotte N »),
+    sa position (système d'origine, ou « En route vers... » si en déplacement), sa composition
+    et sa puissance estimée. Recruter puis détacher/envoyer une garnison doit faire apparaître
+    une nouvelle entrée ; tenter d'envoyer une deuxième flotte en même temps sans avoir
+    recherché la Logistique doit être refusé (message en console) — le plafond de flottes en
+    campagne simultanée introduit en Phase 14.
   - **Diplomatie** : statut/opinion envers chaque IA avec boutons d'action (Guerre, Pacte,
     Alliance, Paix, Rompre selon le statut courant), et les propositions reçues en attente
     (Accepter/Refuser). En laissant tourner l'horloge en Maximum, les IA doivent se déclarer
@@ -684,7 +723,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 405 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 416 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -692,15 +731,19 @@ séparation des trésors par empire) ; `EmpirePlacementTests`, `EmpireFactoryTes
 `EmpireRegistryTests`, `AIDecisionMakerTests` (Phase 5, étendus en Phase 13 avec
 `AssignHomeSystems` — réordonnancement pur des emplacements candidats — et
 `playerDefinitionOverride` — n'importe quelle faction peut devenir le joueur, avec repli sur le
-comportement d'avant cette phase si absent ou hors roster) ; `UnitBundleTests`,
+comportement d'avant cette phase si absent ou hors roster) ; `UnitBundleTests` (Phase 6, étendu
+en Phase 14 avec les 3 nouveaux types de vaisseaux — `Get`/`Of`/`Scale`/`IsGreaterOrEqualTo`),
 `CombatResolverTests` (Phase 6 — le plus important : vainqueur déterministe selon le ratio de
 puissance, fractions de pertes vérifiées valeur par valeur, cas limites d'une défense vide ou
 de deux camps à puissance nulle), `MilitaryServiceTests` (recrutement → garnison, colonisation,
-combat avec transfert de propriété, retraite après défaite, fusion de garnisons, entretien, et
-désormais le blocage d'un déplacement vers un système étranger sans guerre déclarée),
+combat avec transfert de propriété, retraite après défaite, fusion de garnisons, entretien,
+blocage d'un déplacement vers un système étranger sans guerre déclarée, et désormais — Phase 14
+— le plafond de 10 unités par flotte au recrutement, le plafond de flottes en déplacement
+simultané lié à la Logistique, `GetFleetsForEmpire`, le nom automatique d'une flotte),
 `MilitaryDecisionMakerTests` (chaque personnalité respecte son seuil d'agressivité — le
-Pacifiste n'attaque jamais même en surnombre écrasant —, une seule action par appel, et
-désormais aucune attaque sans guerre déjà déclarée par la diplomatie) ; `DiplomacyServiceTests`
+Pacifiste n'attaque jamais même en surnombre écrasant —, une seule action par appel, aucune
+attaque sans guerre déjà déclarée par la diplomatie, et désormais — Phase 14 — la réserve
+d'Infanterie en priorité généralisée aux 7 types d'unités) ; `DiplomacyServiceTests`
 (Phase 7 — le plus important : statut symétrique/opinion dirigée, validation des préconditions
 par type de proposition, résolution instantanée pour une IA cible contre mise en attente pour
 le joueur, effets de chaque proposition acceptée — échange de ressources/territoires,
@@ -725,13 +768,19 @@ planter) ; `SaveServiceTests` (Phase 10 — aller-retour complet capture puis ap
 chaque type d'état : systèmes, bâtiments complétés uniquement, trésor et taux d'imposition,
 garnisons, relations/opinions diplomatiques, progression de recherche et domaine actif, date
 de l'horloge ; robustesse face à un fichier absent ou corrompu sans jamais lever d'exception ;
-les méthodes `Restore*` ne publient aucun événement) ; `HudFormatterTests` et
+les méthodes `Restore*` ne publient aucun événement ; étendu en Phase 14 avec l'aller-retour des
+4 nouveaux types de vaisseaux et du nom de flotte) ; `HudFormatterTests` et
 `SaveFileLocatorTests` (Phase 11 — formatage des dates/montants/pourcentages, chemin et
 existence du fichier de sauvegarde ; seule logique de cette phase qui ne touche ni `OnGUI` ni
 `ServiceLocator`, donc la seule testable en EditMode) ; `StarSystemVisualProfileTests`
 (Phase 12 — déterminisme, variété sur 100 systèmes, bornes valides du nombre de lunes et du
 facteur de taille ; seule logique de cette phase qui ne touche ni `OnGUI` ni le rendu — le
-fond, les halos et les labels restent vérifiables seulement en Play Mode, voir plus bas).
+fond, les halos et les labels restent vérifiables seulement en Play Mode, voir plus bas). La
+Phase 14 (refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts
+(plafonds, `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de
+vaisseaux) étendent des classes existantes, listées ci-dessus à leur phase d'origine ; l'onglet
+Flottes de `ManagementWindowController` reste, comme le reste de `Espace.UI`, vérifiable
+seulement en Play Mode.
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -766,7 +815,11 @@ eux, du rendu pur, non testables en EditMode comme le reste du rendu du projet. 
 recoupe le réordonnancement d'`EmpirePlacement.AssignHomeSystems` (identité pour un index
 absent ou hors bornes, emplacement choisi en tête, ordre relatif du reste conservé, aucune
 perte ni duplication d'emplacement) — `FactionPickerController` (agencement `OnGUI`) reste,
-comme tous les écrans `Espace.UI`, vérifiable seulement en Play Mode.
+comme tous les écrans `Espace.UI`, vérifiable seulement en Play Mode. La Phase 14 recoupe la
+réserve en priorité de l'Infanterie de `MilitaryDecisionMaker.SplitAttackForce` (généralisée
+aux 7 types) et les deux plafonds introduits (10 unités par flotte au recrutement, nombre de
+flottes en déplacement simultané lié aux paliers de Logistique complétés) — l'onglet Flottes de
+`ManagementWindowController` reste, lui aussi, vérifiable seulement en Play Mode.
 
 ---
 
@@ -787,7 +840,7 @@ comme tous les écrans `Espace.UI`, vérifiable seulement en Play Mode.
 | 11 | Interface complète (menu, écrans de gestion, HUD) | ✅ terminée |
 | 12 | Carte galactique immersive (fond, systèmes stylés, territoires, zoom) + corrections | ✅ terminée |
 | 13 | Choix de faction et de système de départ | ✅ terminée |
-| 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | à venir |
+| 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | ✅ terminée |
 | 15 | Amiraux (bonus/malus, un par flotte) | à venir |
 | 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | à venir |
 | 17 | Déplacement longue distance + rencontres spatiales | à venir |

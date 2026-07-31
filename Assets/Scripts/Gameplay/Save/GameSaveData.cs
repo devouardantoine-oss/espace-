@@ -36,7 +36,8 @@ namespace Espace.Gameplay.Save
     public sealed class GameSaveData
     {
         /// <summary>Incrementee a chaque changement de forme de ce fichier, pour detecter une sauvegarde d'une version incompatible du jeu.</summary>
-        public int Version = 1;
+        /// <remarks>2 depuis la Phase 14 : <see cref="GarrisonSaveData"/> remplace le champ <c>SpaceFleet</c> par les quatre nouveaux types de vaisseaux et gagne <c>FleetName</c>.</remarks>
+        public int Version = 2;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -102,10 +103,14 @@ namespace Espace.Gameplay.Save
     {
         public int SystemId;
         public int OwnerId;
+        public string FleetName;
         public int Infantry;
         public int Armored;
         public int SpecialForces;
-        public int SpaceFleet;
+        public int Fighter;
+        public int Frigate;
+        public int Cruiser;
+        public int Battleship;
     }
 
     [Serializable]

@@ -300,6 +300,31 @@ namespace Espace.Tests.EditMode
         }
 
         [Test]
+        public void RoundTrip_RestoresNewShipTypesAndFleetName()
+        {
+            Scenario scenario = BuildScenario();
+            scenario.Military.RestoreGarrison(
+                scenario.PlayerSystem.Id, PlayerId,
+                new UnitBundle(infantry: 1, armored: 1, specialForces: 1, fighter: 2, frigate: 3, cruiser: 4, battleship: 5),
+                "Flotte du Nord");
+            SaveService save = MakeSaveService(scenario);
+            save.SaveNow();
+
+            var freshMilitary = new MilitaryService(scenario.Map, _clock, _eventBus, scenario.Economy, scenario.Diplomacy, scenario.EmpireRegistry, Array.Empty<UnitTypeDefinition>());
+            freshMilitary.Initialize();
+            var freshSave = new SaveService(scenario.Map, _clock, scenario.Economy, freshMilitary, scenario.Diplomacy, scenario.Research, scenario.EmpireRegistry, _filePath);
+
+            bool success = freshSave.TryLoadAndApply(out string error);
+
+            Assert.IsTrue(success, error);
+            Assert.AreEqual(
+                new UnitBundle(infantry: 1, armored: 1, specialForces: 1, fighter: 2, frigate: 3, cruiser: 4, battleship: 5),
+                freshMilitary.GetGarrison(scenario.PlayerSystem.Id, PlayerId));
+            freshMilitary.TryGetStationedFleet(scenario.PlayerSystem.Id, PlayerId, out Fleet restored);
+            Assert.AreEqual("Flotte du Nord", restored.Name);
+        }
+
+        [Test]
         public void RoundTrip_RestoresDiplomacyRelationsAndOpinions()
         {
             Scenario scenario = BuildScenario();

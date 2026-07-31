@@ -21,3 +21,4 @@ MonoBehaviour:
   recruitmentDays: 3
   upkeepPerDay: 0.5
   minimumDevelopmentLevel: 0
+  roleDescription: Indispensable pour coloniser et envahir.

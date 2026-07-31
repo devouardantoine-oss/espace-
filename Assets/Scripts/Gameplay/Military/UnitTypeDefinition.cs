@@ -53,6 +53,11 @@ namespace Espace.Gameplay.Military
         [Range(0, 5)]
         private int minimumDevelopmentLevel;
 
+        [Tooltip("Description courte du role de cette unite (Phase 14), affichee dans le panneau de recrutement. Purement informatif : aucune restriction mecanique n'en depend encore (voir Phase 16, colonisation/invasion).")]
+        [SerializeField]
+        [TextArea(1, 2)]
+        private string roleDescription;
+
         public string DisplayName => displayName;
         public UnitType UnitType => unitType;
         public float Power => power;
@@ -62,5 +67,6 @@ namespace Espace.Gameplay.Military
         public int RecruitmentDays => recruitmentDays;
         public float UpkeepPerDay => upkeepPerDay;
         public int MinimumDevelopmentLevel => minimumDevelopmentLevel;
+        public string RoleDescription => roleDescription;
     }
 }

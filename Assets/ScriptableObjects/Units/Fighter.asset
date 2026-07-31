@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000000511, type: 3}
-  m_Name: SpecialForces
+  m_Name: Fighter
   m_EditorClassIdentifier:
-  displayName: Forces speciales
-  unitType: 2
-  power: 40
-  speed: 7
-  creditsCost: 300
-  mineralsCost: 100
-  recruitmentDays: 8
-  upkeepPerDay: 2.5
-  minimumDevelopmentLevel: 2
-  roleDescription:
+  displayName: Chasseurs
+  unitType: 3
+  power: 20
+  speed: 14
+  creditsCost: 200
+  mineralsCost: 40
+  recruitmentDays: 4
+  upkeepPerDay: 1
+  minimumDevelopmentLevel: 1
+  roleDescription: Combat spatial, defense de flotte.

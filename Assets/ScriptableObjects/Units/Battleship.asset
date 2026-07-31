@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000000511, type: 3}
-  m_Name: SpecialForces
+  m_Name: Battleship
   m_EditorClassIdentifier:
-  displayName: Forces speciales
-  unitType: 2
-  power: 40
-  speed: 7
-  creditsCost: 300
-  mineralsCost: 100
-  recruitmentDays: 8
-  upkeepPerDay: 2.5
-  minimumDevelopmentLevel: 2
-  roleDescription:
+  displayName: Cuirasse
+  unitType: 6
+  power: 90
+  speed: 6
+  creditsCost: 900
+  mineralsCost: 300
+  recruitmentDays: 14
+  upkeepPerDay: 5
+  minimumDevelopmentLevel: 4
+  roleDescription: Transporte blindes, infanterie et chasseurs ; plus forte puissance.

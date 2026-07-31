@@ -36,7 +36,7 @@ namespace Espace.Tests.EditMode
             MakeUnitType(UnitType.Infantry, 10f),
             MakeUnitType(UnitType.Armored, 25f),
             MakeUnitType(UnitType.SpecialForces, 40f),
-            MakeUnitType(UnitType.SpaceFleet, 60f),
+            MakeUnitType(UnitType.Fighter, 60f),
         };
 
         [Test]
