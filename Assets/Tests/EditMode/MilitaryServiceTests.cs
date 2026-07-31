@@ -685,7 +685,11 @@ namespace Espace.Tests.EditMode
             GiveResources(economy, PlayerId, 1000f);
             GiveResources(economy, OtherEmpireId, 1000f);
 
-            RecruitAndComplete(military, home, infantry, 2); // attaquant faible
+            // Attaquant assez nombreux pour laisser des survivants, mais trop faible pour
+            // l'emporter : avec 2 unites contre 20, la fraction de pertes ne laissait personne
+            // (floor(2 x 0,09) = 0), la flotte etait dissoute et il n'y avait plus rien a
+            // replier — le test verifiait donc une retraite qui ne pouvait pas avoir lieu.
+            RecruitAndComplete(military, home, infantry, 8); // attaquant en net desavantage
             // Plafond de 10 unites par flotte (Phase 14) : la garnison ecrasante du defenseur
             // est restauree directement plutot que recrutee, comme le ferait un chargement de sauvegarde.
             military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 20));
@@ -836,7 +840,13 @@ namespace Espace.Tests.EditMode
 
             military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 2), out _, out _);
 
-            Assert.IsFalse(military.TryGetStationedFleet(home.Id, PlayerId, out _));
+            // Une flotte fraichement detachee est stationnee sur son systeme d'origine :
+            // TryGetStationedFleet la trouve donc, et affirmer le contraire etait faux par
+            // construction. Ce que la methode garantit vraiment, c'est qu'aucune garnison vide
+            // ne subsiste a cote d'elle.
+            IReadOnlyList<Fleet> atHome = military.GetFleetsAt(home.Id);
+            Assert.AreEqual(1, atHome.Count, "La garnison videe ne doit pas subsister a cote de la flotte detachee.");
+            Assert.AreEqual(new UnitBundle(infantry: 2), atHome[0].Composition);
         }
 
         // --- Entretien -----------------------------------------------------------------

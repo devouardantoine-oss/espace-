@@ -416,6 +416,7 @@ namespace Espace.Tests.EditMode
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
             GiveResources(economy, NeighborEmpireId, 1000f);
+            GiveResources(economy, AiEmpireId, 1000f); // le systeme « enemy » lui appartient : c'est lui qui paie le recrutement
             // Plafond de 10 unites par flotte (Phase 14) : garnison ecrasante restauree directement.
             military.RestoreGarrison(home.Id, NeighborEmpireId, new UnitBundle(infantry: 50));
             RecruitAndComplete(military, enemy, infantry, 1); // adversaire quasi sans defense

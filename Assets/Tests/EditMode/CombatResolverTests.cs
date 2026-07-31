@@ -123,25 +123,26 @@ namespace Espace.Tests.EditMode
         [Test]
         public void Resolve_CasualtyFractions_MatchFormula()
         {
-            // Attaquant 100, defenseur 50 : total 150.
-            // Fraction de pertes attaquant = puissance adverse / total = 50/150 = 1/3.
-            // Fraction de pertes defenseur = puissance attaquant / total = 100/150 = 2/3.
-            var attacker = new UnitBundle(infantry: 30); // 300 puissance, facilite les arrondis
-            var defender = new UnitBundle(infantry: 15); // 150 puissance
+            // Attaquant 300, defenseur 100 : total 400.
+            // Fraction de pertes attaquant = puissance adverse / total = 100/400 = 1/4.
+            // Fraction de pertes defenseur = puissance attaquant / total = 300/400 = 3/4.
+            //
+            // Les quarts sont exacts en binaire, contrairement aux tiers de la version
+            // precedente (300 contre 150) : 30 x (1 - 1/3) vaut mathematiquement 20 pile, mais
+            // en virgule flottante tombe a 19,999998 ou 20,000002 selon l'ordre d'evaluation et
+            // la precision du JIT. FloorToInt renvoyait alors 19 sur certaines machines et 20
+            // sur d'autres — un test qui depend du processeur ne prouve rien.
+            var attacker = new UnitBundle(infantry: 30); // 300 puissance
+            var defender = new UnitBundle(infantry: 10); // 100 puissance
 
             CombatResolver.BattleOutcome outcome = CombatResolver.Resolve(attacker, 1f, defender, 1f, Catalog);
 
-            float total = 300f + 150f;
-            float expectedAttackerCasualtyFraction = 150f / total;
-            float expectedDefenderCasualtyFraction = 300f / total;
-
-            int expectedAttackerSurvivors = Mathf.FloorToInt(30 * (1f - expectedAttackerCasualtyFraction));
-            int expectedDefenderSurvivors = Mathf.FloorToInt(15 * (1f - expectedDefenderCasualtyFraction));
-
-            Assert.AreEqual(expectedAttackerSurvivors, outcome.AttackerSurvivors.Infantry);
-            Assert.AreEqual(expectedDefenderSurvivors, outcome.DefenderSurvivors.Infantry);
-            Assert.AreEqual(30 - expectedAttackerSurvivors, outcome.AttackerLosses.Infantry);
-            Assert.AreEqual(15 - expectedDefenderSurvivors, outcome.DefenderLosses.Infantry);
+            // Valeurs ecrites en dur plutot que recalculees : recopier la formule de la
+            // production dans le test ne verifierait que la copie.
+            Assert.AreEqual(22, outcome.AttackerSurvivors.Infantry, "30 x (1 - 1/4) = 22,5 -> 22.");
+            Assert.AreEqual(2, outcome.DefenderSurvivors.Infantry, "10 x (1 - 3/4) = 2,5 -> 2.");
+            Assert.AreEqual(8, outcome.AttackerLosses.Infantry);
+            Assert.AreEqual(8, outcome.DefenderLosses.Infantry);
         }
 
         [Test]
