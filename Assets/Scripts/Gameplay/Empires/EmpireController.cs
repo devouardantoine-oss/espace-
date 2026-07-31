@@ -20,6 +20,13 @@ namespace Espace.Gameplay.Empires
     /// empires via <see cref="EmpirePlacement"/>, avec le meme systeme d'origine pour le
     /// joueur (le plus proche du centre) qu'auparavant.
     /// </para>
+    /// <para>
+    /// <b>Choix du joueur (Phase 13) :</b> si <c>Espace.UI.FactionPickerController</c> a
+    /// enregistre un <see cref="PendingGameSetup"/> avant le chargement de cette scene (bouton
+    /// « Nouvelle partie »), la faction et l'emplacement de depart choisis remplacent le
+    /// comportement par defaut. Sans lui (ex. « Continuer », qui ne repasse pas par l'ecran de
+    /// choix), le comportement d'avant la Phase 13 est inchange.
+    /// </para>
     /// </summary>
     public sealed class EmpireController : MonoBehaviour
     {
@@ -47,8 +54,11 @@ namespace Espace.Gameplay.Empires
                 return;
             }
 
-            Empire[] empires = EmpireFactory.CreateEmpires(empireDefinitions);
-            StarSystemId[] homeSystems = EmpirePlacement.ChooseHomeSystems(map, empires.Length);
+            PendingGameSetup pendingSetup = ConsumePendingGameSetup();
+
+            Empire[] empires = EmpireFactory.CreateEmpires(empireDefinitions, pendingSetup?.PlayerDefinition);
+            StarSystemId[] candidateSlots = EmpirePlacement.ChooseHomeSystems(map, empires.Length);
+            StarSystemId[] homeSystems = EmpirePlacement.AssignHomeSystems(candidateSlots, pendingSetup?.HomeSystemSlotIndex);
 
             for (int i = 0; i < empires.Length; i++)
             {
@@ -66,6 +76,22 @@ namespace Espace.Gameplay.Empires
         private void OnDestroy()
         {
             ServiceLocator.Unregister<EmpireRegistry>();
+        }
+
+        /// <summary>
+        /// Lit puis desenregistre le <see cref="PendingGameSetup"/> laisse par l'ecran de choix
+        /// (Phase 13), s'il existe. A usage unique : une nouvelle partie qui repasse par cet
+        /// ecran enregistre sa propre instance fraiche avant de recharger cette scene.
+        /// </summary>
+        private static PendingGameSetup ConsumePendingGameSetup()
+        {
+            if (!ServiceLocator.TryGet(out PendingGameSetup pendingSetup))
+            {
+                return null;
+            }
+
+            ServiceLocator.Unregister<PendingGameSetup>();
+            return pendingSetup;
         }
     }
 }

@@ -121,5 +121,45 @@ namespace Espace.Tests.EditMode
 
             Assert.AreEqual(4, empires.Length);
         }
+
+        // --- playerDefinitionOverride (Phase 13) ---
+
+        [Test]
+        public void CreateEmpires_OverridePresent_BecomesPlayerEvenIfAnotherIsFlagged()
+        {
+            EmpireDefinition flaggedPlayer = MakeDefinition("Marque joueur", EmpirePersonality.Expansionist, true);
+            EmpireDefinition chosenByPicker = MakeDefinition("Choisi par le joueur", EmpirePersonality.Militarist, false);
+
+            Empire[] empires = EmpireFactory.CreateEmpires(new[] { flaggedPlayer, chosenByPicker }, chosenByPicker);
+
+            Empire playerEmpire = Array.Find(empires, e => e.IsPlayerControlled);
+            Assert.AreEqual("Choisi par le joueur", playerEmpire.Name);
+            Assert.AreEqual(EconomyService.PlayerOwnerId, playerEmpire.Id);
+        }
+
+        [Test]
+        public void CreateEmpires_OverrideNull_BehavesLikeBeforePhase13()
+        {
+            EmpireDefinition player = MakeDefinition("Joueur", EmpirePersonality.Expansionist, true);
+            EmpireDefinition ai = MakeDefinition("IA Un", EmpirePersonality.Militarist, false);
+
+            Empire[] empires = EmpireFactory.CreateEmpires(new[] { ai, player }, playerDefinitionOverride: null);
+
+            Empire playerEmpire = Array.Find(empires, e => e.IsPlayerControlled);
+            Assert.AreEqual("Joueur", playerEmpire.Name);
+        }
+
+        [Test]
+        public void CreateEmpires_OverrideNotInDefinitions_FallsBackToFlaggedDefinition()
+        {
+            EmpireDefinition flaggedPlayer = MakeDefinition("Marque joueur", EmpirePersonality.Expansionist, true);
+            EmpireDefinition ai = MakeDefinition("IA Un", EmpirePersonality.Militarist, false);
+            EmpireDefinition foreignDefinition = MakeDefinition("Hors du roster", EmpirePersonality.Pacifist, false);
+
+            Empire[] empires = EmpireFactory.CreateEmpires(new[] { flaggedPlayer, ai }, foreignDefinition);
+
+            Empire playerEmpire = Array.Find(empires, e => e.IsPlayerControlled);
+            Assert.AreEqual("Marque joueur", playerEmpire.Name);
+        }
     }
 }

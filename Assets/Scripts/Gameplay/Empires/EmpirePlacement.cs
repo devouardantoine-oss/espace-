@@ -106,5 +106,52 @@ namespace Espace.Gameplay.Empires
 
             return result;
         }
+
+        /// <summary>
+        /// Reordonne <paramref name="candidateSlots"/> (le resultat de <see cref="ChooseHomeSystems"/>)
+        /// pour que l'emplacement d'indice <paramref name="preferredPlayerSlotIndex"/> passe en
+        /// premiere position — le joueur est toujours <c>empires[0]</c>
+        /// (voir <see cref="EmpireFactory.CreateEmpires"/>), donc c'est ce qu'il faut pour que ce
+        /// soit lui qui occupe l'emplacement choisi dans l'ecran de la Phase 13. Le reste
+        /// conserve son ordre relatif.
+        /// </summary>
+        /// <param name="preferredPlayerSlotIndex">
+        /// <c>null</c>, ou tout index hors des bornes de <paramref name="candidateSlots"/>,
+        /// reproduit exactement le comportement d'avant la Phase 13 (le tableau est retourne
+        /// tel quel : l'emplacement 0, le plus proche du centre, reste en tete).
+        /// </param>
+        /// <exception cref="ArgumentNullException">Si <paramref name="candidateSlots"/> est null.</exception>
+        public static StarSystemId[] AssignHomeSystems(StarSystemId[] candidateSlots, int? preferredPlayerSlotIndex)
+        {
+            if (candidateSlots == null)
+            {
+                throw new ArgumentNullException(nameof(candidateSlots));
+            }
+
+            if (preferredPlayerSlotIndex == null
+                || preferredPlayerSlotIndex.Value < 0
+                || preferredPlayerSlotIndex.Value >= candidateSlots.Length)
+            {
+                return candidateSlots;
+            }
+
+            int chosenIndex = preferredPlayerSlotIndex.Value;
+            var result = new StarSystemId[candidateSlots.Length];
+            result[0] = candidateSlots[chosenIndex];
+
+            int writeIndex = 1;
+            for (int i = 0; i < candidateSlots.Length; i++)
+            {
+                if (i == chosenIndex)
+                {
+                    continue;
+                }
+
+                result[writeIndex] = candidateSlots[i];
+                writeIndex++;
+            }
+
+            return result;
+        }
     }
 }

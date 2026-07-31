@@ -280,6 +280,7 @@ GameObject:
   m_Component:
   - component: {fileID: 400001}
   - component: {fileID: 400002}
+  - component: {fileID: 400003}
   m_Layer: 0
   m_Name: '[UI]'
   m_TagString: Untagged
@@ -314,6 +315,26 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000001008, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+--- !u!114 &400003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 400000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5face00000000000000000000001202, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  empireDefinitions:
+  - {fileID: 11400000, guid: e5face00000000000000000000000440, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000441, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000442, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000443, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000444, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000445, type: 2}
+  galaxyConfig: {fileID: 11400000, guid: e5face00000000000000000000000171, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

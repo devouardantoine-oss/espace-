@@ -114,5 +114,83 @@ namespace Espace.Tests.EditMode
 
             CollectionAssert.AreEqual(resultA, resultB);
         }
+
+        // --- AssignHomeSystems (Phase 13) ---
+
+        private static StarSystemId[] MakeSlots(params int[] ids)
+        {
+            var slots = new StarSystemId[ids.Length];
+            for (int i = 0; i < ids.Length; i++)
+            {
+                slots[i] = new StarSystemId(ids[i]);
+            }
+            return slots;
+        }
+
+        [Test]
+        public void AssignHomeSystems_NullCandidateSlots_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => EmpirePlacement.AssignHomeSystems(null, 0));
+        }
+
+        [Test]
+        public void AssignHomeSystems_NullPreferredIndex_ReturnsSlotsUnchanged()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30);
+
+            StarSystemId[] result = EmpirePlacement.AssignHomeSystems(slots, null);
+
+            CollectionAssert.AreEqual(slots, result);
+        }
+
+        [Test]
+        public void AssignHomeSystems_IndexOutOfRange_ReturnsSlotsUnchanged()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30);
+
+            CollectionAssert.AreEqual(slots, EmpirePlacement.AssignHomeSystems(slots, -1));
+            CollectionAssert.AreEqual(slots, EmpirePlacement.AssignHomeSystems(slots, 3));
+        }
+
+        [Test]
+        public void AssignHomeSystems_ValidIndex_MovesChosenSlotToFront()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30, 40);
+
+            StarSystemId[] result = EmpirePlacement.AssignHomeSystems(slots, 2);
+
+            Assert.AreEqual(new StarSystemId(30), result[0]);
+        }
+
+        [Test]
+        public void AssignHomeSystems_ValidIndex_KeepsRelativeOrderOfTheRest()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30, 40);
+
+            StarSystemId[] result = EmpirePlacement.AssignHomeSystems(slots, 2);
+
+            CollectionAssert.AreEqual(MakeSlots(30, 10, 20, 40), result);
+        }
+
+        [Test]
+        public void AssignHomeSystems_ValidIndexZero_IsEquivalentToUnchanged()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30);
+
+            StarSystemId[] result = EmpirePlacement.AssignHomeSystems(slots, 0);
+
+            CollectionAssert.AreEqual(slots, result);
+        }
+
+        [Test]
+        public void AssignHomeSystems_OutputLength_AlwaysMatchesInput()
+        {
+            StarSystemId[] slots = MakeSlots(10, 20, 30, 40, 50, 60);
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                Assert.AreEqual(slots.Length, EmpirePlacement.AssignHomeSystems(slots, i).Length);
+            }
+        }
     }
 }

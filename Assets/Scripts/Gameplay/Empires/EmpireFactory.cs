@@ -16,12 +16,18 @@ namespace Espace.Gameplay.Empires
     public static class EmpireFactory
     {
         /// <summary>
-        /// Attribue <see cref="EconomyService.PlayerOwnerId"/> (0) à la définition marquée
-        /// <see cref="EmpireDefinition.IsPlayerControlled"/>, puis 1, 2, 3... aux autres dans
-        /// l'ordre du tableau.
+        /// Attribue <see cref="EconomyService.PlayerOwnerId"/> (0) au joueur, puis 1, 2, 3...
+        /// aux autres dans l'ordre du tableau.
+        /// <para>
+        /// <paramref name="playerDefinitionOverride"/> (Phase 13, ecran de choix de faction)
+        /// permet d'incarner n'importe quelle definition du roster, pas seulement celle marquee
+        /// <see cref="EmpireDefinition.IsPlayerControlled"/>. Laisse a <c>null</c> (comportement
+        /// par defaut, ex. « Continuer » qui ne repasse pas par l'ecran de choix), la definition
+        /// marquee est utilisee comme avant.
+        /// </para>
         /// </summary>
         /// <exception cref="ArgumentException">Si <paramref name="definitions"/> est vide ou contient une entrée nulle.</exception>
-        public static Empire[] CreateEmpires(IReadOnlyList<EmpireDefinition> definitions)
+        public static Empire[] CreateEmpires(IReadOnlyList<EmpireDefinition> definitions, EmpireDefinition playerDefinitionOverride = null)
         {
             if (definitions == null || definitions.Count == 0)
             {
@@ -36,7 +42,7 @@ namespace Espace.Gameplay.Empires
                 }
             }
 
-            EmpireDefinition playerDefinition = FindPlayerDefinition(definitions);
+            EmpireDefinition playerDefinition = ResolvePlayerDefinition(definitions, playerDefinitionOverride);
 
             var empires = new Empire[definitions.Count];
             empires[0] = new Empire(
@@ -59,6 +65,28 @@ namespace Espace.Gameplay.Empires
             }
 
             return empires;
+        }
+
+        /// <summary>
+        /// Retient <paramref name="overrideDefinition"/> s'il figure bien dans <paramref name="definitions"/> ;
+        /// sinon (absent, ou hors de ce roster) retombe sur <see cref="FindPlayerDefinition"/>.
+        /// </summary>
+        private static EmpireDefinition ResolvePlayerDefinition(IReadOnlyList<EmpireDefinition> definitions, EmpireDefinition overrideDefinition)
+        {
+            if (overrideDefinition != null)
+            {
+                for (int i = 0; i < definitions.Count; i++)
+                {
+                    if (ReferenceEquals(definitions[i], overrideDefinition))
+                    {
+                        return overrideDefinition;
+                    }
+                }
+
+                Espace.Core.GameLog.Warning("[EmpireFactory] playerDefinitionOverride ne figure pas dans definitions : repli sur la definition marquee 'isPlayerControlled'.");
+            }
+
+            return FindPlayerDefinition(definitions);
         }
 
         /// <summary>

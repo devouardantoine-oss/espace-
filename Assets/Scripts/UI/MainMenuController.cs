@@ -16,11 +16,13 @@ namespace Espace.UI
     /// <c>DontDestroyOnLoad</c>) — pas de nouvel etat a inventer pour deux boutons.
     /// </para>
     /// <para>
-    /// <b>« Nouvelle partie » supprime la sauvegarde existante et remet l'horloge a zero :</b>
-    /// sans cela, <c>SaveController</c> rechargerait automatiquement l'ancienne partie des
-    /// l'arrivee dans <c>GalaxyMap</c>, et l'horloge (persistante entre les scenes) resterait
-    /// a la date ou le joueur s'etait arrete. « Continuer » ne fait ni l'un ni l'autre : la
-    /// sauvegarde existante est reprise telle quelle par <c>SaveController</c>.
+    /// <b>« Continuer » charge directement la galaxie :</b> la sauvegarde existante est reprise
+    /// telle quelle par <c>SaveController</c>. « Nouvelle partie » ouvre desormais l'ecran de
+    /// choix de faction (Phase 13, <see cref="FactionPickerController"/>, meme GameObject
+    /// <c>[UI]</c>, resolu par <c>GetComponent</c>) plutot que de charger la scene
+    /// immediatement : la suppression de la sauvegarde existante, la remise a zero de
+    /// l'horloge et le chargement de <c>GalaxyMap</c> n'ont de sens qu'une fois les deux choix
+    /// faits, donc vivent desormais dans cet ecran plutot qu'ici.
     /// </para>
     /// </summary>
     public sealed class MainMenuController : MonoBehaviour
@@ -29,8 +31,20 @@ namespace Espace.UI
         private const int WindowHeight = 220;
         private const string GalaxyMapSceneName = "GalaxyMap";
 
+        private FactionPickerController _factionPicker;
+
+        private void Awake()
+        {
+            _factionPicker = GetComponent<FactionPickerController>();
+        }
+
         private void OnGUI()
         {
+            if (_factionPicker != null && _factionPicker.IsOpen)
+            {
+                return;
+            }
+
             var rect = new Rect((Screen.width - WindowWidth) / 2f, (Screen.height - WindowHeight) / 2f, WindowWidth, WindowHeight);
             GUI.Box(rect, string.Empty, UITheme.Panel);
 
@@ -62,14 +76,13 @@ namespace Espace.UI
 
         private void StartNewGame()
         {
-            SaveFileLocator.DeleteIfExists();
-
-            if (ServiceLocator.TryGet(out IGameClock gameClock))
+            if (_factionPicker == null)
             {
-                gameClock.ResetToStart();
+                GameLog.Error("[MainMenu] FactionPickerController indisponible : impossible d'ouvrir le choix de faction.");
+                return;
             }
 
-            LoadGalaxyMap();
+            _factionPicker.Open();
         }
 
         private void ContinueGame()

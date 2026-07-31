@@ -14,7 +14,7 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 12 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 13 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (recrutement, résolution automatique des combats,
 > colonisation), diplomatie (guerre/paix/alliances/pactes de non-agression, opinion, traités
 > commerciaux, embargos, ultimatums, échanges de ressources et de territoires), recherche
@@ -23,19 +23,22 @@ ravitaillement, terrain, commandement).
 > une sauvegarde JSON automatique (la partie reprend exactement où elle en était après une
 > fermeture ou une mise en arrière-plan, sur un seul fichier local), une interface complète
 > (menu principal, barre d'état permanente, panneau de système contextuel, fenêtre de gestion à
-> onglets et menu pause), et désormais une carte galactique immersive : fond spatial (étoiles,
-> nébuleuses) procédural, systèmes stylés (couleur, anneaux, lunes, taille, légère animation,
-> tous déterministes), halos de territoire par couleur d'empire, et noms/détails affichés
-> automatiquement selon le niveau de zoom. La génération de la galaxie (et son fond) est
-> déterministe (graine fixe) pour que la même galaxie réapparaisse d'une session à l'autre.
+> onglets et menu pause), une carte galactique immersive (fond spatial procédural, systèmes
+> stylés, halos de territoire par couleur d'empire, noms/détails affichés selon le niveau de
+> zoom), et désormais un écran de choix en début de partie : le joueur choisit librement sa
+> faction parmi les 6 disponibles, puis son système de départ parmi les emplacements que
+> l'algorithme de placement proposerait — ce n'est plus toujours la même faction sur le même
+> système le plus proche du centre. La génération de la galaxie (et son fond) est déterministe
+> (graine fixe) pour que la même galaxie réapparaisse d'une session à l'autre.
 >
 > **Refonte V1 en cours (inspirée de Star Wars dans ses mécaniques, avec des noms 100%
 > originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
 > Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
-> du jeu — carte immersive (Phase 12, ci-dessus), choix de faction/système de départ,
-> refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie),
-> amiraux, colonisation stratégique, déplacement longue distance et rencontres spatiales, IA
-> plus dynamique. Un seul système complexe à la fois, comme depuis la Phase 1.
+> du jeu — carte immersive (Phase 12) et choix de faction/système de départ (Phase 13,
+> ci-dessus) sont terminées ; restent la refonte des flottes (rôles des vaisseaux, flottes
+> nommées, plafond lié à la technologie), les amiraux, la colonisation stratégique, le
+> déplacement longue distance et les rencontres spatiales, et une IA plus dynamique. Un seul
+> système complexe à la fois, comme depuis la Phase 1.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -519,6 +522,21 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 > « planète unique » — un système pourra un jour exposer une liste de planètes/lunes/colonies
 > sans que cette couche visuelle ait à changer de forme.
 
+### Briques du choix de faction et de système de départ (Phase 13)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `PendingGameSetup` | choix du joueur, transporté entre scènes | petite classe immuable (faction choisie, index d'emplacement de départ) enregistrée dans le `ServiceLocator` juste avant `ISceneLoader.LoadScene` — celui-ci n'est vidé qu'à la toute première `Awake` de `GameBootstrap`, donc reste lisible dans `GalaxyMap` sans aucun nouveau mécanisme de transport inter-scènes ; consommée et désenregistrée une seule fois par `EmpireController` |
+| `FactionPickerController` | écran à deux étapes (faction, puis système) | même pattern de coordination que la Phase 11 (`HudController`/`ManagementWindowController` via `GetComponent` sur le même GameObject) : vit sur `[UI]` à côté de `MainMenuController`, qui se tait tant qu'il est ouvert ; régénère une galaxie jetable (même graine que la vraie, donc strictement identique) uniquement pour lister les 6 emplacements candidats, puis la laisse de côté |
+| `EmpireFactory.CreateEmpires` (étendu) | n'importe quelle faction jouable | nouveau paramètre optionnel `playerDefinitionOverride` (signature additive, aucune régression sur les appels existants) : permet d'incarner n'importe laquelle des 6 définitions plutôt que systématiquement celle marquée `IsPlayerControlled`, qui reste le repli par défaut |
+| `EmpirePlacement.AssignHomeSystems` (nouveau) | système de départ choisi, pas imposé | fonction pure : réordonne les emplacements candidats pour placer celui choisi par le joueur en tête (le joueur est toujours `empires[0]`) ; `null` ou un index hors bornes reproduit exactement le comportement d'avant cette phase (identité) — aucune régression pour « Continuer », qui ne passe jamais par l'écran de choix |
+
+> **Pourquoi le joueur pouvait-il jusque-là seulement incarner une faction fixe, toujours sur
+> le système le plus proche du centre ?** `EmpireFactory`/`EmpirePlacement` n'avaient jamais eu
+> besoin de faire autrement : un seul joueur, un seul roster, une seule disposition possible.
+> Cette phase n'a rien réécrit de leur logique — elle leur ajoute la capacité de recevoir un
+> choix, sans changer leur comportement par défaut.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -539,7 +557,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (395 tests, tous packages confondus).
+Voir §5 pour le compte total (405 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
@@ -551,8 +569,19 @@ avec `Bootstrap` en scène 0.
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
 - **Continuer** doit être grisé (aucune sauvegarde n'existe encore au tout premier lancement).
-- **Nouvelle partie** doit charger `GalaxyMap` (la console affiche la suite ci-dessous).
+- **Nouvelle partie** ouvre désormais l'écran de choix de faction (Phase 13) plutôt que de
+  charger la galaxie directement.
 - **Quitter** ne fait rien dans l'éditeur (`Application.Quit` n'agit qu'en build).
+
+**Le nouvel écran de choix (Phase 13) :** cliquer **Nouvelle partie** doit afficher 6 boutons
+(un par faction — nom, personnalité, pastille de couleur). En choisir une doit afficher un
+second écran avec 6 noms de systèmes (les emplacements de départ candidats). Le bouton
+**Retour** doit fonctionner aux deux étapes (second écran → premier écran → menu principal).
+Choisir un système doit alors charger `GalaxyMap` (la console affiche la suite ci-dessous) —
+essayez plusieurs combinaisons faction/système différentes à chaque partie : la console
+`[Empires]` doit toujours confirmer que la faction choisie est bien marquée « joueur » et
+occupe bien le système choisi (pas systématiquement le plus proche du centre), et que les 5 IA
+se répartissent les 5 autres emplacements sans doublon.
 
 **Ensuite, la galaxie elle-même : ouvrir `Assets/Scenes/GalaxyMap.unity` directement et
 appuyer sur Play** (raccourci de développement — inutile de repasser par le menu à chaque
@@ -655,12 +684,15 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 395 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 405 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
 séparation des trésors par empire) ; `EmpirePlacementTests`, `EmpireFactoryTests`,
-`EmpireRegistryTests`, `AIDecisionMakerTests` (Phase 5) ; `UnitBundleTests`,
+`EmpireRegistryTests`, `AIDecisionMakerTests` (Phase 5, étendus en Phase 13 avec
+`AssignHomeSystems` — réordonnancement pur des emplacements candidats — et
+`playerDefinitionOverride` — n'importe quelle faction peut devenir le joueur, avec repli sur le
+comportement d'avant cette phase si absent ou hors roster) ; `UnitBundleTests`,
 `CombatResolverTests` (Phase 6 — le plus important : vainqueur déterministe selon le ratio de
 puissance, fractions de pertes vérifiées valeur par valeur, cas limites d'une défense vide ou
 de deux camps à puissance nulle), `MilitaryServiceTests` (recrutement → garnison, colonisation,
@@ -730,7 +762,11 @@ vérifiable seulement en Play Mode, pas par un script indépendant. La Phase 12 
 mélange de bits et la dérivation des attributs visuels de `StarSystemVisualProfile`
 (déterminisme, bornes, variété sur un grand échantillon, proportion d'anneaux proche du
 réglage configuré) — le fond spatial, les halos de territoire et les labels de zoom restent,
-eux, du rendu pur, non testables en EditMode comme le reste du rendu du projet.
+eux, du rendu pur, non testables en EditMode comme le reste du rendu du projet. La Phase 13
+recoupe le réordonnancement d'`EmpirePlacement.AssignHomeSystems` (identité pour un index
+absent ou hors bornes, emplacement choisi en tête, ordre relatif du reste conservé, aucune
+perte ni duplication d'emplacement) — `FactionPickerController` (agencement `OnGUI`) reste,
+comme tous les écrans `Espace.UI`, vérifiable seulement en Play Mode.
 
 ---
 
@@ -750,7 +786,7 @@ eux, du rendu pur, non testables en EditMode comme le reste du rendu du projet.
 | 10 | Sauvegarde JSON automatique | ✅ terminée |
 | 11 | Interface complète (menu, écrans de gestion, HUD) | ✅ terminée |
 | 12 | Carte galactique immersive (fond, systèmes stylés, territoires, zoom) + corrections | ✅ terminée |
-| 13 | Choix de faction et de système de départ | à venir |
+| 13 | Choix de faction et de système de départ | ✅ terminée |
 | 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | à venir |
 | 15 | Amiraux (bonus/malus, un par flotte) | à venir |
 | 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | à venir |
