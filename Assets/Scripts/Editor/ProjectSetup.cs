@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
@@ -27,6 +28,7 @@ namespace Espace.Editor
         private const string PipelineAssetPath = SettingsFolder + "/URP-Mobile.asset";
         private const string RendererAssetPath = SettingsFolder + "/URP-Mobile-Renderer.asset";
         private const string BootstrapScenePath = "Assets/Scenes/Bootstrap.unity";
+        private const string GalaxyMapScenePath = "Assets/Scenes/GalaxyMap.unity";
 
         private const string CompanyName = "Espace Studio";
         private const string ProductName = "Espace";
@@ -153,19 +155,35 @@ namespace Espace.Editor
             PlayerSettings.productName = ProductName;
         }
 
-        /// <summary>Declare la scene Bootstrap comme scene 0 du build.</summary>
+        /// <summary>
+        /// Declare les scenes du build : <c>Bootstrap</c> en scene 0, puis <c>GalaxyMap</c>.
+        /// <para>
+        /// <b>GalaxyMap doit imperativement y figurer</b>, meme si elle n'est jamais la scene de
+        /// demarrage : <c>MainMenuController</c> et <c>FactionPickerController</c> la chargent
+        /// par son nom via <c>ISceneLoader</c>, et <c>PauseMenuController</c> revient de meme
+        /// sur <c>Bootstrap</c>. Une scene absente de cette liste n'existe pas dans une
+        /// application compilee — le defaut ne se voit donc jamais dans l'editeur, ou toutes les
+        /// scenes du projet sont chargeables, et se manifeste seulement sur l'appareil, ou
+        /// « Nouvelle partie » ne fait plus rien.
+        /// </para>
+        /// </summary>
         private static void ConfigureBuildScenes()
         {
-            if (!File.Exists(BootstrapScenePath))
+            var scenes = new List<EditorBuildSettingsScene>();
+
+            foreach (string path in new[] { BootstrapScenePath, GalaxyMapScenePath })
             {
-                Debug.LogWarning($"[Setup] Scene introuvable : {BootstrapScenePath}");
-                return;
+                if (File.Exists(path))
+                {
+                    scenes.Add(new EditorBuildSettingsScene(path, true));
+                }
+                else
+                {
+                    Debug.LogWarning($"[Setup] Scene introuvable : {path}");
+                }
             }
 
-            EditorBuildSettings.scenes = new[]
-            {
-                new EditorBuildSettingsScene(BootstrapScenePath, true)
-            };
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         /// <summary>

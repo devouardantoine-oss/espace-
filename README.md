@@ -91,7 +91,7 @@ une fois tous les réglages du projet :
 | Rendu mobile | HDR off, MSAA 2×, textures depth/opaque off, distance d'ombre 60 |
 | Espace colorimétrique | Linear |
 | Active Input Handling | Input System Package (New) |
-| Build Settings | `Bootstrap.unity` en scène 0 |
+| Build Settings | `Bootstrap.unity` en scène 0, `GalaxyMap.unity` en scène 1 (indispensable : le jeu la charge par son nom, une scène absente de cette liste n'existe pas dans une application compilée) |
 | Android | IL2CPP, ARM64, min SDK 26 (Unity 6 refuse toute valeur inférieure) |
 | iOS | IL2CPP, cible minimale 13.0 |
 
@@ -679,7 +679,9 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 Voir §5 pour le compte total (506 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
-avec `Bootstrap` en scène 0.
+avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
+fonctionne encore dans l'éditeur (qui sait charger n'importe quelle scène du projet) mais
+« Nouvelle partie » ne fait rien sur l'appareil.
 
 ---
 
