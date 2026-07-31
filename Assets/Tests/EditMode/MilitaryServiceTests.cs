@@ -326,8 +326,10 @@ namespace Espace.Tests.EditMode
         // --- Deplacement -------------------------------------------------------------
 
         [Test]
-        public void TryMoveFleet_NonAdjacentDestination_Fails()
+        public void TryMoveFleet_NoRouteAvailable_Fails()
         {
+            // Depuis la Phase 17 l'adjacence n'est plus requise : ce qui reste refuse, c'est une
+            // destination qu'aucune route hyperspatiale ne relie a l'origine.
             StarSystemState home = MakeSystem(0, Vector2.zero, PlayerId);
             StarSystemState farAway = MakeSystem(1, new Vector2(100f, 0f));
             var map = new GalaxyMap(new[] { home, farAway }, Array.Empty<HyperlaneLink>()); // aucun lien
@@ -342,6 +344,115 @@ namespace Espace.Tests.EditMode
 
             Assert.IsFalse(success);
             Assert.IsNotNull(error);
+        }
+
+        // --- Deplacement longue distance (Phase 17) ---------------------------------------
+
+        /// <summary>Chaine de quatre systemes alignes, relies de proche en proche : 0 - 1 - 2 - 3.</summary>
+        private static GalaxyMap MakeChain(out StarSystemState[] systems, int ownerOfFirst = PlayerId)
+        {
+            systems = new[]
+            {
+                MakeSystem(0, Vector2.zero, ownerOfFirst),
+                MakeSystem(1, new Vector2(10f, 0f)),
+                MakeSystem(2, new Vector2(20f, 0f)),
+                MakeSystem(3, new Vector2(30f, 0f))
+            };
+
+            var links = new[]
+            {
+                new HyperlaneLink(systems[0].Id, systems[1].Id),
+                new HyperlaneLink(systems[1].Id, systems[2].Id),
+                new HyperlaneLink(systems[2].Id, systems[3].Id)
+            };
+
+            return new GalaxyMap(systems, links);
+        }
+
+        [Test]
+        public void TryMoveFleet_MultiHopDestination_Succeeds()
+        {
+            GalaxyMap map = MakeChain(out StarSystemState[] systems);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(systems[0].Id, PlayerId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(systems[0].Id, PlayerId, out Fleet fleet);
+
+            bool success = military.TryMoveFleet(fleet, systems[3].Id, out string error);
+
+            Assert.IsTrue(success, error);
+            Assert.AreEqual(FleetStatus.Moving, fleet.Status);
+            Assert.AreEqual(4, fleet.Route.Count, "L'itineraire doit passer par les deux systemes intermediaires.");
+            Assert.AreEqual(systems[3].Id, fleet.DestinationSystemId.Value);
+        }
+
+        [Test]
+        public void Journey_IntermediateUnownedWaypoint_IsNotColonized()
+        {
+            // Le piege central de la phase : ResolveArrival colonise tout systeme libre ou une
+            // flotte arrive. Un point de passage doit etre traverse, jamais occupe.
+            GalaxyMap map = MakeChain(out StarSystemState[] systems);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(systems[0].Id, PlayerId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(systems[0].Id, PlayerId, out Fleet fleet);
+            military.TryMoveFleet(fleet, systems[3].Id, out _);
+
+            // On avance jour par jour jusqu'a l'arrivee finale.
+            for (int day = 1; day <= 10; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            Assert.AreEqual(StarSystemState.UnownedOwnerId, systems[1].OwnerId, "Le premier point de passage ne doit pas avoir ete colonise.");
+            Assert.AreEqual(StarSystemState.UnownedOwnerId, systems[2].OwnerId, "Le second point de passage non plus.");
+            Assert.AreEqual(PlayerId, systems[3].OwnerId, "Seule la destination finale est colonisee.");
+        }
+
+        [Test]
+        public void TryMoveFleet_RouteThroughForeignTerritory_Fails()
+        {
+            GalaxyMap map = MakeChain(out StarSystemState[] systems);
+            systems[1].OwnerId = OtherEmpireId; // le seul passage est occupe par un tiers
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(systems[0].Id, PlayerId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(systems[0].Id, PlayerId, out Fleet fleet);
+
+            bool success = military.TryMoveFleet(fleet, systems[3].Id, out string error);
+
+            Assert.IsFalse(success, "On ne traverse pas le territoire d'un tiers.");
+            Assert.IsNotNull(error);
+        }
+
+        [Test]
+        public void Journey_DestinationTakenDuringFlight_RetreatsInsteadOfAttacking()
+        {
+            // Trou cree par les trajets longs : la destination peut changer de mains en cours de
+            // route. Resoudre aveuglement contournerait le verrou de guerre de la Phase 7.
+            GalaxyMap map = MakeChain(out StarSystemState[] systems);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(systems[0].Id, PlayerId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(systems[0].Id, PlayerId, out Fleet fleet);
+            military.TryMoveFleet(fleet, systems[3].Id, out _);
+
+            // Un tiers s'installe sur la destination pendant le trajet, sans guerre declaree.
+            systems[3].OwnerId = OtherEmpireId;
+
+            for (int day = 1; day <= 10; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            Assert.AreEqual(OtherEmpireId, systems[3].OwnerId, "Le systeme ne doit pas avoir ete pris.");
+            Assert.IsFalse(
+                military.TryGetStationedFleet(systems[3].Id, PlayerId, out _),
+                "La flotte doit faire demi-tour plutot que d'attaquer un empire avec qui on est en paix.");
         }
 
         [Test]
@@ -839,27 +950,37 @@ namespace Espace.Tests.EditMode
         // --- Plafond de flottes en deplacement simultane, lie a la Logistique (Phase 14) ---
 
         [Test]
-        public void TryMoveFleet_SecondFleetWithoutLogisticsResearch_Fails()
+        public void TryMoveFleet_BeyondSimultaneousCap_Fails()
         {
+            // Le plafond de base est passe de 1 a 2 en Phase 17 : avec des trajets de plusieurs
+            // semaines, un plafond de 1 privait un empire sans recherche de tout mouvement.
             StarSystemState home = MakeSystem(0, Vector2.zero, PlayerId);
             StarSystemState neighborA = MakeSystem(1, new Vector2(5f, 0f));
             StarSystemState neighborB = MakeSystem(2, new Vector2(-5f, 0f));
-            var links = new[] { new HyperlaneLink(home.Id, neighborA.Id), new HyperlaneLink(home.Id, neighborB.Id) };
-            var map = new GalaxyMap(new[] { home, neighborA, neighborB }, links);
+            StarSystemState neighborC = MakeSystem(3, new Vector2(0f, 5f));
+            var links = new[]
+            {
+                new HyperlaneLink(home.Id, neighborA.Id),
+                new HyperlaneLink(home.Id, neighborB.Id),
+                new HyperlaneLink(home.Id, neighborC.Id)
+            };
+            var map = new GalaxyMap(new[] { home, neighborA, neighborB, neighborC }, links);
             EconomyService economy = MakeEconomy(map);
             UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
             MilitaryService military = MakeMilitary(map, economy, infantry);
-            GiveCredits(economy, home, PlayerId, 1000f);
-            // 6 Infanterie : deux groupes de 3, l'exigence de colonisation des deux voisins libres (Phase 16).
-            RecruitAndComplete(military, home, infantry, 6);
+            // 9 Infanterie : trois groupes de 3, l'exigence de colonisation de chaque voisin libre.
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 9));
             military.TryGetStationedFleet(home.Id, PlayerId, out Fleet garrison);
-            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 3), out Fleet detached, out _);
+            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 3), out Fleet second, out _);
+            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 3), out Fleet third, out _);
 
             bool firstMoveSucceeds = military.TryMoveFleet(garrison, neighborA.Id, out _);
-            bool secondMoveSucceeds = military.TryMoveFleet(detached, neighborB.Id, out string error);
+            bool secondMoveSucceeds = military.TryMoveFleet(second, neighborB.Id, out _);
+            bool thirdMoveSucceeds = military.TryMoveFleet(third, neighborC.Id, out string error);
 
             Assert.IsTrue(firstMoveSucceeds);
-            Assert.IsFalse(secondMoveSucceeds, "Sans recherche en Logistique, une seule flotte peut etre en deplacement a la fois.");
+            Assert.IsTrue(secondMoveSucceeds, "Deux flottes simultanees sont permises sans recherche depuis la Phase 17.");
+            Assert.IsFalse(thirdMoveSucceeds, "La troisieme depasse le plafond : il faut rechercher la Logistique.");
             Assert.IsNotNull(error);
         }
 
@@ -1043,6 +1164,179 @@ namespace Espace.Tests.EditMode
 
             Assert.AreEqual(Admiral.Compute(detached.Id, detached.OwnerId), detached.Admiral);
             Assert.AreNotEqual(garrison.Admiral, detached.Admiral, "Deux flottes distinctes (ids differents) devraient avoir des Amiraux differents.");
+        }
+
+        // --- Rencontres spatiales (Phase 17) -----------------------------------------------
+
+        /// <summary>
+        /// Deux bases opposees reliees par un long couloir central A - B. Le tronçon A-B est
+        /// volontairement tres long (50 unites contre 10 pour les acces) : les deux flottes y
+        /// restent plusieurs jours, ce qui garantit un chevauchement et rend la rencontre
+        /// deterministe quel que soit le bonus de vitesse tire par chaque Amiral.
+        /// </summary>
+        private static GalaxyMap MakeSharedCorridor(
+            out StarSystemState westBase, out StarSystemState corridorA, out StarSystemState corridorB, out StarSystemState eastBase)
+        {
+            westBase = MakeSystem(0, Vector2.zero, PlayerId);
+            corridorA = MakeSystem(1, new Vector2(10f, 0f));
+            corridorB = MakeSystem(2, new Vector2(60f, 0f));
+            eastBase = MakeSystem(3, new Vector2(70f, 0f), OtherEmpireId);
+
+            var links = new[]
+            {
+                new HyperlaneLink(westBase.Id, corridorA.Id),
+                new HyperlaneLink(corridorA.Id, corridorB.Id),
+                new HyperlaneLink(corridorB.Id, eastBase.Id)
+            };
+
+            return new GalaxyMap(new[] { westBase, corridorA, corridorB, eastBase }, links);
+        }
+
+        [Test]
+        public void Encounter_TwoFleetsOnSameLeg_FreezesBothAndQueuesEncounter()
+        {
+            GalaxyMap map = MakeSharedCorridor(out StarSystemState west, out StarSystemState a, out StarSystemState b, out StarSystemState east);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(west.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.RestoreGarrison(east.Id, OtherEmpireId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(west.Id, PlayerId, out Fleet playerFleet);
+            military.TryGetStationedFleet(east.Id, OtherEmpireId, out Fleet enemyFleet);
+
+            // Les deux visent le meme couloir, en sens inverse : elles se croisent sur A-B.
+            Assert.IsTrue(military.TryMoveFleet(playerFleet, b.Id, out string e1), e1);
+            Assert.IsTrue(military.TryMoveFleet(enemyFleet, a.Id, out string e2), e2);
+
+            for (int day = 1; day <= 10 && military.GetPendingEncounterFor(PlayerId) == null; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            PendingEncounter encounter = military.GetPendingEncounterFor(PlayerId);
+            Assert.IsNotNull(encounter, "Deux flottes empruntant le meme tronçon doivent se rencontrer.");
+            Assert.AreEqual(FleetStatus.AwaitingEncounter, playerFleet.Status);
+            Assert.AreEqual(FleetStatus.AwaitingEncounter, enemyFleet.Status);
+        }
+
+        [Test]
+        public void Encounter_SameOwner_DoesNotTrigger()
+        {
+            GalaxyMap map = MakeSharedCorridor(out StarSystemState west, out StarSystemState a, out StarSystemState b, out StarSystemState east);
+            east.OwnerId = PlayerId; // les deux flottes appartiennent au joueur
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(west.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.RestoreGarrison(east.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(west.Id, PlayerId, out Fleet first);
+            military.TryGetStationedFleet(east.Id, PlayerId, out Fleet second);
+
+            military.TryMoveFleet(first, b.Id, out _);
+            military.TryMoveFleet(second, a.Id, out _);
+
+            for (int day = 1; day <= 10; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            Assert.IsNull(military.GetPendingEncounterFor(PlayerId), "Deux flottes du meme empire se croisent sans histoire.");
+        }
+
+        [Test]
+        public void Encounter_FrozenFleetStillCountsAsDeployed()
+        {
+            // Le plafond de flottes simultanees compte les flottes « non stationnees », pas
+            // seulement celles en mouvement : sinon laisser une rencontre en attente serait un
+            // moyen de deployer une flotte supplementaire gratuitement.
+            GalaxyMap map = MakeSharedCorridor(out StarSystemState west, out StarSystemState a, out StarSystemState b, out StarSystemState east);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(west.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.RestoreGarrison(east.Id, OtherEmpireId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(west.Id, PlayerId, out Fleet playerFleet);
+            military.TryGetStationedFleet(east.Id, OtherEmpireId, out Fleet enemyFleet);
+
+            military.TryMoveFleet(playerFleet, b.Id, out _);
+            military.TryMoveFleet(enemyFleet, a.Id, out _);
+
+            for (int day = 1; day <= 10 && military.GetPendingEncounterFor(PlayerId) == null; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            Assert.IsNotNull(military.GetPendingEncounterFor(PlayerId), "Precondition : une rencontre est en attente.");
+            Assert.AreEqual(FleetStatus.AwaitingEncounter, playerFleet.Status);
+
+            IReadOnlyList<Fleet> deployed = military.GetFleetsInTransit();
+            CollectionAssert.Contains(deployed, playerFleet, "Une flotte gelee reste deployee et occupe toujours un emplacement.");
+        }
+
+        [Test]
+        public void Encounter_PlayerChoosesPassBy_BothFleetsResumeTheirJourney()
+        {
+            GalaxyMap map = MakeSharedCorridor(out StarSystemState west, out StarSystemState a, out StarSystemState b, out StarSystemState east);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(west.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.RestoreGarrison(east.Id, OtherEmpireId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(west.Id, PlayerId, out Fleet playerFleet);
+            military.TryGetStationedFleet(east.Id, OtherEmpireId, out Fleet enemyFleet);
+
+            military.TryMoveFleet(playerFleet, b.Id, out _);
+            military.TryMoveFleet(enemyFleet, a.Id, out _);
+
+            for (int day = 1; day <= 10 && military.GetPendingEncounterFor(PlayerId) == null; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            PendingEncounter encounter = military.GetPendingEncounterFor(PlayerId);
+            Assert.IsNotNull(encounter, "Precondition : une rencontre est en attente.");
+
+            bool resolved = military.TryResolveEncounter(encounter.Id, PlayerId, EncounterOption.PassBy, out string error);
+
+            Assert.IsTrue(resolved, error);
+            Assert.AreEqual(FleetStatus.Moving, playerFleet.Status, "Les deux flottes reprennent leur route.");
+            Assert.AreEqual(FleetStatus.Moving, enemyFleet.Status);
+            Assert.IsNull(military.GetPendingEncounterFor(PlayerId), "La rencontre est consommee.");
+        }
+
+        [Test]
+        public void Encounter_UnavailableOptionForStatus_IsRefused()
+        {
+            GalaxyMap map = MakeSharedCorridor(out StarSystemState west, out StarSystemState a, out StarSystemState b, out StarSystemState east);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 10f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(west.Id, PlayerId, new UnitBundle(infantry: 6));
+            military.RestoreGarrison(east.Id, OtherEmpireId, new UnitBundle(infantry: 6));
+            military.TryGetStationedFleet(west.Id, PlayerId, out Fleet playerFleet);
+            military.TryGetStationedFleet(east.Id, OtherEmpireId, out Fleet enemyFleet);
+
+            military.TryMoveFleet(playerFleet, b.Id, out _);
+            military.TryMoveFleet(enemyFleet, a.Id, out _);
+
+            for (int day = 1; day <= 10 && military.GetPendingEncounterFor(PlayerId) == null; day++)
+            {
+                _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(day)));
+            }
+
+            PendingEncounter encounter = military.GetPendingEncounterFor(PlayerId);
+            Assert.IsNotNull(encounter, "Precondition : une rencontre est en attente.");
+
+            // En paix, « Combattre » n'est pas propose.
+            bool resolved = military.TryResolveEncounter(encounter.Id, PlayerId, EncounterOption.Fight, out string error);
+
+            Assert.IsFalse(resolved);
+            Assert.IsNotNull(error);
         }
 
         /// <summary>Recrute puis fait avancer le temps jusqu'a l'achevement, pour obtenir directement une garnison dans les tests.</summary>

@@ -21,11 +21,35 @@ namespace Espace.Gameplay.Military
     /// en service est preleve sur le tresor de chaque proprietaire.
     /// </para>
     /// <para>
-    /// <b>Deplacements limites aux voisins directs :</b> aucun calcul d'itineraire multi-sauts
-    /// en v1 (voir <see cref="Espace.Gameplay.Galaxy.GalaxyMap.AreLinked"/>) — une consequence
-    /// est que le facteur « ravitaillement » de la formule de combat reste implicitement
-    /// favorable (lignes de communication toujours courtes), a revisiter si le pathfinding
-    /// multi-sauts est introduit plus tard.
+    /// <b>Deplacements longue distance (Phase 17) :</b> une flotte rejoint n'importe quel
+    /// systeme atteignable, l'itineraire etant calcule le long des routes hyperspatiales par
+    /// <see cref="Espace.Gameplay.Galaxy.HyperlanePathfinder"/> et parcouru etape par etape.
+    /// Les points de passage se limitent aux systemes libres ou possedes par la flotte : on ne
+    /// traverse pas le territoire d'un tiers, faute de quoi un simple ordre de deplacement
+    /// pourrait declencher une bataille surprise a mi-parcours. Seule l'arrivee sur la
+    /// destination finale declenche une resolution — un point de passage est traverse, jamais
+    /// occupe ni colonise.
+    /// </para>
+    /// <para>
+    /// La traversabilite est une contrainte <i>de planification</i> : elle n'est jamais
+    /// reverifiee en vol. Une flotte qui survole un systeme colonise entre-temps le survole.
+    /// Limitation v1 assumee, qui evite tout un pan de cas limites (recalcul d'itineraire,
+    /// halte a mi-parcours) sans contrepartie de jeu. En revanche la <i>destination</i> est bien
+    /// revalidee a l'arrivee (voir <see cref="ResolveArrival"/>) : sur plusieurs semaines elle
+    /// peut avoir change de mains, et resoudre aveuglement contournerait le verrou de guerre.
+    /// </para>
+    /// <para>
+    /// Le facteur « ravitaillement » de la formule de combat, jusqu'ici implicitement favorable
+    /// parce que les lignes de communication etaient toujours courtes, ne l'est plus vraiment :
+    /// il reste neanmoins hors formule, a revisiter lors d'une passe d'equilibrage.
+    /// </para>
+    /// <para>
+    /// <b>Rencontres spatiales (Phase 17) :</b> deux flottes d'empires differents qui empruntent
+    /// le meme tronçon se rencontrent (voir <see cref="EncounterRules"/>). La detection a lieu
+    /// au <i>debut</i> d'une etape et ne mute rien : elle gele les deux flottes et empile la
+    /// rencontre, qui est resolue hors du tick par <see cref="ProcessPendingEncounters"/>.
+    /// Ce service ne touche jamais l'horloge — la mise en pause est l'affaire de l'interface et
+    /// reste purement cosmetique.
     /// </para>
     /// <para>
     /// <b>Entretien impaye :</b> si le tresor d'un empire ne couvre pas l'entretien du jour, la
@@ -35,7 +59,7 @@ namespace Espace.Gameplay.Military
     /// <para>
     /// <b>Recherche (Phase 8) :</b> le domaine Armement augmente <see cref="CommandModifierFor"/>
     /// (donc la puissance de combat, attaquant comme defenseur) et le domaine Logistique
-    /// accelere les deplacements de flotte (<see cref="ComputeArrivalDate"/>) et plafonne le
+    /// accelere les deplacements de flotte (<see cref="ComputeLegArrivalDate"/>) et plafonne le
     /// nombre de flottes en deplacement simultane (<see cref="TryMoveFleet"/>, Phase 14) — le
     /// tout via <see cref="Espace.Gameplay.Research.IResearchService"/>, resolu paresseusement,
     /// sans effet tant que rien n'a ete recherche.
@@ -62,11 +86,11 @@ namespace Espace.Gameplay.Military
     /// genere automatiquement a sa creation (voir <see cref="Fleet"/>) dont les bonus/malus
     /// s'ajoutent aux facteurs existants — attaque dans <see cref="ComputeAttackerModifier"/>,
     /// defense dans <see cref="ComputeDefenderModifier"/>, vitesse dans
-    /// <see cref="ComputeArrivalDate"/> — sans toucher <see cref="CombatResolver"/>, deja
+    /// <see cref="ComputeLegArrivalDate"/> — sans toucher <see cref="CombatResolver"/>, deja
     /// generique sur un simple facteur multiplicatif par camp.
     /// </para>
     /// </summary>
-    public sealed class MilitaryService : IMilitaryService, IGameService
+    public sealed class MilitaryService : IMilitaryService, IEncounterService, IGameService
     {
         /// <summary>Bonus de fortification par niveau de developpement du systeme defendu (« terrain »).</summary>
         private const float TerrainBonusPerDevelopmentLevel = 0.1f;
@@ -80,6 +104,19 @@ namespace Espace.Gameplay.Military
         /// </summary>
         private const int MaxUnitsPerFleet = 10;
 
+        /// <summary>
+        /// Flottes qu'un empire peut avoir deployees simultanement sans aucune recherche en
+        /// Logistique (Phase 14, releve de 1 a 2 en Phase 17).
+        /// <para>
+        /// Avec les trajets longue distance, un plafond de 1 privait un empire sans recherche de
+        /// <b>tout</b> mouvement — y compris une colonisation voisine — pendant les semaines que
+        /// dure une traversee, ce qui contredisait la promesse « clique n'importe quelle
+        /// destination ». La Logistique reste pleinement utile : elle ajoute toujours un palier
+        /// par niveau.
+        /// </para>
+        /// </summary>
+        private const int BaseSimultaneousFleetCap = 2;
+
         private readonly GalaxyMap _map;
         private readonly IGameClock _gameClock;
         private readonly IEventBus _eventBus;
@@ -90,7 +127,12 @@ namespace Espace.Gameplay.Military
 
         private readonly List<Fleet> _fleets = new List<Fleet>();
         private readonly List<RecruitmentOrder> _recruitmentOrders = new List<RecruitmentOrder>();
+        private readonly List<PendingEncounter> _pendingEncounters = new List<PendingEncounter>();
         private int _nextFleetId;
+        private int _nextEncounterId;
+
+        /// <summary>Garde-fou de reentrance : resoudre une rencontre peut en declencher d'autres.</summary>
+        private bool _resolvingEncounters;
 
         /// <inheritdoc />
         public IReadOnlyList<UnitTypeDefinition> UnitCatalog => _unitCatalog;
@@ -113,7 +155,9 @@ namespace Espace.Gameplay.Military
         {
             _fleets.Clear();
             _recruitmentOrders.Clear();
+            _pendingEncounters.Clear();
             _nextFleetId = 1;
+            _nextEncounterId = 1;
             _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
         }
 
@@ -123,6 +167,7 @@ namespace Espace.Gameplay.Military
             _eventBus.Unsubscribe<DayAdvancedEvent>(OnDayAdvanced);
             _fleets.Clear();
             _recruitmentOrders.Clear();
+            _pendingEncounters.Clear();
         }
 
         /// <inheritdoc />
@@ -246,23 +291,25 @@ namespace Espace.Gameplay.Military
                 return false;
             }
 
-            int movingFleetCount = _fleets.FindAll(f => f.OwnerId == fleet.OwnerId && f.Status == FleetStatus.Moving).Count;
-            int fleetCap = 1 + ResearchTierCount(fleet.OwnerId, ResearchDomain.Logistics);
-            if (movingFleetCount >= fleetCap)
+            // Une flotte immobilisee par une rencontre compte dans le plafond : sans quoi laisser
+            // une rencontre en attente serait un moyen de lancer une flotte supplementaire.
+            int deployedFleetCount = _fleets.FindAll(f => f.OwnerId == fleet.OwnerId && f.Status != FleetStatus.Stationed).Count;
+            int fleetCap = BaseSimultaneousFleetCap + ResearchTierCount(fleet.OwnerId, ResearchDomain.Logistics);
+            if (deployedFleetCount >= fleetCap)
             {
                 error = $"Plafond de flottes en deplacement simultane atteint ({fleetCap}) : recherchez la Logistique pour en deployer davantage.";
-                return false;
-            }
-
-            if (!_map.AreLinked(fleet.CurrentSystemId, destinationSystemId))
-            {
-                error = "Cette destination n'est pas directement reliee par une route hyperspatiale.";
                 return false;
             }
 
             if (!_map.TryGetSystem(destinationSystemId, out StarSystemState destination))
             {
                 error = "Systeme de destination introuvable.";
+                return false;
+            }
+
+            if (!TryPlanRoute(fleet, destinationSystemId, out IReadOnlyList<StarSystemId> route))
+            {
+                error = "Aucune route hyperspatiale praticable ne mene a cette destination.";
                 return false;
             }
 
@@ -291,13 +338,32 @@ namespace Espace.Gameplay.Military
             }
 
             StarSystemState origin = _map.GetSystem(fleet.CurrentSystemId);
-            GameDate arrivalDate = ComputeArrivalDate(origin, destination, fleet);
-            fleet.BeginMove(destinationSystemId, arrivalDate, isRetreating: false);
+            fleet.BeginJourney(route, _gameClock.CurrentDate, ComputeLegArrivalDate(fleet, route, legIndex: 0), isRetreating: false);
 
             _eventBus.Publish(new FleetDepartedEvent(fleet.Id, fleet.OwnerId, origin.Id, destinationSystemId, isRetreating: false));
+            ScanForEncounter(fleet);
+            ProcessPendingEncounters();
 
             error = null;
             return true;
+        }
+
+        /// <summary>
+        /// Calcule l'itineraire d'une flotte vers <paramref name="destinationSystemId"/> (Phase 17).
+        /// <para>
+        /// <b>Les points de passage sont limites aux systemes libres ou appartenant a la flotte</b>,
+        /// alors que la destination finale echappe au filtre (c'est elle qu'on vient coloniser ou
+        /// attaquer). Traverser le territoire d'un tiers demanderait de resoudre une bataille au
+        /// milieu d'un trajet, ce qui transformerait un simple ordre de deplacement en surprise :
+        /// mieux vaut refuser l'itineraire et laisser le joueur declarer la guerre ou contourner.
+        /// </para>
+        /// </summary>
+        private bool TryPlanRoute(Fleet fleet, StarSystemId destinationSystemId, out IReadOnlyList<StarSystemId> route)
+        {
+            return HyperlanePathfinder.TryFindPath(
+                _map, fleet.CurrentSystemId, destinationSystemId,
+                waypoint => waypoint.OwnerId == StarSystemState.UnownedOwnerId || waypoint.OwnerId == fleet.OwnerId,
+                out route);
         }
 
         /// <inheritdoc />
@@ -336,13 +402,30 @@ namespace Espace.Gameplay.Military
             return true;
         }
 
-        private GameDate ComputeArrivalDate(StarSystemState origin, StarSystemState destination, Fleet fleet)
+        /// <summary>
+        /// Date d'arrivee de l'etape <paramref name="legIndex"/> de <paramref name="route"/>,
+        /// comptee depuis le depart du voyage.
+        /// <para>
+        /// <b>L'arrondi n'a lieu qu'une fois, sur la distance cumulee</b> (Phase 17) : arrondir
+        /// chaque etape separement ferait payer a un trajet de quinze sauts quinze arrondis et
+        /// quinze planchers d'un jour, alors que « la duree depend de la distance ». Le plancher
+        /// <c>legIndex + 1</c> garantit malgre tout au moins un jour par etape et une suite de
+        /// dates strictement croissante.
+        /// </para>
+        /// </summary>
+        private GameDate ComputeLegArrivalDate(Fleet fleet, IReadOnlyList<StarSystemId> route, int legIndex)
         {
-            float distance = Vector2.Distance(origin.Position, destination.Position);
             float speed = SlowestSpeed(fleet.Composition) * ResearchMultiplier(fleet.OwnerId, ResearchDomain.Logistics)
                 * (1f + fleet.Admiral.SpeedBonus);
-            int days = Mathf.Max(1, Mathf.CeilToInt(distance / speed));
-            return _gameClock.CurrentDate.AddDays(days);
+
+            float cumulativeDistance = 0f;
+            for (int leg = 0; leg <= legIndex && leg + 1 < route.Count; leg++)
+            {
+                cumulativeDistance += HyperlanePathfinder.LegDistance(_map, route[leg], route[leg + 1]);
+            }
+
+            int daysSinceDeparture = Mathf.Max(legIndex + 1, Mathf.CeilToInt(cumulativeDistance / speed));
+            return (fleet.JourneyStartDate ?? _gameClock.CurrentDate).AddDays(daysSinceDeparture);
         }
 
         /// <summary>La vitesse d'une flotte mixte est celle de son unite la plus lente.</summary>
@@ -373,6 +456,10 @@ namespace Espace.Gameplay.Military
             CompleteFinishedRecruitments(dayAdvancedEvent.Date);
             CompleteArrivals(dayAdvancedEvent.Date);
             ChargeUpkeep();
+
+            // Draine la file APRES la copie defensive de CompleteArrivals : resoudre une rencontre
+            // mute _fleets (combat, repli, suppression), ce qui casserait l'enumeration en cours.
+            ProcessPendingEncounters();
         }
 
         private void CompleteFinishedRecruitments(GameDate date)
@@ -404,7 +491,18 @@ namespace Espace.Gameplay.Military
                     continue;
                 }
 
-                ResolveArrival(fleet);
+                if (fleet.IsOnFinalLeg)
+                {
+                    ResolveArrival(fleet);
+                    continue;
+                }
+
+                // Point de passage franchi (Phase 17) : la flotte ne s'y arrete pas.
+                // **Surtout ne pas appeler ResolveArrival ici** — celui-ci colonise tout systeme
+                // libre ou une flotte arrive, ce qui coloniserait le premier systeme neutre
+                // traverse par n'importe quel trajet.
+                fleet.AdvanceToNextLeg(date, ComputeLegArrivalDate(fleet, fleet.Route, fleet.RouteIndex + 1));
+                ScanForEncounter(fleet);
             }
         }
 
@@ -412,6 +510,23 @@ namespace Espace.Gameplay.Military
         {
             StarSystemId destinationId = fleet.DestinationSystemId.Value;
             StarSystemState system = _map.GetSystem(destinationId);
+
+            // Revalidation de la destination (Phase 17). Les verifications faites au depart
+            // supposaient un trajet de quelques jours ; un voyage longue distance dure des
+            // semaines, pendant lesquelles la destination peut changer de mains. Sans ce
+            // controle, un systeme libre colonise entre-temps enverrait la flotte en bataille
+            // contre un empire avec qui on est en paix, contournant le verrou de guerre de la
+            // Phase 7.
+            if (system.OwnerId != StarSystemState.UnownedOwnerId
+                && system.OwnerId != fleet.OwnerId
+                && _diplomacy.GetStatus(fleet.OwnerId, system.OwnerId) != DiplomaticStatus.War)
+            {
+                GameLog.Info(
+                    $"[Fleet] {fleet.Name} renonce a {system.Name} : le systeme a change de proprietaire "
+                    + "pendant le trajet et aucune guerre n'est declaree. Repli sur le systeme d'origine.");
+                RetreatToOrigin(fleet, system);
+                return;
+            }
 
             if (system.OwnerId == StarSystemState.UnownedOwnerId)
             {
@@ -484,7 +599,16 @@ namespace Espace.Gameplay.Military
             _eventBus.Publish(new SystemColonizedEvent(system.Id, fleet.OwnerId, lost));
         }
 
-        /// <summary>Renvoie <paramref name="fleet"/> vers son systeme d'origine, ou la retire si elle n'a plus rien a replier. Partage par la retraite apres defaite et le repli de colonisation.</summary>
+        /// <summary>
+        /// Renvoie <paramref name="fleet"/> vers son systeme d'origine, ou la retire si elle n'a
+        /// plus rien a replier. Partage par la retraite apres defaite, le repli de colonisation et
+        /// le repli de rencontre.
+        /// <para>
+        /// <b>Aucun balayage de rencontre sur le trajet de repli :</b> il repartirait sur la meme
+        /// paire de systemes et re-declencherait immediatement une rencontre avec la flotte qu'on
+        /// vient de fuir — boucle sans fin.
+        /// </para>
+        /// </summary>
         private void RetreatToOrigin(Fleet fleet, StarSystemState from)
         {
             if (fleet.Composition.IsEmpty)
@@ -493,9 +617,22 @@ namespace Espace.Gameplay.Military
                 return;
             }
 
-            StarSystemId retreatTo = fleet.OriginSystemId;
-            GameDate retreatArrival = ComputeArrivalDate(from, _map.GetSystem(retreatTo), fleet);
-            fleet.BeginMove(retreatTo, retreatArrival, isRetreating: true);
+            // On repart d'ou l'on est, pas d'ou le voyage avait commence : la flotte est
+            // physiquement sur `from`, meme si CurrentSystemId designe encore son point de depart.
+            if (!HyperlanePathfinder.TryFindPath(
+                    _map, from.Id, fleet.OriginSystemId,
+                    waypoint => waypoint.OwnerId == StarSystemState.UnownedOwnerId || waypoint.OwnerId == fleet.OwnerId,
+                    out IReadOnlyList<StarSystemId> route)
+                || route.Count < 2)
+            {
+                // Plus aucune route praticable vers la base : la flotte se disperse plutot que de
+                // rester indefiniment dans un etat impossible.
+                GameLog.Warning($"[Fleet] {fleet.Name} ne trouve aucune route de repli depuis {from.Name} : la flotte est dispersee.");
+                _fleets.Remove(fleet);
+                return;
+            }
+
+            fleet.BeginJourney(route, _gameClock.CurrentDate, ComputeLegArrivalDate(fleet, route, legIndex: 0), isRetreating: true);
         }
 
         private void ResolveBattle(Fleet attackerFleet, StarSystemState system)
@@ -616,11 +753,338 @@ namespace Espace.Gameplay.Military
             }
         }
 
+        // --- Rencontres spatiales (Phase 17) ------------------------------------------------
+
+        /// <summary>
+        /// Cherche une rencontre pour <paramref name="fleet"/>, qui vient d'entamer une etape.
+        /// <para>
+        /// <b>Pourquoi au debut d'une etape, et pas chaque jour :</b> de deux flottes partageant
+        /// un tronçon sur des fenetres qui se chevauchent, la seconde a demarrer voit toujours la
+        /// premiere. Balayer au demarrage n'a donc aucun faux negatif, tout en garantissant qu'une
+        /// meme paire ne se declenche qu'une fois — sans registre « deja rencontre ».
+        /// </para>
+        /// <para>
+        /// <b>Une seule rencontre par demarrage</b> (la premiere par identifiant croissant, pour
+        /// rester deterministe) : deux rencontres simultanees mutileraient deux fois la meme
+        /// composition.
+        /// </para>
+        /// <para>
+        /// <b>Ne mute que le statut des deux flottes.</b> Aucun combat, aucun transfert, aucun
+        /// appel a l'horloge : la detection survient au milieu du parcours de <c>_fleets</c>, la
+        /// resolution attend <see cref="ProcessPendingEncounters"/>.
+        /// </para>
+        /// </summary>
+        private void ScanForEncounter(Fleet fleet)
+        {
+            if (fleet.Status != FleetStatus.Moving || fleet.CurrentLegFrom == null || fleet.CurrentLegTo == null)
+            {
+                return;
+            }
+
+            StarSystemId legFrom = fleet.CurrentLegFrom.Value;
+            StarSystemId legTo = fleet.CurrentLegTo.Value;
+
+            Fleet match = null;
+            foreach (Fleet other in _fleets)
+            {
+                if (ReferenceEquals(other, fleet)
+                    || other.OwnerId == fleet.OwnerId // Deux flottes du meme empire se croisent sans histoire.
+                    || other.Status != FleetStatus.Moving
+                    || !SharesLeg(other, legFrom, legTo))
+                {
+                    continue;
+                }
+
+                if (match == null || other.Id < match.Id)
+                {
+                    match = other;
+                }
+            }
+
+            if (match == null)
+            {
+                return;
+            }
+
+            DiplomaticStatus status = _diplomacy.GetStatus(fleet.OwnerId, match.OwnerId);
+            GameDate today = _gameClock.CurrentDate;
+
+            fleet.FreezeForEncounter(today);
+            match.FreezeForEncounter(today);
+
+            var encounter = new PendingEncounter(
+                _nextEncounterId++, fleet, match, status, legFrom, legTo, EncounterRules.AvailableOptions(status));
+            _pendingEncounters.Add(encounter);
+
+            _eventBus.Publish(new EncounterStartedEvent(encounter.Id, fleet.OwnerId, match.OwnerId, legFrom, legTo));
+        }
+
+        /// <summary>Vrai si <paramref name="other"/> emprunte le meme tronçon, dans un sens ou dans l'autre.</summary>
+        private static bool SharesLeg(Fleet other, StarSystemId legFrom, StarSystemId legTo)
+        {
+            if (other.CurrentLegFrom == null || other.CurrentLegTo == null)
+            {
+                return false;
+            }
+
+            StarSystemId otherFrom = other.CurrentLegFrom.Value;
+            StarSystemId otherTo = other.CurrentLegTo.Value;
+
+            return (otherFrom.Equals(legFrom) && otherTo.Equals(legTo))
+                || (otherFrom.Equals(legTo) && otherTo.Equals(legFrom));
+        }
+
+        /// <summary>
+        /// Tranche les rencontres en attente qui n'impliquent pas le joueur, hors de tout parcours
+        /// de <c>_fleets</c> — c'est ici qu'on a le droit de muter la liste des flottes.
+        /// </summary>
+        private void ProcessPendingEncounters()
+        {
+            if (_resolvingEncounters)
+            {
+                return;
+            }
+
+            _resolvingEncounters = true;
+            try
+            {
+                for (int i = _pendingEncounters.Count - 1; i >= 0; i--)
+                {
+                    PendingEncounter encounter = _pendingEncounters[i];
+
+                    if (!IsStillValid(encounter))
+                    {
+                        _pendingEncounters.RemoveAt(i);
+                        continue;
+                    }
+
+                    if (encounter.Involves(EconomyService.PlayerOwnerId))
+                    {
+                        continue; // Attend la decision du joueur (voir IEncounterService).
+                    }
+
+                    _pendingEncounters.RemoveAt(i);
+                    ApplyOutcome(encounter, encounter.Initiator.OwnerId, ChooseAiOption(encounter, encounter.Initiator, encounter.Other));
+                }
+            }
+            finally
+            {
+                _resolvingEncounters = false;
+            }
+        }
+
+        /// <summary>Une rencontre dont une flotte a disparu ou a ete degelee entre-temps n'a plus lieu d'etre.</summary>
+        private bool IsStillValid(PendingEncounter encounter)
+        {
+            return _fleets.Contains(encounter.Initiator)
+                && _fleets.Contains(encounter.Other)
+                && encounter.Initiator.Status == FleetStatus.AwaitingEncounter
+                && encounter.Other.Status == FleetStatus.AwaitingEncounter;
+        }
+
+        private EncounterOption ChooseAiOption(PendingEncounter encounter, Fleet decider, Fleet opponent)
+        {
+            EmpirePersonalityProfileData profile = _empireRegistry.TryGetEmpire(decider.OwnerId, out Empire empire)
+                ? EmpirePersonalityProfile.Get(empire.Personality)
+                : EmpirePersonalityProfile.Get(EmpirePersonality.Pacifist);
+
+            return EncounterRules.ChooseForAi(
+                profile, encounter.Status,
+                EstimatePower(decider.Composition), EstimatePower(opponent.Composition),
+                _diplomacy.GetOpinion(decider.OwnerId, opponent.OwnerId),
+                _diplomacy.HasTradeTreaty(decider.OwnerId, opponent.OwnerId));
+        }
+
+        /// <inheritdoc />
+        public PendingEncounter GetPendingEncounterFor(int empireId)
+        {
+            return _pendingEncounters.Find(e => IsStillValid(e) && e.Involves(empireId));
+        }
+
+        /// <inheritdoc />
+        public bool TryResolveEncounter(int encounterId, int empireId, EncounterOption choice, out string error)
+        {
+            int index = _pendingEncounters.FindIndex(e => e.Id == encounterId);
+            if (index < 0)
+            {
+                error = "Cette rencontre n'est plus d'actualite.";
+                return false;
+            }
+
+            PendingEncounter encounter = _pendingEncounters[index];
+
+            if (!encounter.Involves(empireId))
+            {
+                error = "Cette rencontre ne concerne pas cet empire.";
+                return false;
+            }
+
+            bool offered = false;
+            foreach (EncounterOption option in encounter.Options)
+            {
+                if (option == choice)
+                {
+                    offered = true;
+                    break;
+                }
+            }
+
+            if (!offered)
+            {
+                error = "Cette issue n'est pas possible avec le statut diplomatique actuel.";
+                return false;
+            }
+
+            // Retiree AVANT toute mutation : une issue peut relancer une etape, donc rappeler le
+            // balayage, donc revenir ici.
+            _pendingEncounters.RemoveAt(index);
+
+            if (!IsStillValid(encounter))
+            {
+                error = "Cette rencontre n'est plus d'actualite.";
+                return false;
+            }
+
+            ApplyOutcome(encounter, empireId, choice);
+            ProcessPendingEncounters();
+
+            error = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Applique l'issue choisie. Toutes les consequences reutilisent les services existants :
+        /// <see cref="CombatResolver"/> pour le combat, <c>IEconomyService</c> pour les transferts,
+        /// <c>IDiplomacyService.ApplyOpinionShift</c> pour l'opinion.
+        /// </summary>
+        private void ApplyOutcome(PendingEncounter encounter, int decidingEmpireId, EncounterOption choice)
+        {
+            encounter.GetSides(decidingEmpireId, out Fleet own, out Fleet opponent);
+            GameDate today = _gameClock.CurrentDate;
+
+            // Les deux flottes repartent : le combat et le repli les remettront en mouvement
+            // eux-memes si besoin.
+            own.ResumeAfterEncounter(today);
+            opponent.ResumeAfterEncounter(today);
+
+            switch (choice)
+            {
+                case EncounterOption.Fight:
+                    ResolveEncounterBattle(own, opponent);
+                    break;
+
+                case EncounterOption.Withdraw:
+                    // Repli sans balayage : sinon la flotte re-rencontrerait aussitot celle qu'elle fuit.
+                    RetreatToOrigin(own, _map.GetSystem(encounter.LegFrom));
+                    break;
+
+                case EncounterOption.Negotiate:
+                    _diplomacy.ApplyOpinionShift(own.OwnerId, opponent.OwnerId, EncounterRules.NegotiationOpinionGain);
+                    _diplomacy.ApplyOpinionShift(opponent.OwnerId, own.OwnerId, EncounterRules.NegotiationOpinionGain);
+                    break;
+
+                case EncounterOption.Trade:
+                    _economy.Grant(own.OwnerId, new ResourceBundle(credits: EncounterRules.TradeCreditsPerSide));
+                    _economy.Grant(opponent.OwnerId, new ResourceBundle(credits: EncounterRules.TradeCreditsPerSide));
+                    _diplomacy.ApplyOpinionShift(own.OwnerId, opponent.OwnerId, EncounterRules.TradeOpinionGain);
+                    _diplomacy.ApplyOpinionShift(opponent.OwnerId, own.OwnerId, EncounterRules.TradeOpinionGain);
+                    break;
+
+                case EncounterOption.Piracy:
+                    ResolvePiracy(own, opponent);
+                    break;
+            }
+
+            GameLog.Info(
+                $"[Encounter] Empire {own.OwnerId} ({own.Name}) croise empire {opponent.OwnerId} ({opponent.Name}) "
+                + $"entre {_map.GetSystem(encounter.LegFrom).Name} et {_map.GetSystem(encounter.LegTo).Name} -> {choice}.");
+
+            _eventBus.Publish(new EncounterResolvedEvent(encounter.Id, own.OwnerId, opponent.OwnerId, choice));
+        }
+
+        /// <summary>
+        /// Combat en espace profond : aucun bonus de terrain (il n'y a pas de terrain), et
+        /// l'attaquant est celui qui a choisi d'engager — <see cref="CombatResolver"/> donnant
+        /// l'egalite au defenseur, ce role doit venir du sens de l'action et non d'un identifiant.
+        /// </summary>
+        private void ResolveEncounterBattle(Fleet attacker, Fleet defender)
+        {
+            float attackerModifier = CommandModifierFor(attacker.OwnerId) * (1f + attacker.Admiral.AttackBonus);
+            float defenderModifier = CommandModifierFor(defender.OwnerId) * (1f + defender.Admiral.DefenseBonus);
+
+            CombatResolver.BattleOutcome outcome = CombatResolver.Resolve(
+                attacker.Composition, attackerModifier, defender.Composition, defenderModifier, _unitCatalog);
+
+            attacker.SetComposition(outcome.AttackerSurvivors);
+            defender.SetComposition(outcome.DefenderSurvivors);
+
+            GameLog.Info(
+                $"[Encounter] Combat : {attacker.Name} (puissance {outcome.AttackerPower:0}) contre "
+                + $"{defender.Name} (puissance {outcome.DefenderPower:0}) -> "
+                + $"{(outcome.AttackerWon ? "l'assaillant l'emporte" : "l'assaillant est repousse")}. "
+                + $"Pertes : {outcome.AttackerLosses} | {outcome.DefenderLosses}");
+
+            RemoveIfAnnihilated(attacker);
+            RemoveIfAnnihilated(defender);
+        }
+
+        private void RemoveIfAnnihilated(Fleet fleet)
+        {
+            if (fleet.Composition.IsEmpty)
+            {
+                _fleets.Remove(fleet);
+            }
+        }
+
+        /// <summary>Saisit une part du tresor adverse et fait chuter l'opinion de la victime envers le pirate.</summary>
+        private void ResolvePiracy(Fleet raider, Fleet victim)
+        {
+            float loot = _economy.GetTreasury(victim.OwnerId).Credits * EncounterRules.PiracyTreasuryShare;
+
+            if (loot > 0f && _economy.TrySpend(victim.OwnerId, new ResourceBundle(credits: loot), out _))
+            {
+                _economy.Grant(raider.OwnerId, new ResourceBundle(credits: loot));
+                GameLog.Info($"[Encounter] Piraterie : {loot:0} Credits saisis sur l'empire {victim.OwnerId}.");
+            }
+
+            // Opinion dirigee : c'est la victime qui en veut au pirate, pas l'inverse.
+            _diplomacy.ApplyOpinionShift(victim.OwnerId, raider.OwnerId, -EncounterRules.PiracyOpinionPenalty);
+        }
+
         /// <inheritdoc />
         public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null)
         {
             Fleet garrison = GetOrCreateStationedFleet(systemId, empireId, fleetName, admiral);
             garrison.SetComposition(composition);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<Fleet> GetFleetsInTransit()
+        {
+            return _fleets.FindAll(f => f.Status != FleetStatus.Stationed && f.Route != null);
+        }
+
+        /// <inheritdoc />
+        public void ClearFleetsInTransit()
+        {
+            _fleets.RemoveAll(f => f.Status != FleetStatus.Stationed);
+            _pendingEncounters.Clear();
+        }
+
+        /// <inheritdoc />
+        public void RestoreFleetInTransit(
+            int empireId, UnitBundle composition, string fleetName, Admiral? admiral,
+            IReadOnlyList<StarSystemId> route, int routeIndex, StarSystemId originSystemId,
+            GameDate journeyStartDate, GameDate departureDate, GameDate legArrivalDate, bool isRetreating)
+        {
+            if (route == null || route.Count < 2)
+            {
+                return;
+            }
+
+            var fleet = new Fleet(_nextFleetId++, empireId, route[0], composition, fleetName, admiral);
+            fleet.RestoreJourney(route, routeIndex, originSystemId, journeyStartDate, departureDate, legArrivalDate, isRetreating);
+            _fleets.Add(fleet);
         }
 
         private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId, string fleetName = null, Admiral? admiral = null)

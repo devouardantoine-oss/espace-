@@ -14,13 +14,17 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 16 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
+> **Statut : Phase 17 terminée** — carte galactique (100 systèmes), horloge de jeu, économie,
 > 6 empires (1 joueur + 5 IA), armées (sept types d'unités dont quatre classes de vaisseaux —
 > Chasseurs, Frégate, Croiseur, Cuirassé —, flottes nommées et commandées chacune par un Amiral
 > aux bonus/malus propres, plafonnées à 10 unités, nombre de flottes en campagne simultanée lié
-> à la recherche en Logistique, recrutement, résolution automatique des combats, et une
+> à la recherche en Logistique, recrutement, résolution automatique des combats, une
 > colonisation stratégique où l'Infanterie est indispensable — pour s'installer sur un système
-> libre comme pour occuper un système conquis), diplomatie (guerre/paix/alliances/pactes de
+> libre comme pour occuper un système conquis —, et des **déplacements vers n'importe quelle
+> destination de la galaxie**, l'itinéraire étant calculé le long des routes hyperspatiales et
+> la durée dépendant de la distance parcourue, avec des **rencontres spatiales** en cours de
+> route où le joueur choisit lui-même l'issue — combattre, se replier, négocier, commercer,
+> pirater ou passer son chemin selon le statut diplomatique), diplomatie (guerre/paix/alliances/pactes de
 > non-agression, opinion, traités commerciaux, embargos, ultimatums, échanges de ressources et
 > de territoires), recherche (7 domaines, 3 paliers chacun, bonus sur la production, le combat,
 > la vitesse des flottes et les gains d'opinion), espionnage (cinq missions déterministes selon
@@ -40,9 +44,10 @@ ravitaillement, terrain, commandement).
 > originaux — voir la feuille de route §6) :** les Phases 12 à 18 remplacent l'ancienne
 > Phase 12 « Équilibrage » et couvrent une refonte étendue demandée après les premiers essais
 > du jeu — carte immersive (Phase 12), choix de faction/système de départ (Phase 13), refonte
-> des flottes (Phase 14), amiraux (Phase 15) et colonisation stratégique (Phase 16, ci-dessus)
-> sont terminées ; restent le déplacement longue distance et les rencontres spatiales, puis une
-> IA plus dynamique. Un seul système complexe à la fois, comme depuis la Phase 1.
+> des flottes (Phase 14), amiraux (Phase 15), colonisation stratégique (Phase 16) et
+> déplacement longue distance avec rencontres spatiales (Phase 17, ci-dessus) sont terminées ;
+> reste une IA plus dynamique, ajustée à toutes ces nouvelles règles. Un seul système complexe
+> à la fois, comme depuis la Phase 1.
 
 > **Note d'historique :** le projet a démarré sur un concept différent (stratégie temps réel
 > façon *Total War*, batailles 3D). La Phase 1 (socle technique : services, événements,
@@ -114,17 +119,17 @@ Assets/
 │   ├── GalaxyConfig.asset        # graine fixe depuis la Phase 10 (voir §3, Briques de la sauvegarde)
 │   ├── Buildings/                # 5 types de bâtiments (1 par ressource)
 │   ├── Empires/                  # 6 empires : le joueur + 1 par personnalité IA
-│   ├── Units/                    # 4 types d'unités (Infanterie, Blindés, Forces spéciales, Flotte spatiale)
+│   ├── Units/                    # 7 types d'unités (Infanterie, Blindés, Forces spéciales, Chasseurs, Frégate, Croiseur, Cuirassé — Phase 14)
 │   └── Research/                 # 21 paliers de recherche (3 x 7 domaines)
 ├── Scripts/
 │   ├── Core/                     # → Espace.Core     (aucune dépendance sortante)
 │   ├── Data/                     # → Espace.Data     (ScriptableObjects et types génériques)
 │   ├── Managers/                 # → Espace.Managers (composition de l'application)
 │   ├── Gameplay/                 # → Espace.Gameplay (référence Core + Data)
-│   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection
+│   │   ├── Galaxy/               #     carte galactique, génération, caméra, sélection, itinéraires hyperspatiaux
 │   │   ├── Economy/              #     production, bâtiments, impôts, investissement
 │   │   ├── Empires/              #     identité, personnalités, décisions IA autonomes
-│   │   ├── Military/             #     unités, flottes, combat automatique, colonisation
+│   │   ├── Military/             #     unités, flottes, amiraux, combat automatique, colonisation, déplacement, rencontres
 │   │   ├── Diplomacy/            #     statut guerre/paix/alliance, opinion, propositions
 │   │   ├── Research/             #     domaines, paliers, points, bonus par domaine
 │   │   ├── Espionage/            #     missions déterministes, puissance/contre-espionnage
@@ -596,6 +601,31 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 > n'introduit aucun état persistant, et les trois doublures de test d'`IMilitaryService`
 > restent intactes.
 
+### Briques du déplacement longue distance et des rencontres spatiales (Phase 17)
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `HyperlanePathfinder` (nouveau) | itinéraire le long des routes hyperspatiales | Dijkstra statique pur en O(V²) **pondéré par la distance euclidienne** entre systèmes consécutifs, pas par le nombre de sauts — la durée dépend de la distance (brief), donc le bon itinéraire est le plus court en distance. Sur 100 systèmes, O(V²) est instantané et évite un tas binaire dont l'ordre d'égalité serait une source de non-déterminisme ; départage explicite sur `StarSystemId.Value` à l'extraction **et** à la relaxation. Aucun pathfinding n'existait dans le projet : la galaxie est en revanche garantie connexe (arbre couvrant minimal, `GalaxyGenerator`), donc un chemin physique existe toujours |
+| Prédicat de traversabilité | **intermédiaires seulement** | `isIntermediateTraversable` ne s'applique jamais aux extrémités : un système ennemi en guerre est une destination légale mais pas un point de passage légal. L'appliquer aux extrémités casserait toute attaque — c'est l'erreur la plus facile à commettre ici, elle a son propre test |
+| Points de passage | libres ou à soi, et **jamais colonisés** | seule la destination finale déclenche une résolution d'arrivée (colonisation / renfort / bataille). Sans cette règle, `ResolveArrival` coloniserait le premier système libre traversé par n'importe quel trajet. Un point de passage n'est qu'un point de navigation — on le survole sans s'y arrêter |
+| Traversabilité = contrainte de **planification** | jamais revérifiée en vol | revérifier à chaque étape ouvrirait toute une classe de cas limites (recalcul d'itinéraire, halte en route, repli en cascade) sans contrepartie de jeu. Limitation v1 documentée, du même registre que celles déjà assumées dans `MilitaryService` |
+| `Fleet` (étendu) | état d'itinéraire | `Route`/`RouteIndex`/`DepartureDate`/`JourneyStartDate`, propriétés dérivées `DestinationSystemId`, `CurrentLegFrom`/`CurrentLegTo`, `IsOnFinalLeg` ; `BeginJourney`/`AdvanceToNextLeg` remplacent `BeginMove`. **`OriginSystemId` et `CurrentSystemId` sont figés pour tout le voyage** : `ComputeAttackerModifier` lit le moral du système d'origine et `RetreatToOrigin` y renvoie la flotte — les déplacer d'étape en étape ferait varier silencieusement la puissance de combat selon le dernier système survolé, et replierait la flotte d'un seul saut au lieu de la ramener chez elle |
+| Durée | **un seul arrondi** sur la distance cumulée | l'étape *k* arrive à `départ + Max(k, ⌈distanceCumulée[k] / vitesse⌉)`. Arrondir par étape ferait payer 15 arrondis et 15 planchers d'un jour à un trajet de 15 sauts ; un arrondi unique donne un total exactement égal à `⌈distanceTotale / vitesse⌉` tout en restant monotone étape par étape |
+| Revalidation de la destination à l'arrivée | trou créé par cette phase | la Phase 16 justifie ses raccourcis par « les statistiques d'un système libre ne changent jamais » — vrai sur 3 jours, faux sur 30. Si le propriétaire a changé pendant le vol et qu'aucune guerre n'est déclarée, la flotte se replie au lieu de résoudre : sans cela, une destination colonisée en cours de route enverrait la flotte en bataille contre un empire avec qui on est en paix, contournant entièrement le verrou de guerre de la Phase 7 |
+| Plafond de flottes simultanées : base 1 → **2** | jouabilité | avec des trajets de 20 à 40 jours, un joueur sans recherche en Logistique serait privé de *tout* mouvement — y compris une colonisation voisine — pendant plus d'un mois de jeu, ce qui contredit frontalement la promesse du point 12. Le prédicat passe aussi de `Status == Moving` à `Status != Stationed`, sinon laisser une rencontre en attente deviendrait un moyen de lancer une flotte supplémentaire gratuitement |
+| Détection de rencontre | **au début d'une étape**, pas quotidiennement | balayage des autres flottes en vol dont l'étape courante emprunte la même paire de systèmes (non ordonnée). Aucun faux négatif : de deux flottes partageant un tronçon sur des fenêtres qui se chevauchent, la seconde à démarrer voit toujours la première — donc ni balayage quotidien, ni registre « déjà rencontré ». Au plus **une** rencontre par début d'étape (première par `Fleet.Id` croissant) : deux rencontres simultanées mutileraient la même composition deux fois. Les flottes d'un même propriétaire s'ignorent |
+| Mode `Scan`/`Suppress` sur le début d'étape | anti-boucle | toute étape entamée *à cause* d'une rencontre ou d'une bataille (repli, retraite) supprime le balayage — sinon un repli repart sur la même paire de systèmes et re-rencontre immédiatement la flotte qu'il vient de fuir |
+| La détection **ne mute rien** | robustesse | elle passe les deux flottes en `AwaitingEncounter`, gèle leurs jours de trajet restants, empile une rencontre et publie un événement. La résolution se fait **hors du tick**, en fin de `OnDayAdvanced` et en fin de `TryMoveFleet` — la rencontre naît sinon à l'intérieur d'un gestionnaire de `DayAdvancedEvent`, au milieu de la copie défensive de `CompleteArrivals`. Les rencontres IA-contre-IA se résolvent immédiatement dans le drainage ; celles impliquant le joueur restent en file, une seule exposée à la fois |
+| La mise en pause est **cosmétique, jamais un mécanisme** | contrainte de l'horloge | `MilitaryService` ne touche jamais l'horloge ; c'est `EncounterWindowController` qui met en pause à l'ouverture et reprend à la fermeture, seulement si c'est elle qui a mis en pause (convention exacte de `PauseMenuController`). `GameClock.AdvanceDays` publie `DayAdvancedEvent` **en boucle** sur N jours dans la même frame et ne teste `IsPaused` qu'à l'entrée de `Tick` : mettre en pause depuis un gestionnaire n'arrêterait pas les jours restants, et la barre du HUD permet de toute façon de relancer le temps. La correction repose donc sur le **gel explicite** des jours de trajet restants, réémis à la résolution |
+| `EncounterRules` (nouveau) | issues et choix IA | fonctions statiques pures. Issues selon le statut diplomatique : guerre → Combattre / Se replier / Négocier ; alliance ou pacte → Négocier / Commercer / Passer son chemin ; paix → Négocier / Commercer / Piraterie / Passer son chemin. Le choix de l'IA est une **formule pure sur les seuils de personnalité existants, sans hachage** : `Fleet.Id` est réémis à chaque chargement (c'est précisément pourquoi la Phase 15 persiste l'Amiral), un tirage haché dessus serait « déterministe » sans être reproductible. `AggressionThreshold` (`null` = ne combat ni ne pirate jamais), `PeacePowerRatioThreshold` et le traité commercial suffisent à décider — zéro nouvelle constante de personnalité |
+| Attaquant d'un combat de rencontre | celui qui a choisi « Combattre » | `CombatResolver` donne l'égalité au défenseur : en espace profond il n'y a pas de terrain, donc le rôle doit venir du sens de l'action et non d'un identifiant. Aucun bonus de terrain n'est appliqué |
+| « Poursuite » abandonnée | arbitrage documenté | seule option exigeant qu'une flotte abandonne son itinéraire pour re-cibler un objet **mobile** sans position fixe. Combat / repli / négociation couvrent l'esprit du point 13 en guerre ; côté paix, « croisement » et « poursuite de route » désignent tous deux « il ne se passe rien » — c'est l'option « Passer son chemin » |
+| `GameSaveData.Version` 3→4 / `FleetInTransitSaveData` (nouveau) | **les flottes en vol sont désormais sauvegardées** | leur disparition au rechargement était une limitation acceptable avec des trajets de 1 à 3 jours ; elle devient un bug très visible avec des trajets de plusieurs semaines. Itinéraire, étape, dates, nom, Amiral et composition sont persistés — **aucun identifiant de flotte** : rien nulle part n'en référence un, et les flottes restaurées en reçoivent un neuf, exactement le précédent de la Phase 15 |
+| `ClearFleetsInTransit()` **avant** la boucle de restauration | garde-fou | `SaveService.Apply` ne vide jamais rien (`RestoreGarrison` est un get-or-create, donc il écrase). Une restauration qui *ajoute* dupliquerait chaque flotte en vol à chaque « Recharger » depuis le menu pause |
+| Les rencontres en attente **ne sont pas sauvegardées** | simplification assumée | la sauvegarde ne peut pas être refusée (`SaveController` sauvegarde sur mise en arrière-plan et sur quitter, et l'autosauvegarde mensuelle part dans la même frame que le jour qui a créé la rencontre). Au rechargement, les flottes reprennent leur étape en vol sans en *démarrer* une : aucun balayage ne se déclenche, la rencontre est oubliée. Le jeu étant entièrement déterministe avec un seul fichier de sauvegarde, « recharger pour retenter » n'existe pas — la seule variable était le choix du joueur, qu'il refera. Supprime toute une surface de sérialisation pour une phrase de documentation |
+| `IEncounterService` **séparée** de `IMilitaryService`, enregistrée sur la même instance | limitation de la casse | le `ServiceLocator` est indexé par type, un même objet peut donc s'enregistrer sous deux clés. `IMilitaryService` ne gagne que les 3 membres de sauvegarde, soit 3 lignes par doublure de test au lieu de 5, dans les 3 fichiers qui en hébergent une |
+| `SystemInfoPanelController` (étendu) | ciblage | « Déplacer une flotte » arme un mode de ciblage ; la sélection suivante est la destination (annulée par un clic dans le vide). L'état armé vit **hors** de `_selectedSystemId` et est consommé **avant** sa réécriture, et la flotte source est revalidée au moment du clic |
+
 ---
 
 ## 4. Tester la Phase 1
@@ -616,14 +646,14 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (451 tests, tous packages confondus).
+Voir §5 pour le compte total (459 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec `Bootstrap` en scène 0.
 
 ---
 
-## 5. Tester les Phases 2-16 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux et colonisation
+## 5. Tester les Phases 2-17 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux, colonisation et déplacement longue distance
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -712,7 +742,11 @@ Dans la fenêtre Game :
   Vitesse, Défense, dont un toujours négatif — depuis la Phase 15, un bouton par type d'unité
   pour recruter — 7 depuis la Phase 14 : Infanterie, Blindés, Forces spéciales, Chasseurs,
   Frégate, Croiseur, Cuirassé, chacun avec sa description de rôle affichée en dessous —, un
-  bouton par système voisin pour y envoyer toute la garnison). Recruter au-delà de 10 unités
+  bouton par système voisin pour y envoyer toute la garnison, et depuis la Phase 17 un bouton
+  **« Déplacer une flotte »** qui arme un mode de ciblage : le prochain système touché sur la
+  carte — **n'importe lequel, si lointain soit-il** — devient la destination, l'itinéraire est
+  calculé automatiquement le long des routes hyperspatiales et la durée dépend de la distance
+  totale. Un clic dans le vide annule le ciblage). Recruter au-delà de 10 unités
   sur un même système doit être refusé (message en console) : le plafond par flotte introduit
   en Phase 14. Envoyer une garnison vers un système libre le colonise à l'arrivée **si elle
   transporte assez d'Infanterie** (Phase 16) — sinon le départ est refusé avec un message en
@@ -723,6 +757,20 @@ Dans la fenêtre Game :
   sans Infanterie survivante détruit la garnison adverse mais ne capture pas le système**
   (console : « victoire sans occupation ») : essayez d'attaquer avec une flotte de Chasseurs
   seuls pour le vérifier.
+- **Vérifiez le déplacement longue distance (Phase 17)** : envoyez une flotte vers un système
+  **lointain** et laissez tourner l'horloge. L'onglet Flottes doit montrer l'itinéraire restant
+  et la date d'arrivée ; les systèmes **traversés en chemin ne doivent jamais être colonisés**
+  (ce ne sont que des points de navigation) ; seule la destination finale déclenche une
+  colonisation, un renfort ou une bataille. Sauvegardez pendant qu'une flotte est en vol puis
+  rechargez : elle doit reprendre son trajet au bon endroit — et **recharger deux fois de suite
+  ne doit pas la dupliquer**.
+- **Vérifiez les rencontres spatiales (Phase 17)** : envoyez deux flottes de camps différents
+  dans un même couloir. Quand elles se croisent, une **fenêtre de rencontre** s'ouvre et met le
+  jeu en pause, avec des options cohérentes avec le statut diplomatique — Combattre / Se
+  replier / Négocier en guerre, Négocier / Commercer / Piraterie / Passer son chemin en paix,
+  jamais de Piraterie envers un allié ou un partenaire de pacte. Choisir « Se replier » ne doit
+  **pas** rouvrir immédiatement une rencontre avec la flotte qu'on vient de fuir. Fermer la
+  fenêtre relance le temps si c'est bien elle qui l'avait mis en pause.
 - **Touchez le système d'origine d'une IA** : le panneau doit afficher le nom de cet empire
   comme propriétaire, et sa garnison si elle en a recruté une — confirmation visuelle que
   l'attribution et l'armée IA fonctionnent pour les 5 IA, pas seulement le joueur.
@@ -768,7 +816,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 451 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 459 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -831,7 +879,15 @@ fond, les halos et les labels restent vérifiables seulement en Play Mode, voir 
 sur un grand échantillon, aller-retour exact du constructeur direct) ; `ColonizationRulesTests`
 (Phase 16 — exigence toujours entre 1 et 6 sur l'intégralité des plages générées, monotonie en
 population et en développement, pertes toujours entre 1 et l'exigence, pertes décroissantes avec
-la stabilité, consommation totale à stabilité minimale, valeurs de référence). La Phase 14
+la stabilité, consommation totale à stabilité minimale, valeurs de référence) ;
+`HyperlanePathfinderTests` (Phase 17 — chemin trouvé sur un graphe multi-sauts, plus court en
+**distance** et non en nombre de sauts, extrémités incluses, chemin trivial origine = destination,
+aucun chemin si le filtre bloque tous les intermédiaires, **le prédicat ne s'applique pas aux
+extrémités**, départage déterministe) ; `EncounterRulesTests` (Phase 17 — issues disponibles par
+statut diplomatique, jamais de Piraterie envers un allié ou sous pacte, le Pacifiste
+(`AggressionThreshold` nul) ne choisit jamais Combattre ni Piraterie, repli sous le seuil de
+rapport de force, commerce si traité commercial, déterminisme, aucune division par zéro). La
+Phase 14
 (refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
 `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de vaisseaux)
 étendent des classes existantes, listées ci-dessus à leur phase d'origine ; l'onglet Flottes de
@@ -841,7 +897,15 @@ reste de la flotte en garnison sur la colonie, dissolution quand la flotte n'emb
 strict nécessaire, victoire sans Infanterie qui ne capture pas, victoire avec Infanterie qui
 capture toujours) et `MilitaryDecisionMakerTests` (l'IA vise le voisin le moins exigeant, recrute
 au-delà de sa cible de personnalité quand un système libre est à portée, recrute de l'Infanterie
-en guerre quand elle n'en a aucune).
+en guerre quand elle n'en a aucune). La Phase 17 étend à son tour `MilitaryServiceTests`
+(déplacement multi-sauts réussi, **un point de passage libre n'est jamais colonisé**,
+destination changée de propriétaire en vol → repli et non bataille, durée totale égale à
+`⌈distance totale / vitesse⌉`, rencontre déclenchée une seule fois par tronçon, aucune rencontre
+entre flottes du même empire, un repli issu d'une rencontre ne re-déclenche pas, une flotte gelée
+en attente de décision compte toujours comme déployée) et `SaveServiceTests` (aller-retour d'une
+flotte en transit avec itinéraire, étape, dates, nom et Amiral ; **recharger deux fois ne
+duplique pas les flottes en vol**) ; `EncounterWindowController` reste, comme tout `Espace.UI`,
+vérifiable seulement en Play Mode.
 
 **Points à vérifier en priorité sur appareil réel** — la partie la plus délicate à garantir
 sans pouvoir ouvrir l'éditeur ici :
@@ -887,7 +951,15 @@ La Phase 16 recoupe les deux formules de `ColonizationRules` sur l'intégralité
 générées (exigence bornée à 1..6, monotonie en population et en développement, pertes bornées à
 1..exigence et décroissantes avec la stabilité), plus la propriété structurante qui rend l'IA
 viable : la cible de garnison effective dans le pire cas (2 gardées + 6 requises = 8) reste sous
-le plafond de 10 unités par flotte de la Phase 14.
+le plafond de 10 unités par flotte de la Phase 14. La Phase 17 réimplémente enfin en Python un
+Dijkstra pondéré par la distance à partir de la seule description du plan, et le confronte à
+`HyperlanePathfinder` sur des graphes construits pour piéger l'implémentation (détour imposé par
+le prédicat, égalité parfaite entre deux itinéraires, composantes disjointes, destination bloquée
+par le prédicat) ; le même script recoupe l'arithmétique de durée — arrondi unique sur la
+distance cumulée, monotonie étape par étape, plancher d'un jour par étape, et le fait qu'un
+trajet de 3 sauts de 10 unités à vitesse 4 coûte 8 jours là où un arrondi par étape en coûterait
+9 — puis vérifie que le couloir de test des rencontres garantit bien un chevauchement des deux
+flottes pour **les neuf combinaisons** de bonus de vitesse d'Amiral possibles.
 
 ---
 
@@ -911,7 +983,7 @@ le plafond de 10 unités par flotte de la Phase 14.
 | 14 | Refonte des flottes (rôles des vaisseaux, flottes nommées, plafond lié à la technologie) | ✅ terminée |
 | 15 | Amiraux (bonus/malus, un par flotte) | ✅ terminée |
 | 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | ✅ terminée |
-| 17 | Déplacement longue distance + rencontres spatiales | à venir |
+| 17 | Déplacement longue distance (itinéraire automatique, durée selon la distance) + rencontres spatiales | ✅ terminée |
 | 18 | IA plus dynamique, ajustée aux nouvelles règles | à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système

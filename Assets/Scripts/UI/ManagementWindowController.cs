@@ -229,9 +229,24 @@ namespace Espace.UI
 
         private void DrawFleetRow(Fleet fleet)
         {
-            string location = fleet.Status == FleetStatus.Stationed
-                ? LocationLabel(fleet.CurrentSystemId)
-                : $"En route vers {LocationLabel(fleet.DestinationSystemId.Value)}";
+            string location;
+            switch (fleet.Status)
+            {
+                case FleetStatus.Stationed:
+                    location = LocationLabel(fleet.CurrentSystemId);
+                    break;
+
+                case FleetStatus.AwaitingEncounter:
+                    location = $"Rencontre en cours, en route vers {LocationLabel(fleet.DestinationSystemId.Value)}";
+                    break;
+
+                default:
+                    // Itineraire restant (Phase 17) : une traversee peut compter plusieurs sauts.
+                    int remainingHops = fleet.Route.Count - 1 - fleet.RouteIndex;
+                    location = $"En route vers {LocationLabel(fleet.DestinationSystemId.Value)}"
+                        + $" ({remainingHops} saut(s) restant(s), arrivee d'etape le {fleet.ArrivalDate})";
+                    break;
+            }
 
             GUILayout.Label($"{fleet.Name}  —  {location}  —  puissance ~{_military.EstimatePower(fleet.Composition):0}", UITheme.Label);
             GUILayout.Label(fleet.Composition.ToString(), UITheme.MutedLabel);

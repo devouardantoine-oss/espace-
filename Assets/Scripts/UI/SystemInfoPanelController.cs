@@ -40,6 +40,17 @@ namespace Espace.UI
         private StarSystemId? _selectedSystemId;
         private Vector2 _scroll;
 
+        /// <summary>
+        /// Systeme de depart de la flotte a deplacer quand le mode de ciblage est arme
+        /// (Phase 17). <b>Stocke a part de <see cref="_selectedSystemId"/></b> : au clic sur la
+        /// destination, la selection bascule sur ce nouveau systeme (souvent etranger, donc le
+        /// panneau n'afficherait meme plus la section Armee) — l'origine doit survivre a ce
+        /// basculement.
+        /// </summary>
+        private StarSystemId? _moveOriginSystemId;
+
+        private string _moveFeedback;
+
         private void OnEnable()
         {
             if (ServiceLocator.TryGet(out _eventBus))
@@ -61,9 +72,67 @@ namespace Espace.UI
             _eventBus = null;
         }
 
-        private void OnSystemSelected(SystemSelectedEvent selectedEvent) => _selectedSystemId = selectedEvent.SystemId;
+        /// <summary>
+        /// Le mode de ciblage est consomme <b>avant</b> de reecrire la selection : c'est le clic
+        /// sur la destination qui declenche l'ordre, et l'origine ne doit pas avoir ete perdue
+        /// entre-temps.
+        /// </summary>
+        private void OnSystemSelected(SystemSelectedEvent selectedEvent)
+        {
+            if (_moveOriginSystemId.HasValue)
+            {
+                StarSystemId origin = _moveOriginSystemId.Value;
+                _moveOriginSystemId = null;
+                ExecuteMoveOrder(origin, selectedEvent.SystemId);
+            }
 
-        private void OnSystemDeselected(SystemDeselectedEvent deselectedEvent) => _selectedSystemId = null;
+            _selectedSystemId = selectedEvent.SystemId;
+        }
+
+        private void OnSystemDeselected(SystemDeselectedEvent deselectedEvent)
+        {
+            // Un clic dans le vide annule un ordre de deplacement en cours plutot que de le
+            // laisser arme sans que rien ne le rappelle a l'ecran.
+            _moveOriginSystemId = null;
+            _selectedSystemId = null;
+        }
+
+        /// <summary>Envoie la garnison de <paramref name="originId"/> vers <paramref name="destinationId"/>, en revalidant que la flotte existe toujours.</summary>
+        private void ExecuteMoveOrder(StarSystemId originId, StarSystemId destinationId)
+        {
+            if (originId.Equals(destinationId))
+            {
+                _moveFeedback = "Deplacement annule : la flotte est deja sur ce systeme.";
+                return;
+            }
+
+            if (_military == null && !ServiceLocator.TryGet(out _military))
+            {
+                return;
+            }
+
+            // La flotte a pu partir, fusionner ou etre detruite entre l'armement du mode et le
+            // clic sur la destination.
+            if (!_military.TryGetStationedFleet(originId, EconomyService.PlayerOwnerId, out Fleet fleet)
+                || fleet.Status != FleetStatus.Stationed)
+            {
+                _moveFeedback = "Deplacement annule : plus aucune flotte disponible sur le systeme de depart.";
+                return;
+            }
+
+            if (_military.TryMoveFleet(fleet, destinationId, out string error))
+            {
+                string destinationName = _map != null && _map.TryGetSystem(destinationId, out StarSystemState destination)
+                    ? destination.Name
+                    : destinationId.ToString();
+                _moveFeedback = $"{fleet.Name} fait route vers {destinationName}.";
+                GameLog.Info($"[Military] {_moveFeedback}");
+                return;
+            }
+
+            _moveFeedback = error;
+            GameLog.Warning($"[Military] {error}");
+        }
 
         private void OnGUI()
         {
@@ -232,24 +301,28 @@ namespace Espace.UI
 
             if (garrison.TotalCount > 0)
             {
-                GUILayout.Label("Envoyer la garnison vers :", UITheme.MutedLabel);
-                GUILayout.BeginHorizontal();
-                foreach (StarSystemId neighborId in _map.GetNeighbors(system.Id))
-                {
-                    if (!_map.TryGetSystem(neighborId, out StarSystemState neighbor))
-                    {
-                        continue;
-                    }
+                GUILayout.Space(4);
 
-                    if (GUILayout.Button(neighbor.Name, UITheme.Button) && _military.TryGetStationedFleet(system.Id, EconomyService.PlayerOwnerId, out Fleet fleet))
+                if (_moveOriginSystemId.HasValue)
+                {
+                    GUILayout.Label("Cliquez le systeme de destination sur la carte.", UITheme.Label);
+                    if (GUILayout.Button("Annuler le deplacement", UITheme.Button, GUILayout.Height(28)))
                     {
-                        if (!_military.TryMoveFleet(fleet, neighborId, out string error))
-                        {
-                            GameLog.Warning($"[Military] {error}");
-                        }
+                        _moveOriginSystemId = null;
                     }
                 }
-                GUILayout.EndHorizontal();
+                else if (GUILayout.Button("Deplacer une flotte", UITheme.Button, GUILayout.Height(32)))
+                {
+                    // Le mode reste arme jusqu'au prochain clic sur la carte : c'est ce clic qui
+                    // designe la destination (Phase 17, plus besoin d'adjacence).
+                    _moveOriginSystemId = system.Id;
+                    _moveFeedback = null;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_moveFeedback))
+            {
+                GUILayout.Label(_moveFeedback, UITheme.MutedLabel);
             }
         }
 

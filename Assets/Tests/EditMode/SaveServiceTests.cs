@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Espace.Core;
@@ -322,6 +323,61 @@ namespace Espace.Tests.EditMode
                 freshMilitary.GetGarrison(scenario.PlayerSystem.Id, PlayerId));
             freshMilitary.TryGetStationedFleet(scenario.PlayerSystem.Id, PlayerId, out Fleet restored);
             Assert.AreEqual("Flotte du Nord", restored.Name);
+        }
+
+        [Test]
+        public void RoundTrip_RestoresFleetInTransit()
+        {
+            Scenario scenario = BuildScenario();
+            var admiral = new Admiral("Amiral Voyageur", 0.05f, 0.1f, -0.08f);
+            var route = new[] { scenario.PlayerSystem.Id, scenario.AiSystem.Id };
+            scenario.Military.RestoreFleetInTransit(
+                PlayerId, new UnitBundle(infantry: 4, cruiser: 1), "Flotte Errante", admiral,
+                route, routeIndex: 0, originSystemId: scenario.PlayerSystem.Id,
+                journeyStartDate: GameDate.StartOfGame, departureDate: GameDate.StartOfGame,
+                legArrivalDate: GameDate.StartOfGame.AddDays(5), isRetreating: false);
+
+            SaveService save = MakeSaveService(scenario);
+            save.SaveNow();
+
+            var freshMilitary = new MilitaryService(scenario.Map, _clock, _eventBus, scenario.Economy, scenario.Diplomacy, scenario.EmpireRegistry, Array.Empty<UnitTypeDefinition>());
+            freshMilitary.Initialize();
+            var freshSave = new SaveService(scenario.Map, _clock, scenario.Economy, freshMilitary, scenario.Diplomacy, scenario.Research, scenario.EmpireRegistry, _filePath);
+
+            bool success = freshSave.TryLoadAndApply(out string error);
+
+            Assert.IsTrue(success, error);
+            IReadOnlyList<Fleet> restored = freshMilitary.GetFleetsInTransit();
+            Assert.AreEqual(1, restored.Count, "La flotte en voyage doit survivre au rechargement.");
+            Assert.AreEqual(new UnitBundle(infantry: 4, cruiser: 1), restored[0].Composition);
+            Assert.AreEqual("Flotte Errante", restored[0].Name);
+            Assert.AreEqual(admiral, restored[0].Admiral);
+            Assert.AreEqual(scenario.AiSystem.Id, restored[0].DestinationSystemId.Value);
+            Assert.AreEqual(GameDate.StartOfGame.AddDays(5), restored[0].ArrivalDate.Value);
+        }
+
+        [Test]
+        public void ReloadTwice_DoesNotDuplicateFleetsInTransit()
+        {
+            // SaveService.Apply ne vide rien : sans ClearFleetsInTransit, chaque « Recharger »
+            // depuis le menu pause dupliquerait toutes les flottes en vol.
+            Scenario scenario = BuildScenario();
+            var route = new[] { scenario.PlayerSystem.Id, scenario.AiSystem.Id };
+            scenario.Military.RestoreFleetInTransit(
+                PlayerId, new UnitBundle(infantry: 3), "Flotte Unique", null,
+                route, routeIndex: 0, originSystemId: scenario.PlayerSystem.Id,
+                journeyStartDate: GameDate.StartOfGame, departureDate: GameDate.StartOfGame,
+                legArrivalDate: GameDate.StartOfGame.AddDays(4), isRetreating: false);
+
+            SaveService save = MakeSaveService(scenario);
+            save.SaveNow();
+
+            Assert.IsTrue(save.TryLoadAndApply(out string firstError), firstError);
+            Assert.IsTrue(save.TryLoadAndApply(out string secondError), secondError);
+
+            Assert.AreEqual(
+                1, scenario.Military.GetFleetsInTransit().Count,
+                "Recharger deux fois ne doit pas dupliquer la flotte en vol.");
         }
 
         [Test]

@@ -190,6 +190,35 @@ namespace Espace.Gameplay.Save
                 }
             }
 
+            // Flottes en voyage (Phase 17) : invisibles de la boucle ci-dessus, qui parcourt la
+            // carte et ne voit donc que les garnisons stationnees.
+            foreach (Fleet fleet in _military.GetFleetsInTransit())
+            {
+                data.FleetsInTransit.Add(new FleetInTransitSaveData
+                {
+                    OwnerId = fleet.OwnerId,
+                    FleetName = fleet.Name,
+                    Infantry = fleet.Composition.Infantry,
+                    Armored = fleet.Composition.Armored,
+                    SpecialForces = fleet.Composition.SpecialForces,
+                    Fighter = fleet.Composition.Fighter,
+                    Frigate = fleet.Composition.Frigate,
+                    Cruiser = fleet.Composition.Cruiser,
+                    Battleship = fleet.Composition.Battleship,
+                    AdmiralName = fleet.Admiral.Name,
+                    AdmiralAttackBonus = fleet.Admiral.AttackBonus,
+                    AdmiralSpeedBonus = fleet.Admiral.SpeedBonus,
+                    AdmiralDefenseBonus = fleet.Admiral.DefenseBonus,
+                    Route = ToIdList(fleet.Route),
+                    RouteIndex = fleet.RouteIndex,
+                    OriginSystemId = fleet.OriginSystemId.Value,
+                    JourneyStartDate = ToDateData(fleet.JourneyStartDate ?? _clock.CurrentDate),
+                    DepartureDate = ToDateData(fleet.DepartureDate ?? _clock.CurrentDate),
+                    LegArrivalDate = ToDateData(fleet.ArrivalDate ?? _clock.CurrentDate),
+                    IsRetreating = fleet.IsRetreating
+                });
+            }
+
             foreach (Empire empire in empires)
             {
                 ResourceBundle treasury = _economy.GetTreasury(empire.Id);
@@ -305,6 +334,36 @@ namespace Espace.Gameplay.Save
                 _economy.SetTaxRate(empireData.EmpireId, empireData.TaxRate);
             }
 
+            // Phase 17 : vider avant de restaurer. RestoreGarrison ecrase (get-or-create), mais
+            // une flotte en voyage n'a pas de cle equivalente — sans ce nettoyage, chaque
+            // « Recharger » depuis le menu pause dupliquerait toutes les flottes en vol.
+            _military.ClearFleetsInTransit();
+
+            foreach (FleetInTransitSaveData fleetData in data.FleetsInTransit)
+            {
+                if (fleetData?.Route == null || fleetData.Route.Count < 2)
+                {
+                    continue;
+                }
+
+                var route = new List<StarSystemId>(fleetData.Route.Count);
+                foreach (int systemId in fleetData.Route)
+                {
+                    route.Add(new StarSystemId(systemId));
+                }
+
+                _military.RestoreFleetInTransit(
+                    fleetData.OwnerId,
+                    new UnitBundle(
+                        fleetData.Infantry, fleetData.Armored, fleetData.SpecialForces,
+                        fleetData.Fighter, fleetData.Frigate, fleetData.Cruiser, fleetData.Battleship),
+                    fleetData.FleetName,
+                    new Admiral(fleetData.AdmiralName, fleetData.AdmiralAttackBonus, fleetData.AdmiralSpeedBonus, fleetData.AdmiralDefenseBonus),
+                    route, fleetData.RouteIndex, new StarSystemId(fleetData.OriginSystemId),
+                    FromDateData(fleetData.JourneyStartDate), FromDateData(fleetData.DepartureDate),
+                    FromDateData(fleetData.LegArrivalDate), fleetData.IsRetreating);
+            }
+
             foreach (GarrisonSaveData garrisonData in data.Garrisons)
             {
                 // Sauvegarde anterieure a la Phase 15 (Version < 3) : pas de champs Amiral dans
@@ -354,6 +413,28 @@ namespace Espace.Gameplay.Save
             }
 
             _clock.SetSpeed((GameSpeed)data.Speed);
+        }
+
+        private static GameDateData ToDateData(GameDate date) =>
+            new GameDateData { Year = date.Year, Month = date.Month, Day = date.Day };
+
+        private static GameDate FromDateData(GameDateData data) =>
+            data == null ? GameDate.StartOfGame : new GameDate(data.Year, data.Month, data.Day);
+
+        private static List<int> ToIdList(IReadOnlyList<StarSystemId> systemIds)
+        {
+            var ids = new List<int>(systemIds?.Count ?? 0);
+            if (systemIds == null)
+            {
+                return ids;
+            }
+
+            foreach (StarSystemId systemId in systemIds)
+            {
+                ids.Add(systemId.Value);
+            }
+
+            return ids;
         }
 
         private BuildingType FindBuildingType(string displayName)

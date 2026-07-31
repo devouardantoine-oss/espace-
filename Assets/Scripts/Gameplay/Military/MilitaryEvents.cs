@@ -88,4 +88,46 @@ namespace Espace.Gameplay.Military
             DefenderLosses = defenderLosses;
         }
     }
+
+    /// <summary>
+    /// Publie quand deux flottes d'empires differents se croisent sur un meme tronçon et qu'une
+    /// decision est attendue (Phase 17). Les rencontres entre IA sont resolues dans la foulee ;
+    /// celle qui implique le joueur attend son choix.
+    /// </summary>
+    public readonly struct EncounterStartedEvent : IGameEvent
+    {
+        public readonly int EncounterId;
+        public readonly int InitiatorEmpireId;
+        public readonly int OtherEmpireId;
+        public readonly StarSystemId LegFrom;
+        public readonly StarSystemId LegTo;
+
+        public EncounterStartedEvent(int encounterId, int initiatorEmpireId, int otherEmpireId, StarSystemId legFrom, StarSystemId legTo)
+        {
+            EncounterId = encounterId;
+            InitiatorEmpireId = initiatorEmpireId;
+            OtherEmpireId = otherEmpireId;
+            LegFrom = legFrom;
+            LegTo = legTo;
+        }
+    }
+
+    /// <summary>Rapport publie une fois la rencontre tranchee (Phase 17).</summary>
+    public readonly struct EncounterResolvedEvent : IGameEvent
+    {
+        public readonly int EncounterId;
+        public readonly int DecidingEmpireId;
+        public readonly int OtherEmpireId;
+
+        /// <summary>Issue effectivement appliquee.</summary>
+        public readonly EncounterOption Choice;
+
+        public EncounterResolvedEvent(int encounterId, int decidingEmpireId, int otherEmpireId, EncounterOption choice)
+        {
+            EncounterId = encounterId;
+            DecidingEmpireId = decidingEmpireId;
+            OtherEmpireId = otherEmpireId;
+            Choice = choice;
+        }
+    }
 }

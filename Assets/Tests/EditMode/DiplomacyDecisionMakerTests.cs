@@ -42,6 +42,12 @@ namespace Espace.Tests.EditMode
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
             public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null) { }
+            public IReadOnlyList<Fleet> GetFleetsInTransit() => Array.Empty<Fleet>();
+            public void ClearFleetsInTransit() { }
+            public void RestoreFleetInTransit(
+                int empireId, UnitBundle composition, string fleetName, Admiral? admiral,
+                IReadOnlyList<StarSystemId> route, int routeIndex, StarSystemId originSystemId,
+                GameDate journeyStartDate, GameDate departureDate, GameDate legArrivalDate, bool isRetreating) { }
         }
 
         /// <summary>

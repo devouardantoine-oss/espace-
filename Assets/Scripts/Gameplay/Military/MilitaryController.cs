@@ -64,6 +64,14 @@ namespace Espace.Gameplay.Military
                 ServiceLocator.Register<IMilitaryService>(_militaryService);
             }
 
+            // Meme instance, deuxieme cle (Phase 17) : le ServiceLocator est indexe par type, et
+            // separer l'interface des rencontres evite d'imposer ses membres aux doublures
+            // d'IMilitaryService ecrites a la main dans les tests.
+            if (!ServiceLocator.IsRegistered<IEncounterService>())
+            {
+                ServiceLocator.Register<IEncounterService>(_militaryService);
+            }
+
             _initialized = true;
             GameLog.Info($"[Military] Demarree avec {unitCatalog.Length} types d'unites disponibles.");
         }
@@ -77,6 +85,7 @@ namespace Espace.Gameplay.Military
 
             _militaryService.Shutdown();
             ServiceLocator.Unregister<IMilitaryService>();
+            ServiceLocator.Unregister<IEncounterService>();
             _militaryService = null;
         }
     }
