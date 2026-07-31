@@ -36,10 +36,12 @@ namespace Espace.Gameplay.Military
 
         /// <summary>
         /// Nom de la flotte (Phase 14), attribue automatiquement a la creation. Pas encore
-        /// renommable par le joueur faute de besoin exprime cette phase ; pas d'Amiral non
-        /// plus (voir Phase 15).
+        /// renommable par le joueur faute de besoin exprime cette phase.
         /// </summary>
         public string Name { get; }
+
+        /// <summary>Commandant de la flotte (Phase 15), attribue automatiquement a la creation. Voir <see cref="Admiral"/>.</summary>
+        public Admiral Admiral { get; }
 
         public UnitBundle Composition { get; private set; }
         public FleetStatus Status { get; private set; }
@@ -59,17 +61,18 @@ namespace Espace.Gameplay.Military
         /// <summary>Vrai si ce trajet est un repli force apres une bataille perdue, plutot qu'un ordre volontaire.</summary>
         public bool IsRetreating { get; private set; }
 
-        public Fleet(int id, int ownerId, StarSystemId stationedAt, UnitBundle composition)
-            : this(id, ownerId, stationedAt, composition, $"Flotte {id}")
-        {
-        }
-
-        /// <summary>Utilise par <c>SaveService</c> pour restaurer un nom de flotte existant plutot que d'en generer un nouveau.</summary>
-        public Fleet(int id, int ownerId, StarSystemId stationedAt, UnitBundle composition, string name)
+        /// <summary>
+        /// <paramref name="name"/> et <paramref name="admiral"/> sont optionnels : omis (ou
+        /// <c>null</c>), un nom et un Amiral sont generes automatiquement. Fournis, ils
+        /// restaurent un nom/Amiral existant plutot que d'en generer un nouveau — utilise par
+        /// <c>SaveService</c> au chargement d'une sauvegarde.
+        /// </summary>
+        public Fleet(int id, int ownerId, StarSystemId stationedAt, UnitBundle composition, string name = null, Admiral? admiral = null)
         {
             Id = id;
             OwnerId = ownerId;
             Name = string.IsNullOrEmpty(name) ? $"Flotte {id}" : name;
+            Admiral = admiral ?? Admiral.Compute(id, ownerId);
             CurrentSystemId = stationedAt;
             OriginSystemId = stationedAt;
             Composition = composition;

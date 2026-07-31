@@ -235,6 +235,11 @@ namespace Espace.UI
 
             GUILayout.Label($"{fleet.Name}  —  {location}  —  puissance ~{_military.EstimatePower(fleet.Composition):0}", UITheme.Label);
             GUILayout.Label(fleet.Composition.ToString(), UITheme.MutedLabel);
+            GUILayout.Label(
+                $"Amiral {fleet.Admiral.Name} — Attaque {HudFormatter.FormatSigned(fleet.Admiral.AttackBonus * 100f)}% "
+                + $"/ Vitesse {HudFormatter.FormatSigned(fleet.Admiral.SpeedBonus * 100f)}% "
+                + $"/ Defense {HudFormatter.FormatSigned(fleet.Admiral.DefenseBonus * 100f)}%",
+                UITheme.MutedLabel);
         }
 
         private string LocationLabel(StarSystemId systemId)

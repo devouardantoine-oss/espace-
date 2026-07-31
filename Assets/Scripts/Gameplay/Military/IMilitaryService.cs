@@ -61,7 +61,8 @@ namespace Espace.Gameplay.Military
         /// (limitation v1 documentee : la fenetre de risque est faible, l'autosauvegarde etant
         /// mensuelle et les trajets ne durant que quelques jours).
         /// <para><paramref name="fleetName"/> restaure le nom sauvegarde (Phase 14) ; <c>null</c> ou vide en genere un nouveau.</para>
+        /// <para><paramref name="admiral"/> restaure l'Amiral sauvegarde (Phase 15) ; <c>null</c> en genere un nouveau.</para>
         /// </summary>
-        void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null);
+        void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null);
     }
 }

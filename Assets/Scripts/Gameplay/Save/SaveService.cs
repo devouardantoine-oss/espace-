@@ -181,7 +181,11 @@ namespace Espace.Gameplay.Save
                         Fighter = fleet.Composition.Fighter,
                         Frigate = fleet.Composition.Frigate,
                         Cruiser = fleet.Composition.Cruiser,
-                        Battleship = fleet.Composition.Battleship
+                        Battleship = fleet.Composition.Battleship,
+                        AdmiralName = fleet.Admiral.Name,
+                        AdmiralAttackBonus = fleet.Admiral.AttackBonus,
+                        AdmiralSpeedBonus = fleet.Admiral.SpeedBonus,
+                        AdmiralDefenseBonus = fleet.Admiral.DefenseBonus
                     });
                 }
             }
@@ -303,12 +307,19 @@ namespace Espace.Gameplay.Save
 
             foreach (GarrisonSaveData garrisonData in data.Garrisons)
             {
+                // Sauvegarde anterieure a la Phase 15 (Version < 3) : pas de champs Amiral dans
+                // le fichier, donc pas d'Amiral "tout a zero" restaure a partir des defauts
+                // JsonUtility — un nouvel Amiral est genere, comme pour une toute nouvelle flotte.
+                Admiral? admiral = data.Version >= 3
+                    ? new Admiral(garrisonData.AdmiralName, garrisonData.AdmiralAttackBonus, garrisonData.AdmiralSpeedBonus, garrisonData.AdmiralDefenseBonus)
+                    : (Admiral?)null;
+
                 _military.RestoreGarrison(
                     new StarSystemId(garrisonData.SystemId), garrisonData.OwnerId,
                     new UnitBundle(
                         garrisonData.Infantry, garrisonData.Armored, garrisonData.SpecialForces,
                         garrisonData.Fighter, garrisonData.Frigate, garrisonData.Cruiser, garrisonData.Battleship),
-                    garrisonData.FleetName);
+                    garrisonData.FleetName, admiral);
             }
 
             foreach (DiplomaticStatusSaveData statusData in data.Diplomacy.Statuses)

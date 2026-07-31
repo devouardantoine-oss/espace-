@@ -325,6 +325,28 @@ namespace Espace.Tests.EditMode
         }
 
         [Test]
+        public void RoundTrip_RestoresAdmiral()
+        {
+            Scenario scenario = BuildScenario();
+            var admiral = new Admiral("Amiral de Sauvegarde", 0.07f, -0.11f, 0.13f);
+            scenario.Military.RestoreGarrison(scenario.PlayerSystem.Id, PlayerId, new UnitBundle(infantry: 3), "Flotte Sauvee", admiral);
+            SaveService save = MakeSaveService(scenario);
+            save.SaveNow();
+
+            var freshMilitary = new MilitaryService(scenario.Map, _clock, _eventBus, scenario.Economy, scenario.Diplomacy, scenario.EmpireRegistry, Array.Empty<UnitTypeDefinition>());
+            freshMilitary.Initialize();
+            var freshSave = new SaveService(scenario.Map, _clock, scenario.Economy, freshMilitary, scenario.Diplomacy, scenario.Research, scenario.EmpireRegistry, _filePath);
+
+            bool success = freshSave.TryLoadAndApply(out string error);
+
+            Assert.IsTrue(success, error);
+            freshMilitary.TryGetStationedFleet(scenario.PlayerSystem.Id, PlayerId, out Fleet restored);
+            // L'Amiral exact doit etre restaure tel quel, pas regenere depuis un nouvel id sequentiel
+            // (Fleet.Id est reemis a chaque chargement : voir le commentaire de Admiral.Compute).
+            Assert.AreEqual(admiral, restored.Admiral);
+        }
+
+        [Test]
         public void RoundTrip_RestoresDiplomacyRelationsAndOpinions()
         {
             Scenario scenario = BuildScenario();

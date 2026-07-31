@@ -174,6 +174,15 @@ namespace Espace.UI
             GUILayout.Label($"Garnison : {garrison.TotalCount} unites (puissance ~{_military.EstimatePower(garrison):0})", UITheme.Label);
             GUILayout.Label(garrison.ToString(), UITheme.MutedLabel);
 
+            if (_military.TryGetStationedFleet(system.Id, EconomyService.PlayerOwnerId, out Fleet garrisonFleet))
+            {
+                GUILayout.Label(
+                    $"Amiral {garrisonFleet.Admiral.Name} — Attaque {HudFormatter.FormatSigned(garrisonFleet.Admiral.AttackBonus * 100f)}% "
+                    + $"/ Vitesse {HudFormatter.FormatSigned(garrisonFleet.Admiral.SpeedBonus * 100f)}% "
+                    + $"/ Defense {HudFormatter.FormatSigned(garrisonFleet.Admiral.DefenseBonus * 100f)}%",
+                    UITheme.MutedLabel);
+            }
+
             GUILayout.Label("Recruter :", UITheme.MutedLabel);
             GUILayout.BeginHorizontal();
             foreach (UnitTypeDefinition unitType in _military.UnitCatalog)

@@ -802,6 +802,152 @@ namespace Espace.Tests.EditMode
             Assert.IsFalse(string.IsNullOrEmpty(fleet.Name));
         }
 
+        // --- Amiraux (Phase 15) ------------------------------------------------------------
+
+        [Test]
+        public void TryMoveFleet_AdmiralSpeedBonus_ArrivesEarlier()
+        {
+            StarSystemState home1 = MakeSystem(0, Vector2.zero, PlayerId);
+            StarSystemState neighbor1 = MakeSystem(1, new Vector2(100f, 0f));
+            StarSystemState home2 = MakeSystem(2, new Vector2(0f, 200f), OtherEmpireId);
+            StarSystemState neighbor2 = MakeSystem(3, new Vector2(100f, 200f));
+            var links = new[]
+            {
+                new HyperlaneLink(home1.Id, neighbor1.Id),
+                new HyperlaneLink(home2.Id, neighbor2.Id)
+            };
+            var map = new GalaxyMap(new[] { home1, neighbor1, home2, neighbor2 }, links);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 5f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+
+            military.RestoreGarrison(home1.Id, PlayerId, new UnitBundle(infantry: 1), admiral: new Admiral("Neutre", 0f, 0f, 0f));
+            military.RestoreGarrison(home2.Id, OtherEmpireId, new UnitBundle(infantry: 1), admiral: new Admiral("Rapide", 0f, 0.5f, 0f));
+
+            military.TryGetStationedFleet(home1.Id, PlayerId, out Fleet baselineFleet);
+            military.TryGetStationedFleet(home2.Id, OtherEmpireId, out Fleet boostedFleet);
+
+            bool baselineMoved = military.TryMoveFleet(baselineFleet, neighbor1.Id, out string baselineError);
+            bool boostedMoved = military.TryMoveFleet(boostedFleet, neighbor2.Id, out string boostedError);
+
+            Assert.IsTrue(baselineMoved, baselineError);
+            Assert.IsTrue(boostedMoved, boostedError);
+            Assert.Less(boostedFleet.ArrivalDate.Value, baselineFleet.ArrivalDate.Value, "+50% de vitesse doit reduire la duree du trajet.");
+        }
+
+        [Test]
+        public void ResolveBattle_AttackerAdmiralBonus_IncreasesAttackerPower()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
+
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 5), admiral: new Admiral("Fort", 0.2f, 0f, 0f));
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 5), admiral: new Admiral("Neutre", 0f, 0f, 0f));
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+
+            float? attackerPower = null;
+            _eventBus.Subscribe<BattleResolvedEvent>(e => attackerPower = e.AttackerPower);
+
+            military.TryMoveFleet(attackers, neighbor.Id, out _);
+            _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
+
+            Assert.IsNotNull(attackerPower);
+            // Base 5*10=50 ; moral=1 ; Expansionniste (joueur) CommandModifier=1.0 ; +20% Amiral -> 50 * 1.2 = 60.
+            Assert.AreEqual(60f, attackerPower.Value, FloatTolerance);
+        }
+
+        [Test]
+        public void ResolveBattle_DefenderAdmiralBonus_IncreasesDefenderPower()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            neighbor.DevelopmentLevel = 0; // neutralise le bonus de terrain pour isoler l'effet de l'Amiral
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, power: 10f, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
+
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 5), admiral: new Admiral("Neutre", 0f, 0f, 0f));
+            military.RestoreGarrison(neighbor.Id, OtherEmpireId, new UnitBundle(infantry: 5), admiral: new Admiral("Fort", 0f, 0f, 0.2f));
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+
+            float? defenderPower = null;
+            _eventBus.Subscribe<BattleResolvedEvent>(e => defenderPower = e.DefenderPower);
+
+            military.TryMoveFleet(attackers, neighbor.Id, out _);
+            _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
+
+            Assert.IsNotNull(defenderPower);
+            // Base 5*10=50 ; moral=1 ; terrain neutralise ; Militariste (voisin) CommandModifier=1.15 ; +20% Amiral -> 50 * 1.15 * 1.2 = 69.
+            Assert.AreEqual(69f, defenderPower.Value, FloatTolerance);
+        }
+
+        [Test]
+        public void ResolveBattle_UndefendedSystem_DoesNotThrowWithNullDefenderFleet()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out StarSystemState neighbor, OtherEmpireId);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 3));
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet attackers);
+            _diplomacy.SetStatus(PlayerId, OtherEmpireId, DiplomaticStatus.War);
+
+            Assert.DoesNotThrow(() =>
+            {
+                military.TryMoveFleet(attackers, neighbor.Id, out _);
+                _eventBus.Publish(new DayAdvancedEvent(attackers.ArrivalDate.Value));
+            }, "ComputeDefenderModifier doit accepter un defenderFleet nul (systeme sans garnison).");
+
+            Assert.AreEqual(PlayerId, neighbor.OwnerId);
+        }
+
+        [Test]
+        public void RestoreGarrison_WithAdmiral_PreservesAdmiralOnGarrison()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            MilitaryService military = MakeMilitary(map, economy);
+            var admiral = new Admiral("Amiral Test", 0.05f, -0.03f, 0.02f);
+
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 1), admiral: admiral);
+
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+            Assert.AreEqual(admiral, fleet.Admiral);
+        }
+
+        [Test]
+        public void RestoreGarrison_WithoutAdmiral_GeneratesDeterministicAdmiral()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            MilitaryService military = MakeMilitary(map, economy);
+
+            military.RestoreGarrison(home.Id, PlayerId, new UnitBundle(infantry: 1));
+
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet fleet);
+            Assert.AreEqual(Admiral.Compute(fleet.Id, fleet.OwnerId), fleet.Admiral);
+        }
+
+        [Test]
+        public void TryDetachFleet_DetachedFleet_HasOwnGeneratedAdmiral()
+        {
+            GalaxyMap map = MakeAdjacentPair(out StarSystemState home, out _);
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 100f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveCredits(economy, home, PlayerId, 1000f);
+            RecruitAndComplete(military, home, infantry, 5);
+            military.TryGetStationedFleet(home.Id, PlayerId, out Fleet garrison);
+
+            military.TryDetachFleet(home.Id, PlayerId, new UnitBundle(infantry: 2), out Fleet detached, out _);
+
+            Assert.AreEqual(Admiral.Compute(detached.Id, detached.OwnerId), detached.Admiral);
+            Assert.AreNotEqual(garrison.Admiral, detached.Admiral, "Deux flottes distinctes (ids differents) devraient avoir des Amiraux differents.");
+        }
+
         /// <summary>Recrute puis fait avancer le temps jusqu'a l'achevement, pour obtenir directement une garnison dans les tests.</summary>
         private void RecruitAndComplete(MilitaryService military, StarSystemState system, UnitTypeDefinition unitType, int count)
         {

@@ -36,8 +36,11 @@ namespace Espace.Gameplay.Save
     public sealed class GameSaveData
     {
         /// <summary>Incrementee a chaque changement de forme de ce fichier, pour detecter une sauvegarde d'une version incompatible du jeu.</summary>
-        /// <remarks>2 depuis la Phase 14 : <see cref="GarrisonSaveData"/> remplace le champ <c>SpaceFleet</c> par les quatre nouveaux types de vaisseaux et gagne <c>FleetName</c>.</remarks>
-        public int Version = 2;
+        /// <remarks>
+        /// 2 depuis la Phase 14 : <see cref="GarrisonSaveData"/> remplace le champ <c>SpaceFleet</c> par les quatre nouveaux types de vaisseaux et gagne <c>FleetName</c>.
+        /// 3 depuis la Phase 15 : <see cref="GarrisonSaveData"/> gagne les quatre champs Amiral. Une sauvegarde d'une version anterieure ne les contient pas : <c>SaveService.Apply</c> ne doit alors surtout pas restaurer un Amiral « tout a zero » a partir des defauts <c>JsonUtility</c> — un nouvel Amiral est genere a la place, comme pour une toute nouvelle flotte.
+        /// </remarks>
+        public int Version = 3;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -111,6 +114,12 @@ namespace Espace.Gameplay.Save
         public int Frigate;
         public int Cruiser;
         public int Battleship;
+
+        /// <summary>Amiral de la flotte (Phase 15). Absent (defauts a zero) sur une sauvegarde anterieure a la version 3 — voir <see cref="GameSaveData.Version"/>.</summary>
+        public string AdmiralName;
+        public float AdmiralAttackBonus;
+        public float AdmiralSpeedBonus;
+        public float AdmiralDefenseBonus;
     }
 
     [Serializable]

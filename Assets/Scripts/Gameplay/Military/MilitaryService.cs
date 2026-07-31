@@ -48,6 +48,14 @@ namespace Espace.Gameplay.Military
     /// quel empire pouvait attaquer n'importe quel voisin sans justification diplomatique.
     /// La colonisation d'un systeme non possede reste, elle, entierement libre.
     /// </para>
+    /// <para>
+    /// <b>Amiraux (Phase 15) :</b> chaque <see cref="Fleet"/> a un <see cref="Admiral"/>
+    /// genere automatiquement a sa creation (voir <see cref="Fleet"/>) dont les bonus/malus
+    /// s'ajoutent aux facteurs existants — attaque dans <see cref="ComputeAttackerModifier"/>,
+    /// defense dans <see cref="ComputeDefenderModifier"/>, vitesse dans
+    /// <see cref="ComputeArrivalDate"/> — sans toucher <see cref="CombatResolver"/>, deja
+    /// generique sur un simple facteur multiplicatif par camp.
+    /// </para>
     /// </summary>
     public sealed class MilitaryService : IMilitaryService, IGameService
     {
@@ -258,7 +266,7 @@ namespace Espace.Gameplay.Military
             }
 
             StarSystemState origin = _map.GetSystem(fleet.CurrentSystemId);
-            GameDate arrivalDate = ComputeArrivalDate(origin, destination, fleet.Composition, fleet.OwnerId);
+            GameDate arrivalDate = ComputeArrivalDate(origin, destination, fleet);
             fleet.BeginMove(destinationSystemId, arrivalDate, isRetreating: false);
 
             _eventBus.Publish(new FleetDepartedEvent(fleet.Id, fleet.OwnerId, origin.Id, destinationSystemId, isRetreating: false));
@@ -303,10 +311,11 @@ namespace Espace.Gameplay.Military
             return true;
         }
 
-        private GameDate ComputeArrivalDate(StarSystemState origin, StarSystemState destination, UnitBundle composition, int fleetOwnerId)
+        private GameDate ComputeArrivalDate(StarSystemState origin, StarSystemState destination, Fleet fleet)
         {
             float distance = Vector2.Distance(origin.Position, destination.Position);
-            float speed = SlowestSpeed(composition) * ResearchMultiplier(fleetOwnerId, ResearchDomain.Logistics);
+            float speed = SlowestSpeed(fleet.Composition) * ResearchMultiplier(fleet.OwnerId, ResearchDomain.Logistics)
+                * (1f + fleet.Admiral.SpeedBonus);
             int days = Mathf.Max(1, Mathf.CeilToInt(distance / speed));
             return _gameClock.CurrentDate.AddDays(days);
         }
@@ -406,7 +415,7 @@ namespace Espace.Gameplay.Military
             UnitBundle defenderComposition = defenderFleet?.Composition ?? UnitBundle.Zero;
 
             float attackerModifier = ComputeAttackerModifier(attackerFleet);
-            float defenderModifier = ComputeDefenderModifier(defenderEmpireId, system);
+            float defenderModifier = ComputeDefenderModifier(defenderEmpireId, system, defenderFleet);
 
             CombatResolver.BattleOutcome outcome = CombatResolver.Resolve(
                 attackerFleet.Composition, attackerModifier, defenderComposition, defenderModifier, _unitCatalog);
@@ -451,23 +460,24 @@ namespace Espace.Gameplay.Military
 
             StarSystemId retreatTo = attackerFleet.OriginSystemId;
             attackerFleet.SetComposition(outcome.AttackerSurvivors);
-            GameDate retreatArrival = ComputeArrivalDate(system, _map.GetSystem(retreatTo), outcome.AttackerSurvivors, attackerFleet.OwnerId);
+            GameDate retreatArrival = ComputeArrivalDate(system, _map.GetSystem(retreatTo), attackerFleet);
             attackerFleet.BeginMove(retreatTo, retreatArrival, isRetreating: true);
         }
 
-        /// <summary>Moral approxime par la stabilite du systeme d'origine de l'attaquant, module par le commandement de sa personnalite.</summary>
+        /// <summary>Moral approxime par la stabilite du systeme d'origine de l'attaquant, module par le commandement de sa personnalite et le bonus d'attaque de son Amiral (Phase 15).</summary>
         private float ComputeAttackerModifier(Fleet attackerFleet)
         {
             float morale = _map.TryGetSystem(attackerFleet.OriginSystemId, out StarSystemState origin) ? origin.Stability : 1f;
-            return morale * CommandModifierFor(attackerFleet.OwnerId);
+            return morale * CommandModifierFor(attackerFleet.OwnerId) * (1f + attackerFleet.Admiral.AttackBonus);
         }
 
-        /// <summary>Moral du defenseur (stabilite du systeme attaque), avantage du terrain (fortifications liees au developpement), et commandement.</summary>
-        private float ComputeDefenderModifier(int defenderEmpireId, StarSystemState system)
+        /// <summary>Moral du defenseur (stabilite du systeme attaque), avantage du terrain (fortifications liees au developpement), commandement, et bonus de defense de son Amiral s'il y en a un (Phase 15 — un systeme peut etre sans garnison).</summary>
+        private float ComputeDefenderModifier(int defenderEmpireId, StarSystemState system, Fleet defenderFleet)
         {
             float morale = system.Stability;
             float terrainBonus = 1f + system.DevelopmentLevel * TerrainBonusPerDevelopmentLevel;
-            return morale * terrainBonus * CommandModifierFor(defenderEmpireId);
+            float admiralBonus = 1f + (defenderFleet?.Admiral.DefenseBonus ?? 0f);
+            return morale * terrainBonus * CommandModifierFor(defenderEmpireId) * admiralBonus;
         }
 
         private float CommandModifierFor(int empireId)
@@ -511,22 +521,20 @@ namespace Espace.Gameplay.Military
         }
 
         /// <inheritdoc />
-        public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null)
+        public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null)
         {
-            Fleet garrison = GetOrCreateStationedFleet(systemId, empireId, fleetName);
+            Fleet garrison = GetOrCreateStationedFleet(systemId, empireId, fleetName, admiral);
             garrison.SetComposition(composition);
         }
 
-        private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId, string fleetName = null)
+        private Fleet GetOrCreateStationedFleet(StarSystemId systemId, int ownerId, string fleetName = null, Admiral? admiral = null)
         {
             if (TryGetStationedFleet(systemId, ownerId, out Fleet existing))
             {
                 return existing;
             }
 
-            Fleet fleet = string.IsNullOrEmpty(fleetName)
-                ? new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero)
-                : new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero, fleetName);
+            var fleet = new Fleet(_nextFleetId++, ownerId, systemId, UnitBundle.Zero, fleetName, admiral);
             _fleets.Add(fleet);
             return fleet;
         }

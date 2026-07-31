@@ -41,7 +41,7 @@ namespace Espace.Tests.EditMode
             public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error) { error = "n/a"; return false; }
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }
-            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null) { }
+            public void RestoreGarrison(StarSystemId systemId, int empireId, UnitBundle composition, string fleetName = null, Admiral? admiral = null) { }
         }
 
         /// <summary>
