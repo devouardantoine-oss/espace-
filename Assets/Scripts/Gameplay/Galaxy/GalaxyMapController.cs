@@ -29,9 +29,9 @@ namespace Espace.Gameplay.Galaxy
         [SerializeField]
         private GalaxyConfig config;
 
-        [Tooltip("Taille de zoom minimale de la camera (zoom maximal).")]
-        [SerializeField]
-        private float minOrthographicSize = 4f;
+        // Pas de reglage de zoom ici : il appartient a GalaxyCameraController, qui borne
+        // reellement la camera. Un doublon a vecu sur ce composant jusqu'a la Phase 18 sans
+        // jamais etre lu — le compilateur le signalait (CS0414).
 
         private GalaxyMap _map;
 

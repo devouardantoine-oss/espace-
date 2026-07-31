@@ -302,7 +302,6 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   config: {fileID: 11400000, guid: e5face00000000000000000000000171, type: 2}
-  minOrthographicSize: 4
 --- !u!1 &500000
 GameObject:
   m_ObjectHideFlags: 0
