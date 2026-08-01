@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Espace.Core;
 using UnityEngine;
 
 namespace Espace.Gameplay.Galaxy
@@ -21,7 +23,7 @@ namespace Espace.Gameplay.Galaxy
     /// texte n'existait dans le projet avant cette phase. TMP Pro exige d'importer ses
     /// « Essential Resources », une etape d'editeur risquee a effectuer a l'aveugle dans cet
     /// environnement sans acces a Unity. <c>TextMesh</c> utilise la police integree du moteur
-    /// (<c>Resources.GetBuiltinResource&lt;Font&gt;</c>) sans aucun asset a importer.
+    /// (voir <see cref="LoadBuiltinFont"/>) sans aucun asset a importer.
     /// </para>
     /// </summary>
     public sealed class SystemLabelController : MonoBehaviour
@@ -57,7 +59,12 @@ namespace Espace.Gameplay.Galaxy
             _cameraController = cameraController;
             _camera = camera;
 
-            Font builtinFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            Font builtinFont = LoadBuiltinFont();
+            if (builtinFont == null)
+            {
+                GameLog.Warning("[Labels] Aucune police integree disponible : les noms de systemes ne seront pas affiches.");
+                return;
+            }
 
             var labelRoot = new GameObject("SystemLabels").transform;
             labelRoot.SetParent(transform, worldPositionStays: false);
@@ -89,6 +96,42 @@ namespace Espace.Gameplay.Galaxy
                 _labels[system.Id] = textMesh;
                 _labelRenderers[system.Id] = renderer;
             }
+        }
+
+        /// <summary>
+        /// La police integree du moteur, ou <c>null</c> si aucune n'est disponible.
+        /// <para>
+        /// <b>Unity 6 a retire <c>Arial.ttf</c></b> au profit de <c>LegacyRuntime.ttf</c>, et
+        /// <see cref="Resources.GetBuiltinResource{T}"/> ne renvoie pas <c>null</c> pour un nom
+        /// inconnu : elle leve une <see cref="ArgumentException"/>. Demander l'ancien nom en dur
+        /// suffisait donc a faire echouer l'initialisation de la carte au lancement.
+        /// </para>
+        /// <para>
+        /// Les deux noms sont essayes dans l'ordre, du plus recent au plus ancien, pour que le
+        /// projet reste ouvrable sur une version anterieure de l'editeur. Et si aucun ne
+        /// repond, les labels sont simplement abandonnes : l'absence des noms de systemes est
+        /// une degradation cosmetique, pas une raison d'empecher la partie de demarrer.
+        /// </para>
+        /// </summary>
+        private static Font LoadBuiltinFont()
+        {
+            foreach (string fontName in new[] { "LegacyRuntime.ttf", "Arial.ttf" })
+            {
+                try
+                {
+                    Font font = Resources.GetBuiltinResource<Font>(fontName);
+                    if (font != null)
+                    {
+                        return font;
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // Nom inconnu de cette version du moteur : on essaie le suivant.
+                }
+            }
+
+            return null;
         }
 
         private void Update()
