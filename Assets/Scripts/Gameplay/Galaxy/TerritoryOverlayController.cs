@@ -88,6 +88,7 @@ namespace Espace.Gameplay.Galaxy
 
         private bool _fillDirty;
         private bool _bordersDirty;
+        private bool _hasLoggedFirstFill;
         private bool _hasTier;
         private TerritoryDetailTier _tier;
         private float _appliedFillAlpha = -1f;
@@ -142,6 +143,11 @@ namespace Espace.Gameplay.Galaxy
 
             CreateRenderer("Fill", _fillMesh, _fillMaterial);
             CreateRenderer("Borders", _borderMesh, _borderMaterial);
+
+            // Trace de demarrage, sur le meme modele que « [GalaxyMap] Galaxie generee : ... » :
+            // c'est le seul moyen, sur un appareil, de distinguer « les zones ne s'affichent
+            // pas » de « c'est l'ancien binaire qui tourne ».
+            GameLog.Info($"[Territoires] {_cells.Count} cellules de controle decoupees, nuancier « {shader.name} ».");
         }
 
         private void Update()
@@ -160,6 +166,15 @@ namespace Espace.Gameplay.Galaxy
                 TerritoryMeshBuilder.BuildFill(_cells, _ownerIds, _ownerColors, FillDepth, _meshData);
                 _meshData.ApplyTo(_fillMesh);
                 _fillDirty = false;
+
+                // Une seule fois, a la premiere reconstruction porteuse de geometrie : si ce
+                // compte reste a zero alors que des empires existent, c'est que les couleurs ne
+                // sont pas indexees sur les memes identifiants que StarSystemState.OwnerId.
+                if (!_hasLoggedFirstFill && _meshData.Vertices.Count > 0)
+                {
+                    _hasLoggedFirstFill = true;
+                    GameLog.Info($"[Territoires] Zones affichees : {_meshData.Triangles.Count / 3} triangles pour {_ownerColors.Count} empires.");
+                }
             }
 
             if (_bordersDirty)
