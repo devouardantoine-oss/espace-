@@ -33,6 +33,12 @@ namespace Espace.Gameplay.Galaxy
         // reellement la camera. Un doublon a vecu sur ce composant jusqu'a la Phase 18 sans
         // jamais etre lu — le compilateur le signalait (CS0414).
 
+        /// <summary>
+        /// Multiplicateur applique au rayon de la galaxie pour borner les cellules de controle
+        /// (Phase 19). Voir <see cref="BuildTerritoryPartition"/>.
+        /// </summary>
+        private const float TerritoryBoundaryMargin = 1.1f;
+
         private GalaxyMap _map;
 
         private void Awake()
@@ -60,7 +66,11 @@ namespace Espace.Gameplay.Galaxy
             Dictionary<StarSystemId, Vector3> worldPositions = BuildMarkers(_map, parameters.Seed);
             BuildLinkRenderer(_map, worldPositions);
             GalaxyCameraController cameraController = SetupCamera();
-            BuildTerritoryOverlay(_map, worldPositions);
+
+            TerritoryCell[] territoryCells = BuildTerritoryPartition(_map, parameters.GalaxyRadius);
+            BuildTerritoryOverlay(_map, territoryCells, cameraController);
+            BuildFactionLabels(_map, territoryCells, cameraController);
+
             BuildSystemLabels(_map, worldPositions, cameraController);
         }
 
@@ -136,14 +146,59 @@ namespace Espace.Gameplay.Galaxy
             return cameraController;
         }
 
-        /// <summary>Instancie le halo de territoire par empire (Phase 12).</summary>
-        private void BuildTerritoryOverlay(GalaxyMap map, Dictionary<StarSystemId, Vector3> worldPositions)
+        /// <summary>
+        /// Decoupe la galaxie en cellules de controle (Phase 19).
+        /// <para>
+        /// Calcule ici, une seule fois, plutot que dans chacun des deux controleurs qui s'en
+        /// servent : le decoupage est une <b>donnee</b> derivee des seules positions des
+        /// systemes, jamais un detail de rendu. Il ne change plus jamais ensuite — seules les
+        /// couleurs suivent les changements de proprietaire.
+        /// </para>
+        /// <para>
+        /// Le rayon du bord depasse celui de la galaxie : sans lui, les cellules peripheriques
+        /// seraient infinies ; trop pres, les territoires de bordure paraitraient tronques a ras
+        /// de leurs systemes.
+        /// </para>
+        /// </summary>
+        private static TerritoryCell[] BuildTerritoryPartition(GalaxyMap map, float galaxyRadius)
         {
+            var sites = new Vector2[map.Systems.Count];
+            for (int i = 0; i < sites.Length; i++)
+            {
+                sites[i] = map.Systems[i].Position;
+            }
+
+            return TerritoryPartition.Compute(sites, galaxyRadius * TerritoryBoundaryMargin);
+        }
+
+        /// <summary>Instancie les zones d'influence et leurs frontieres (Phase 19).</summary>
+        private void BuildTerritoryOverlay(GalaxyMap map, TerritoryCell[] cells, GalaxyCameraController cameraController)
+        {
+            if (cameraController == null)
+            {
+                return;
+            }
+
             var overlayObject = new GameObject("TerritoryOverlay");
             overlayObject.transform.SetParent(transform, worldPositionStays: false);
 
             var overlay = overlayObject.AddComponent<TerritoryOverlayController>();
-            overlay.Initialize(map, worldPositions);
+            overlay.Initialize(map, cells, cameraController, Camera.main);
+        }
+
+        /// <summary>Instancie le nom de chaque empire au cœur de son territoire (Phase 19).</summary>
+        private void BuildFactionLabels(GalaxyMap map, TerritoryCell[] cells, GalaxyCameraController cameraController)
+        {
+            if (cameraController == null)
+            {
+                return;
+            }
+
+            var labelsObject = new GameObject("FactionLabelController");
+            labelsObject.transform.SetParent(transform, worldPositionStays: false);
+
+            var labelController = labelsObject.AddComponent<FactionLabelController>();
+            labelController.Initialize(map, cells, cameraController, Camera.main);
         }
 
         /// <summary>Instancie les labels de nom/details bascules par le zoom (Phase 12).</summary>

@@ -14,7 +14,7 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 18 terminée — refonte V1 complète.** Carte galactique (100 systèmes),
+> **Statut : Phase 19 terminée — territoires et frontières.** Carte galactique (100 systèmes),
 > horloge de jeu, économie, 6 empires (1 joueur + 5 IA dont chacune **gère l'intégralité de son
 > territoire** et s'étend au-delà de ses voisins immédiats, avec un rayon d'expansion propre à
 > sa personnalité), armées (sept types d'unités dont quatre classes de vaisseaux —
@@ -34,8 +34,10 @@ ravitaillement, terrain, commandement).
 > elle en était après une fermeture ou une mise en arrière-plan, sur un seul fichier local), une
 > interface complète (menu principal, barre d'état permanente, panneau de système contextuel,
 > fenêtre de gestion à onglets — dont un onglet Flottes — et menu pause), une carte galactique
-> immersive (fond spatial procédural, systèmes stylés, halos de territoire par couleur d'empire,
-> noms/détails affichés selon le niveau de zoom), et un écran de choix en début de partie : le
+> immersive (fond spatial procédural, systèmes stylés, **zones d'influence continues découpées
+> en cellules de contrôle, aux frontières soulignées uniquement au contact d'un autre empire, et
+> nom de faction posé au cœur de chaque territoire**, noms/détails affichés selon le niveau de
+> zoom), et un écran de choix en début de partie : le
 > joueur choisit librement sa faction parmi les 6 disponibles, puis son système de départ parmi
 > les emplacements que l'algorithme de placement proposerait — ce n'est plus toujours la même
 > faction sur le même système le plus proche du centre. La génération de la galaxie (et son
@@ -657,6 +659,43 @@ résolues quasi instantanément — à revisiter en Phase 12 si nécessaire.
 > Une IA sans mémoire ne peut ni désynchroniser une sauvegarde, ni s'obstiner sur un objectif
 > devenu caduc. `IMilitaryService` ne gagne qu'un membre, `CanDeployAnotherFleet`.
 
+### Briques des territoires et des frontières (Phase 19)
+
+Les halos de la Phase 12 posaient un disque coloré par système. Deux systèmes voisins ne se
+rejoignaient jamais : l'œil lisait des taches, jamais un territoire, et encore moins une ligne
+de front. Cette phase les remplace par des **zones d'influence continues**.
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `TerritoryPartition` (nouveau) | découpe la galaxie en cellules de contrôle | **découpage par demi-plans (Sutherland-Hodgman), pas un algorithme de Voronoï dédié.** Le résultat est identique, mais l'implémentation tient en une boucle de rognage triviale à relire et à tester, là où Fortune demande une structure de front de mer et une file de priorité dont la moindre erreur de tolérance numérique produit une cellule silencieusement fausse. Classe statique pure, sans dépendance à Unity au-delà de `Vector2` — même esprit que `GalaxyGenerator` |
+| Chaque arête retient **qui se trouve en face** | `TerritoryCellVertex.NeighbourIndex` | c'est ce qui distingue une frontière contestée d'une façade sur le vide, et donc tout le concept de la phase. L'information est connue gratuitement au moment du découpage — le demi-plan qui crée l'arête *est* celui du voisin. La retrouver après coup coûterait une recherche géométrique par arête, avec les problèmes de tolérance que cela suppose |
+| Sortie anticipée **exacte**, pas une heuristique | voisins triés par distance | la bissectrice entre un site et un voisin passe à `distance / 2` du site. Si cette valeur dépasse le rayon du sommet le plus éloigné de la cellule courante, elle ne peut plus la couper — et les voisins suivants encore moins. Écarter les sites lointains ne dégrade donc jamais le résultat, contrairement à un plafond « les 24 plus proches » qui serait faux dans un amas |
+| `TerritoryMeshBuilder` (nouveau) | deux maillages combinés, **deux draw calls** | même raisonnement que `GalaxyLinkRenderer` pour les routes. Les cent halos de la Phase 12 coûtaient cent `SpriteRenderer` mis à jour à chaque frame ; ici rien n'est reconstruit tant qu'aucun système ne change de maître |
+| Le concept tient dans les **couleurs de sommets**, sans shader | dégradé + frontières | le remplissage s'estompe vers le centre de chaque cellule et s'affirme au bord ; seules les arêtes bordant un *autre* empire reçoivent un halo puis un trait vif. Une frontière contestée brille, une façade sur le vide s'évanouit — la carte désigne d'elle-même où se joue la tension, sans que le joueur ait à ouvrir un écran |
+| Chaque cellule dessine **sa propre moitié** de frontière | décalée vers l'intérieur | une frontière entre deux empires porte les deux couleurs, une de chaque côté : chacun lit la sienne. C'est aussi ce qui évite d'avoir à dédupliquer les arêtes partagées, donc à comparer des positions en virgule flottante |
+| `TerritoryLevelOfDetail` (nouveau) | l'échelle de lecture | **plus on s'éloigne, plus l'information devient politique ; plus on s'approche, plus elle devient locale.** Les territoires s'affirment au zoom éloigné (opacité 0,30) et s'effacent au zoom rapproché (0,08) : des zones pleines à intensité constante rendraient un système illisible sous sa propre couleur au moment où le joueur doit justement en lire les statistiques. Seuils exprimés en **fraction de zoom**, comme `SystemLabelController`, pour rester corrects quelle que soit la taille de galaxie configurée |
+| Largeur de frontière **par palier**, pas continue | 0,22 / 0,16 / 0,11 / 0,05 | une frontière doit garder une épaisseur à peu près constante *à l'écran*, sinon elle est en dents de scie au zoom arrière et devient un ruban au zoom avant. La suivre en continu obligerait à reconstruire le maillage à chaque frame de pincement ; l'indexer sur le palier limite les reconstructions à trois au maximum pour un pincement complet, pour un écart imperceptible à l'intérieur d'un palier |
+| L'**opacité** ne reconstruit rien | teinte du matériau | les couleurs de sommets ne stockent qu'une intensité *relative* ; l'opacité globale est portée par `_Color`, donc la faire varier à chaque frame ne coûte rien. Seule la largeur des frontières touche à la géométrie |
+| `TerritoryOverlayController` (réécrit) | assemble le tout | deux sources de reconstruction **délibérément dissociées** : le remplissage ne dépend que des propriétaires, les frontières en plus du palier de zoom. Un changement de zoom ne reconstruit donc jamais le remplissage. Détection du changement de propriétaire toujours **par sondage**, pour la raison donnée en Phase 12 |
+| `FactionLabelController` (nouveau) | nom de l'empire au cœur de son territoire | une carte politique se lit d'abord par ses noms de régions : sans eux, six couleurs restent six couleurs. Opacité suivant exactement la courbe **inverse** de celle des noms de système, si bien que les deux familles de libellés se relaient au lieu de se superposer. Ancrage au **centre de gravité pondéré par l'aire** des cellules — un empire tenant une grappe dense et un système lointain verrait sinon son nom dériver vers le vide |
+| Taille de libellé constante **à l'écran** | échelle déduite de `orthographicSize` | un texte posé dans le monde grandit avec le zoom et finit par barrer l'écran. Un nom de région est une annotation de carte, pas un objet de la scène |
+| `BuiltinFontLoader` (nouveau) | police intégrée, une seule fois | extrait de `SystemLabelController`, qui portait seul la parade au retrait d'`Arial.ttf` par Unity 6. Deux contrôleurs affichent maintenant du texte dans la scène : dupliquer ce piège de version reviendrait à devoir le corriger deux fois |
+| `Sprites/Default` en tête des nuanciers candidats | vertex color + transparence | c'est déjà celui qu'utilisent tous les `SpriteRenderer` de la scène : son comportement est vérifié dans ce projet précis. `UI/Default` ferme la marche car il force un test de profondeur permissif hors d'un Canvas, ce qui ferait passer les zones devant les systèmes. Les propriétés qu'un `SpriteRenderer` alimente normalement (`_RendererColor`, `_Flip`) sont posées explicitement, un `MeshRenderer` ne le faisant pas |
+
+> **Aucun changement de sauvegarde** (`GameSaveData.Version` reste à 4) : tout est dérivé de
+> `StarSystemState.OwnerId` et des positions des systèmes, déjà en mémoire. Le découpage ne
+> dépend que des positions, qui ne bougent jamais — il est calculé une fois à la génération de
+> la carte et n'est plus jamais retouché ; seules les couleurs suivent les conquêtes.
+>
+> **Coûts mesurés** (100 systèmes, hors appareil) : découpage 3,5 ms **une fois par partie** ;
+> reconstruction du remplissage 0,04 ms et des frontières 0,12 ms, uniquement sur changement de
+> propriétaire ou de palier de zoom. Les tampons de construction sont réutilisés, donc aucune
+> allocation n'est faite après la première reconstruction — ce qui compte : un pic de
+> ramasse-miettes surviendrait sinon exactement pendant une bataille ou une colonisation.
+>
+> **`SystemLabelController` n'est pas modifié** par cette phase (hors extraction de la police) :
+> les noms de systèmes gardent le comportement de la Phase 12.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -677,7 +716,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (511 tests, tous packages confondus).
+Voir §5 pour le compte total (533 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -686,7 +725,7 @@ fonctionne encore dans l'éditeur (qui sait charger n'importe quelle scène du p
 
 ---
 
-## 5. Tester les Phases 2-18 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux, colonisation, déplacement longue distance et IA dynamique
+## 5. Tester les Phases 2-19 — galaxie, horloge, économie, empires, armées, diplomatie, recherche, espionnage, sauvegarde, interface, carte immersive, flottes, amiraux, colonisation, déplacement longue distance, IA dynamique et territoires
 
 **D'abord, tester le menu principal : ouvrir `Assets/Scenes/Bootstrap.unity` et appuyer sur
 Play.** Un panneau centré « ESPACE » doit apparaître avec trois boutons :
@@ -858,7 +897,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 511 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 533 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -934,7 +973,16 @@ le territoire, voisins déduits de **tous** les systèmes possédés ; parcours 
 multi-source avec la bonne origine, système étranger **atteint mais jamais traversé**, rayon
 d'expansion respecté, déterminisme ; cible la moins exigeante à portée, **aucun plan renvoyé
 tant que la garnison ne suffit pas** — donc aucun détachement orphelin —, réserve conservée,
-offensive sur le système ennemi le moins défendu, aucune offensive hors état de guerre). La
+offensive sur le système ennemi le moins défendu, aucune offensive hors état de guerre).
+`TerritoryTests` (Phase 19 — chaque système à l'intérieur de sa propre cellule, **aucun point
+d'une cellule plus proche d'un autre système** (la propriété de Voronoï elle-même), arête taguée
+« voisin *j* » toujours équidistante des deux sites, aire strictement positive, déterminisme,
+arguments invalides rejetés ; éventail de remplissage bien dimensionné et dégradé du centre vers
+le bord, **arête intérieure à un empire jamais dessinée** — c'est ce qui fait la différence
+entre un bloc continu et une mosaïque —, frontière contestée plus intense qu'une façade sur le
+vide, rubans jamais hors du disque, maillage vidé quand un empire perd tout ; paliers de lecture,
+opacités monotones, frontière toujours plus lisible que la zone qu'elle borde, nom de faction
+éteint dès que les noms de systèmes prennent le relais). La
 Phase 14
 (refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
 `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de vaisseaux)
@@ -1023,6 +1071,35 @@ les deux propriétés qui rendent l'IA viable : un parcours unique en O(V+E) con
 opérations qu'un Dijkstra par candidat coûterait chaque mois, et une cible de garnison ramenée
 de 40 à 24 unités pour un Militariste à cinq systèmes.
 
+### Vérifier les territoires (Phase 19)
+
+**Au zoom le plus éloigné**, chaque empire doit apparaître comme un **bloc coloré continu** —
+pas une constellation de disques —, avec son nom en majuscules posé en son centre. Deux empires
+qui se touchent doivent afficher une frontière **vive et doublée** (chacun sa couleur, de son
+côté) ; une bordure donnant sur le vide ou sur un système libre doit rester à peine visible.
+C'est la lecture principale : d'un coup d'œil, on doit voir qui est encerclé et où sont les
+fronts.
+
+**En zoomant progressivement**, quatre choses doivent se produire dans cet ordre : le nom de
+faction s'efface (vers 30-46 % de zoom), les noms de systèmes prennent le relais (comportement
+inchangé depuis la Phase 12), la couleur des zones s'atténue continûment (0,30 → 0,08), et
+l'épaisseur des frontières diminue par paliers pour rester à peu près constante à l'écran.
+**Aucune saccade ne doit être perceptible** au franchissement d'un palier : seules les
+frontières sont reconstruites, en ~0,12 ms.
+
+**En conquérant ou en colonisant un système** (attendre qu'une IA le fasse, ou le faire
+soi-même) : sa cellule doit changer de couleur immédiatement, et la frontière doit se
+**redessiner au bon endroit** — un système pris à un voisin fait avancer la ligne de front d'une
+cellule entière, il ne se contente pas de changer de teinte.
+
+**Vérification chiffrée** — le découpage est confronté à sa propre définition dans
+`TerritoryTests` : chaque système est à l'intérieur de sa cellule, aucun point d'une cellule
+n'est plus proche d'un autre système, chaque arête taguée « voisin *j* » est effectivement
+équidistante des deux sites, et les cellules **pavent exactement** le disque galactique (écart
+d'aire cumulée mesuré : 0,0000 %). Cette dernière propriété est la plus utile : une seule
+cellule mal découpée laisserait un trou ou un recouvrement, invisible à l'œil sur une carte
+sombre mais fatal dès qu'on colorie deux empires voisins.
+
 ---
 
 ## 6. Feuille de route
@@ -1047,6 +1124,7 @@ de 40 à 24 unités pour un Militariste à cinq systèmes.
 | 16 | Colonisation stratégique (population/développement/stabilité/défense, pertes dynamiques) | ✅ terminée |
 | 17 | Déplacement longue distance (itinéraire automatique, durée selon la distance) + rencontres spatiales | ✅ terminée |
 | 18 | IA plus dynamique (multi-système, expansion longue distance, rayon par personnalité) | ✅ terminée |
+| 19 | Territoires et frontières (cellules de contrôle, frontières contestées, noms de factions, échelle de lecture) | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
@@ -1060,7 +1138,12 @@ réécrire deux fois la même chose. L'IA (Phase 18) a été volontairement trai
 pilote déjà économie/recherche/espionnage/diplomatie/armée une fois par mois chacune, et la
 retoucher avant la refonte des flottes/colonisation/déplacement aurait obligé à la retoucher une
 seconde fois une fois ces mécaniques changées — ce qui s'est vérifié, la Phase 18 consistant
-précisément à rattraper les Phases 16 et 17 dans les cinq decision makers. La vision multi-planètes par système (demandée
+précisément à rattraper les Phases 16 et 17 dans les cinq decision makers. La **Phase 19** est
+née d'une demande distincte, formulée après la refonte V1 : rendre les zones d'influence
+réellement visibles. Elle regroupe cette demande et la mise à l'échelle des libellés selon le
+zoom, parce que les deux se répondent — des zones pleines à intensité constante ruineraient la
+lisibilité au zoom rapproché, et des noms de factions n'auraient aucun sens sans territoires
+pour les porter. La vision multi-planètes par système (demandée
 pour une version future) n'est pas une phase à part : c'est une contrainte de conception
 respectée dans chacune des phases ci-dessus plutôt qu'une fonctionnalité à construire
 maintenant.
