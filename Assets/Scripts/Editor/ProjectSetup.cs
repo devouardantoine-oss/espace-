@@ -56,6 +56,7 @@ namespace Espace.Editor
             bool inputHandlerChanged = ConfigureInputSystem();
 
             Debug.Log("[Setup] Configuration du projet terminee.");
+            LogAppliedAndroidSettings();
 
             if (inputHandlerChanged)
             {
@@ -239,11 +240,60 @@ namespace Espace.Editor
         }
 
         /// <summary>
+        /// Relit et journalise les reglages Android qui font echouer un build quand ils sont
+        /// faux, plutot que de supposer qu'ils ont ete appliques.
+        /// <para>
+        /// Ces quatre valeurs sont exactement celles qui coutent le plus cher a decouvrir trop
+        /// tard : trois d'entre elles ne se manifestent qu'apres une centaine de secondes de
+        /// compilation, et la quatrieme (l'orientation) qu'une fois l'application installee sur
+        /// le telephone, ou l'interface se retrouve a l'etroit en portrait.
+        /// </para>
+        /// </summary>
+        private static void LogAppliedAndroidSettings()
+        {
+            bool landscapeOnly = !PlayerSettings.allowedAutorotateToPortrait
+                && !PlayerSettings.allowedAutorotateToPortraitUpsideDown
+                && (PlayerSettings.allowedAutorotateToLandscapeLeft || PlayerSettings.allowedAutorotateToLandscapeRight);
+
+            Debug.Log(
+                "[Setup] Reglages Android relus : "
+                + $"backend {PlayerSettings.GetScriptingBackend(NamedBuildTarget.Android)}, "
+                + $"architectures {PlayerSettings.Android.targetArchitectures}, "
+                + $"SDK minimal {PlayerSettings.Android.minSdkVersion}, "
+                + $"orientation {(landscapeOnly ? "paysage uniquement" : "PORTRAIT AUTORISE — l'interface sera a l'etroit")}.");
+        }
+
+        /// <summary>Libelle lisible d'une valeur d'<c>activeInputHandler</c>, pour les messages de diagnostic.</summary>
+        private static string DescribeInputHandler(int value)
+        {
+            switch (value)
+            {
+                case 0: return "Input Manager (Old)";
+                case InputHandlerNewInputSystem: return "Input System Package (New)";
+                case 2: return "Both";
+                default: return $"inconnu ({value})";
+            }
+        }
+
+        /// <summary>
         /// Bascule Active Input Handling sur le nouvel Input System.
         /// <para>
         /// Ce reglage n'expose aucune API publique : on edite directement la propriete
         /// serialisee <c>activeInputHandler</c> de <c>ProjectSettings.asset</c>. C'est la
         /// methode utilisee par les outils d'installation officiels du package.
+        /// </para>
+        /// <para>
+        /// <b><c>AssetDatabase.SaveAssets</c> ne suffit pas :</b> il ne couvre que les assets du
+        /// dossier <c>Assets/</c>. <c>ProjectSettings.asset</c> n'est reecrit sur le disque qu'a
+        /// la fermeture de l'editeur ou sur <c>File → Save Project</c>. Sans cet appel explicite,
+        /// la valeur restait en memoire, semblait appliquee, puis disparaissait — et la
+        /// compilation Android echouait sur « Active Input Handling is set to Both » alors que le
+        /// script venait d'annoncer avoir reussi.
+        /// </para>
+        /// <para>
+        /// <b>Le resultat est relu et verifie</b> plutot que suppose : un echec silencieux sur ce
+        /// reglage precis coute un build Android complet (une centaine de secondes) avant de se
+        /// manifester.
         /// </para>
         /// </summary>
         /// <returns><c>true</c> si la valeur a change (un redemarrage de l'editeur est alors requis).</returns>
@@ -252,26 +302,54 @@ namespace Espace.Editor
             Object[] settingsAssets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset");
             if (settingsAssets == null || settingsAssets.Length == 0)
             {
-                Debug.LogWarning("[Setup] ProjectSettings.asset illisible : activez l'Input System manuellement.");
+                Debug.LogError(
+                    "[Setup] ProjectSettings.asset illisible. Reglez Active Input Handling sur "
+                    + "« Input System Package (New) » dans Edit > Project Settings > Player > Other Settings.");
                 return false;
             }
 
             var serializedSettings = new SerializedObject(settingsAssets[0]);
+            serializedSettings.Update();
+
             SerializedProperty inputHandler = serializedSettings.FindProperty("activeInputHandler");
             if (inputHandler == null)
             {
-                Debug.LogWarning("[Setup] Propriete 'activeInputHandler' introuvable : activez l'Input System manuellement.");
+                Debug.LogError(
+                    "[Setup] Propriete 'activeInputHandler' introuvable. Reglez Active Input Handling sur "
+                    + "« Input System Package (New) » dans Edit > Project Settings > Player > Other Settings.");
                 return false;
             }
 
-            if (inputHandler.intValue == InputHandlerNewInputSystem)
+            int previous = inputHandler.intValue;
+            if (previous == InputHandlerNewInputSystem)
             {
+                Debug.Log("[Setup] Active Input Handling : deja sur Input System Package (New).");
                 return false;
             }
 
             inputHandler.intValue = InputHandlerNewInputSystem;
-            serializedSettings.ApplyModifiedProperties();
+            serializedSettings.ApplyModifiedPropertiesWithoutUndo();
+
+            // Ecrit reellement ProjectSettings.asset sur le disque (voir la remarque ci-dessus).
             AssetDatabase.SaveAssets();
+            EditorApplication.ExecuteMenuItem("File/Save Project");
+
+            serializedSettings.Update();
+            int applied = serializedSettings.FindProperty("activeInputHandler").intValue;
+
+            if (applied != InputHandlerNewInputSystem)
+            {
+                Debug.LogError(
+                    $"[Setup] Active Input Handling est reste sur « {DescribeInputHandler(applied)} ». "
+                    + "Reglez-le sur « Input System Package (New) » dans "
+                    + "Edit > Project Settings > Player > Other Settings, puis redemarrez l'editeur. "
+                    + "Laisse sur « Both », la compilation Android echoue.");
+                return false;
+            }
+
+            Debug.Log(
+                $"[Setup] Active Input Handling : {DescribeInputHandler(previous)} -> Input System Package (New). "
+                + "Redemarrage de l'editeur requis.");
             return true;
         }
     }

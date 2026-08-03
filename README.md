@@ -105,6 +105,18 @@ quelle que soit la version d'Unity 6 installée.
 
 > Le passage à l'Input System **impose un redémarrage de l'éditeur**. Acceptez la
 > proposition d'Unity, ou fermez et rouvrez le projet.
+>
+> **Ce réglage est vérifié après écriture.** `AssetDatabase.SaveAssets` ne couvre que le dossier
+> `Assets/` : `ProjectSettings.asset` n'est réécrit sur le disque qu'à la fermeture de l'éditeur
+> ou sur `File → Save Project`. Sans cet appel explicite, la valeur restait en mémoire, semblait
+> appliquée, puis disparaissait — et la compilation Android échouait sur
+> « *Active Input Handling is set to Both* » après cent secondes, alors que le script venait
+> d'annoncer sa réussite. Le script relit désormais la valeur et journalise une erreur explicite
+> si elle n'a pas pris.
+>
+> Le script journalise aussi, à la fin, les quatre réglages Android relus (backend,
+> architectures, SDK minimal, orientation) : ce sont ceux dont l'erreur ne se manifeste
+> qu'après un build complet, ou une fois l'application installée sur le téléphone.
 
 L'opération est idempotente : la relancer ne crée aucun doublon.
 
