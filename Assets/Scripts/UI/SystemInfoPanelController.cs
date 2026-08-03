@@ -295,6 +295,12 @@ namespace Espace.UI
             float y = HudBarHeight + Mathf.Max(Margin, (available - cardHeight) * 0.5f + Margin);
 
             var card = new Rect(x, y, cardWidth, cardHeight);
+
+            // Declare la fiche comme zone d'interface : IMGUI ne consomme pas les entrees du
+            // nouvel Input System, et sans cela un appui sur un onglet atteignait
+            // GalaxySelectionController, qui n'y trouvait aucun systeme et refermait le panneau.
+            UiScreenRegions.Occupy(card, UITheme.Scale);
+
             GUI.Box(card, GUIContent.none, UITheme.Panel);
 
             var headerRect = new Rect(card.x, card.y, card.width, HeaderHeight);
@@ -340,60 +346,62 @@ namespace Espace.UI
         {
             GUI.Box(rect, GUIContent.none, UITheme.Header);
 
-            var inner = new Rect(rect.x + Padding, rect.y + 8, rect.width - 2 * Padding, rect.height - 16);
+            var inner = new Rect(rect.x + Padding, rect.y + 7, rect.width - 2 * Padding, rect.height - 14);
 
             const float identityWidth = 186f;
-            GUI.Label(new Rect(inner.x, inner.y, identityWidth, 24), system.Name, UITheme.Title);
-            GUI.Label(new Rect(inner.x, inner.y + 22, identityWidth, 18), OwnerLabel(system.OwnerId), UITheme.MutedLabel);
+            GUI.Label(new Rect(inner.x, inner.y, identityWidth, UITheme.TitleHeight), system.Name, UITheme.Title);
+            GUI.Label(new Rect(inner.x, inner.y + UITheme.TitleHeight, identityWidth, UITheme.CaptionHeight),
+                OwnerLabel(system.OwnerId), UITheme.Caption);
 
-            // Quatre jauges cote a cote : les statistiques qui decident d'une action sont lues
-            // d'un coup d'œil, sans avoir a comparer des nombres alignes en colonne.
+            // Quatre jauges cote a cote : les statistiques qui decident d'une action se lisent
+            // d'un coup d'œil, sans comparer des nombres alignes en colonne.
             float gaugesX = inner.x + identityWidth + Gap;
-            float gaugesWidth = inner.xMax - gaugesX;
-            float columnWidth = (gaugesWidth - 3 * Gap) / 4f;
+            float columnWidth = (inner.xMax - gaugesX - 3 * Gap) / 4f;
 
-            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 0),
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, 0),
                 "POPULATION", $"{system.Population} M", Mathf.Clamp01(system.Population / 4000f), new Color(0.56f, 0.72f, 0.96f));
 
-            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 1),
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, 1),
                 "RICHESSE", $"{system.Wealth}/100", Mathf.Clamp01(system.Wealth / 100f), new Color(0.90f, 0.80f, 0.20f));
 
-            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 2),
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, 2),
                 "STABILITE", HudFormatter.FormatPercent(system.Stability), Mathf.Clamp01(system.Stability),
                 system.Stability > 0.6f ? UITheme.PositiveColor : UITheme.NegativeColor);
 
-            DrawPipGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 3),
-                "DEVELOPPEMENT", $"{system.DevelopmentLevel}/{MaxDevelopmentLevel}", system.DevelopmentLevel, MaxDevelopmentLevel);
+            // « DEVELOPPEMENT » ne tient pas dans une colonne de cette largeur : abrege plutot
+            // que tronque en cours de mot, ce qui ressemblerait a un defaut d'affichage.
+            DrawPipGauge(GaugeRect(gaugesX, inner.y, columnWidth, 3),
+                "DEVELOP.", $"{system.DevelopmentLevel}/{MaxDevelopmentLevel}", system.DevelopmentLevel, MaxDevelopmentLevel);
         }
 
-        private static Rect GaugeRect(float x, float y, float width, float height, int index) =>
-            new Rect(x + index * (width + Gap), y + 6, width, height - 6);
+        private static Rect GaugeRect(float x, float y, float width, int index) =>
+            new Rect(x + index * (width + Gap), y, width, UITheme.CaptionHeight + UITheme.ValueHeight + 8);
 
-        /// <summary>Libelle, valeur et barre de remplissage : la forme dit l'etat avant meme que le chiffre soit lu.</summary>
+        /// <summary>Legende, valeur et barre de remplissage : la forme dit l'etat avant meme que le chiffre soit lu.</summary>
         private static void DrawGauge(Rect rect, string key, string value, float fill, Color color)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), key, UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x, rect.y + 12, rect.width, 16), value, UITheme.Label);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), key, UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight, rect.width, UITheme.ValueHeight), value, UITheme.Value);
 
-            var track = new Rect(rect.x, rect.y + 30, rect.width, 4);
+            var track = new Rect(rect.x, rect.y + UITheme.CaptionHeight + UITheme.ValueHeight + 3, rect.width, 4);
             GUI.DrawTexture(track, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.10f)));
             GUI.DrawTexture(new Rect(track.x, track.y, track.width * Mathf.Clamp01(fill), track.height), UITheme.SolidTexture(color));
         }
 
         /// <summary>
         /// Variante a pastilles pour le developpement : c'est une echelle discrete de 0 a 5, pas
-        /// une proportion. Une barre continue suggererait des valeurs intermediaires qui
-        /// n'existent pas.
+        /// une proportion. Une barre continue suggererait des valeurs intermediaires inexistantes.
         /// </summary>
         private static void DrawPipGauge(Rect rect, string key, string value, int filled, int total)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), key, UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x, rect.y + 12, rect.width, 16), value, UITheme.Label);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), key, UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight, rect.width, UITheme.ValueHeight), value, UITheme.Value);
 
             float pipWidth = (rect.width - (total - 1) * 3f) / total;
+            float pipY = rect.y + UITheme.CaptionHeight + UITheme.ValueHeight + 3;
             for (int i = 0; i < total; i++)
             {
-                var pip = new Rect(rect.x + i * (pipWidth + 3f), rect.y + 30, pipWidth, 4);
+                var pip = new Rect(rect.x + i * (pipWidth + 3f), pipY, pipWidth, 4);
                 GUI.DrawTexture(pip, UITheme.SolidTexture(i < filled
                     ? UITheme.AccentBackground
                     : new Color(1f, 1f, 1f, 0.10f)));
@@ -438,12 +446,12 @@ namespace Espace.UI
             }
 
             bool hasBadge = !string.IsNullOrEmpty(badge);
-            float labelY = hasBadge ? rect.y + 8 : rect.y + (rect.height - 18) * 0.5f;
+            float labelY = hasBadge ? rect.y + 4 : rect.y + (rect.height - UITheme.ValueHeight) * 0.5f;
 
-            GUI.Label(new Rect(rect.x, labelY, rect.width, 18), label, UITheme.Label);
+            GUI.Label(new Rect(rect.x, labelY, rect.width, UITheme.ValueHeight), label, UITheme.Value);
             if (hasBadge)
             {
-                GUI.Label(new Rect(rect.x, rect.y + 26, rect.width, 14), badge, UITheme.MutedLabel);
+                GUI.Label(new Rect(rect.x, rect.y + 4 + UITheme.ValueHeight, rect.width, UITheme.CaptionHeight), badge, UITheme.Caption);
             }
         }
 
@@ -477,12 +485,12 @@ namespace Espace.UI
             var left = new Rect(rect.x, rect.y, half, rect.height);
             var right = new Rect(rect.x + half + Padding, rect.y, half, rect.height);
 
-            GUI.Label(new Rect(left.x, left.y, left.width, 14), "GISEMENTS", UITheme.MutedLabel);
+            GUI.Label(new Rect(left.x, left.y, left.width, UITheme.CaptionHeight), "GISEMENTS", UITheme.Caption);
             GUI.Label(new Rect(left.x, left.y + 14, left.width, 18),
                 system.ResourceDeposits.Length == 0 ? "Aucun" : string.Join(", ", system.ResourceDeposits),
                 UITheme.Label);
 
-            GUI.Label(new Rect(left.x, left.y + 36, left.width, 14), "RESEAU", UITheme.MutedLabel);
+            GUI.Label(new Rect(left.x, left.y + 36, left.width, UITheme.CaptionHeight), "RESEAU", UITheme.Caption);
             GUI.Label(new Rect(left.x, left.y + 50, left.width, 18),
                 $"{_map.GetNeighbors(system.Id).Count} routes hyperspatiales", UITheme.Label);
 
@@ -490,18 +498,18 @@ namespace Espace.UI
             // ou il est accompagne des flottes capables de s'en charger. Le dupliquer faisait
             // deborder l'Apercu de treize unites des qu'un message de retour s'affichait.
 
-            GUI.Label(new Rect(right.x, right.y, right.width, 14), "FORCES EN PRESENCE", UITheme.MutedLabel);
+            GUI.Label(new Rect(right.x, right.y, right.width, UITheme.CaptionHeight), "FORCES EN PRESENCE", UITheme.Caption);
 
             if (_military == null)
             {
-                GUI.Label(new Rect(right.x, right.y + 18, right.width, 18), "Inconnues", UITheme.MutedLabel);
+                GUI.Label(new Rect(right.x, right.y + UITheme.CaptionHeight + 2, right.width, UITheme.ValueHeight), "Inconnues", UITheme.Caption);
                 return;
             }
 
             IReadOnlyList<Fleet> fleets = _military.GetFleetsAt(system.Id);
             if (fleets.Count == 0)
             {
-                GUI.Label(new Rect(right.x, right.y + 18, right.width, 18), "Aucune garnison", UITheme.MutedLabel);
+                GUI.Label(new Rect(right.x, right.y + UITheme.CaptionHeight + 2, right.width, UITheme.ValueHeight), "Aucune garnison", UITheme.Caption);
                 return;
             }
 
@@ -513,8 +521,8 @@ namespace Espace.UI
                     break;
                 }
 
-                GUI.Label(new Rect(right.x, lineY, right.width - 70, 18), OwnerLabel(fleet.OwnerId), UITheme.Label);
-                GUI.Label(new Rect(right.xMax - 70, lineY, 70, 18), $"{fleet.Composition.TotalCount} unites", UITheme.MutedLabel);
+                GUI.Label(new Rect(right.x, lineY, right.width - 74, UITheme.ValueHeight), OwnerLabel(fleet.OwnerId), UITheme.Value);
+                GUI.Label(new Rect(right.xMax - 74, lineY, 74, UITheme.ValueHeight), $"{fleet.Composition.TotalCount} u.", UITheme.Caption);
                 lineY += 20;
             }
         }
@@ -546,7 +554,7 @@ namespace Espace.UI
             }
             GUI.enabled = true;
 
-            GUI.Label(new Rect(rect.x, investRect.yMax + 4, rect.width, 14), "BATIMENTS", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, investRect.yMax + 4, rect.width, UITheme.CaptionHeight), "BATIMENTS", UITheme.Caption);
 
             // Les cinq batiments sur une seule rangee : la pleine largeur de la fiche leur laisse
             // environ 118 unites chacun, contre 60 dans l'ancienne colonne. Aucun ne deborde.
@@ -633,13 +641,13 @@ namespace Espace.UI
             float contentBottom = left.yMax - buttonHeight - 6f;
             float lineY = left.y;
 
-            WriteLine(left, ref lineY, contentBottom, 14, "GARNISON", UITheme.MutedLabel);
-            WriteLine(left, ref lineY, contentBottom, 24, $"{garrison.TotalCount} unites", UITheme.Title);
-            WriteLine(left, ref lineY, contentBottom, 14, $"puissance ~{_military.EstimatePower(garrison):0}", UITheme.MutedLabel);
-            WriteLine(left, ref lineY, contentBottom, 14, garrison.ToString(), UITheme.MutedLabel);
-            WriteLine(left, ref lineY, contentBottom, 14,
+            WriteLine(left, ref lineY, contentBottom, UITheme.CaptionHeight, "GARNISON", UITheme.Caption);
+            WriteLine(left, ref lineY, contentBottom, UITheme.TitleHeight, $"{garrison.TotalCount} unites", UITheme.Title);
+            WriteLine(left, ref lineY, contentBottom, UITheme.CaptionHeight, $"puissance ~{_military.EstimatePower(garrison):0}", UITheme.Caption);
+            WriteLine(left, ref lineY, contentBottom, UITheme.CaptionHeight, garrison.ToString(), UITheme.Caption);
+            WriteLine(left, ref lineY, contentBottom, UITheme.CaptionHeight,
                 canDeploy ? $"{deployed} flotte(s) en campagne" : $"{deployed} en campagne — plafond atteint",
-                canDeploy ? UITheme.MutedLabel : UITheme.Label);
+                canDeploy ? UITheme.Caption : UITheme.Value);
 
             float buttonWidth = (left.width - Gap) * 0.5f;
             var createRect = new Rect(left.x, left.yMax - buttonHeight, buttonWidth, buttonHeight);
@@ -695,7 +703,7 @@ namespace Espace.UI
         /// </summary>
         private void DrawRecruitGrid(Rect rect, StarSystemState system)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), "RECRUTER", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "RECRUTER", UITheme.Caption);
 
             IReadOnlyList<UnitTypeDefinition> catalog = _military.UnitCatalog;
             var grid = new Rect(rect.x, rect.y + 16, rect.width, rect.height - 16);
@@ -740,7 +748,7 @@ namespace Espace.UI
         /// </summary>
         private void DrawFleetList(Rect rect, StarSystemState system)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "FLOTTES SUR PLACE", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "FLOTTES SUR PLACE", UITheme.Caption);
 
             var playerFleets = _military.GetFleetsAt(system.Id)
                 .Where(f => f.OwnerId == EconomyService.PlayerOwnerId)
@@ -748,7 +756,7 @@ namespace Espace.UI
 
             if (playerFleets.Count == 0)
             {
-                GUI.Label(new Rect(rect.x, rect.y + 20, rect.width, 18), "Aucune", UITheme.MutedLabel);
+                GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight + 2, rect.width, UITheme.ValueHeight), "Aucune", UITheme.Caption);
                 return;
             }
 
@@ -765,9 +773,9 @@ namespace Espace.UI
                 var row = new Rect(rect.x, rowY, rect.width, rowHeight);
                 GUI.DrawTexture(row, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
 
-                GUI.Label(new Rect(row.x + 8, row.y + 3, row.width - 110, 18), fleet.Name, UITheme.Label);
-                GUI.Label(new Rect(row.x + 8, row.y + 21, row.width - 110, 16),
-                    $"{fleet.Composition.TotalCount} u. · amiral {fleet.Admiral.Name}", UITheme.MutedLabel);
+                GUI.Label(new Rect(row.x + 8, row.y + 3, row.width - 110, UITheme.ValueHeight), fleet.Name, UITheme.Value);
+                GUI.Label(new Rect(row.x + 6 + UITheme.ValueHeight, row.y + 3 + UITheme.ValueHeight, row.width - 110, UITheme.CaptionHeight),
+                    $"{fleet.Composition.TotalCount} u. · amiral {fleet.Admiral.Name}", UITheme.Caption);
 
                 var sendRect = new Rect(row.xMax - 94, row.y + 5, 88, rowHeight - 10);
                 if (GUI.Button(sendRect, "Envoyer", UITheme.Button))
@@ -794,9 +802,9 @@ namespace Espace.UI
             const float titleHeight = 40f;
             const float footerHeight = 52f;
 
-            GUI.Label(new Rect(rect.x, rect.y, rect.width - 240, 24), "Composition de la flotte", UITheme.Title);
-            GUI.Label(new Rect(rect.x, rect.y + 22, rect.width - 240, 16),
-                $"{total}/{MaxUnitsPerFleet} unites embarquees — le reste tient la garnison", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width - 240, UITheme.TitleHeight), "Composition de la flotte", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.TitleHeight, rect.width - 240, UITheme.CaptionHeight),
+                $"{total}/{MaxUnitsPerFleet} unites embarquees — le reste tient la garnison", UITheme.Caption);
 
             var types = (UnitType[])System.Enum.GetValues(typeof(UnitType));
             var grid = new Rect(rect.x, rect.y + titleHeight, rect.width, rect.height - titleHeight - footerHeight);
@@ -820,7 +828,7 @@ namespace Espace.UI
 
                 GUI.DrawTexture(tile, UITheme.SolidTexture(new Color(1f, 1f, 1f, available > 0 ? 0.05f : 0.02f)));
 
-                GUI.Label(new Rect(tile.x + 6, tile.y + 4, tile.width - 12, 14), ShortName(type), UITheme.MutedLabel);
+                GUI.Label(new Rect(tile.x + 6, tile.y + 3, tile.width - 12, UITheme.CaptionHeight), ShortName(type), UITheme.Caption);
 
                 // Valeur placee <b>entre</b> les deux boutons plutot qu'au-dessus : empilee, elle
                 // chevauchait les boutons des que la tuile descendait sous 62 unites de haut,
@@ -832,7 +840,7 @@ namespace Espace.UI
 
                 var minusRect = new Rect(tile.x + 6, stepperY, stepperWidth, stepperHeight);
                 var plusRect = new Rect(tile.xMax - 6 - stepperWidth, stepperY, stepperWidth, stepperHeight);
-                GUI.Label(new Rect(minusRect.xMax, stepperY + (stepperHeight - 22) * 0.5f, valueWidth, 22),
+                GUI.Label(new Rect(minusRect.xMax, stepperY + (stepperHeight - UITheme.TitleHeight) * 0.5f, valueWidth, UITheme.TitleHeight),
                     $"{chosen}/{available}", UITheme.Title);
 
                 GUI.enabled = chosen > 0;
@@ -922,13 +930,13 @@ namespace Espace.UI
             int lost = ColonizationRules.InfantryLost(system);
 
             const float leftWidth = 200f;
-            GUI.Label(new Rect(rect.x, rect.y, leftWidth, 16), "COLONISATION", UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x, rect.y + 16, leftWidth, 26), $"{required} Infanterie", UITheme.Title);
-            GUI.Label(new Rect(rect.x, rect.y + 42, leftWidth, 16), $"dont {lost} perdue(s) a l'installation", UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x, rect.y + 60, leftWidth, 16), $"stabilite {HudFormatter.FormatPercent(system.Stability)}", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y, leftWidth, UITheme.CaptionHeight), "COLONISATION", UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight, leftWidth, UITheme.TitleHeight), $"{required} Infanterie", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight + UITheme.TitleHeight, leftWidth, UITheme.CaptionHeight), $"dont {lost} perdue(s) a l'installation", UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + 2 * UITheme.CaptionHeight + UITheme.TitleHeight, leftWidth, UITheme.CaptionHeight), $"stabilite {HudFormatter.FormatPercent(system.Stability)}", UITheme.Caption);
 
             var listRect = new Rect(rect.x + leftWidth + Padding, rect.y, rect.width - leftWidth - Padding, rect.height);
-            GUI.Label(new Rect(listRect.x, listRect.y, listRect.width, 16), "FLOTTES DISPONIBLES", UITheme.MutedLabel);
+            GUI.Label(new Rect(listRect.x, listRect.y, listRect.width, UITheme.CaptionHeight), "FLOTTES DISPONIBLES", UITheme.Caption);
 
             var candidates = _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId)
                 .Where(f => f.Status == FleetStatus.Stationed)
@@ -958,12 +966,12 @@ namespace Espace.UI
                 var row = new Rect(listRect.x, rowY, listRect.width, rowHeight);
                 GUI.DrawTexture(row, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
 
-                GUI.Label(new Rect(row.x + 8, row.y + 2, row.width - 110, 18), $"{fleet.Name} — {origin}", UITheme.Label);
-                GUI.Label(new Rect(row.x + 8, row.y + 20, row.width - 110, 16),
+                GUI.Label(new Rect(row.x + 8, row.y + 2, row.width - 110, UITheme.ValueHeight), $"{fleet.Name} — {origin}", UITheme.Value);
+                GUI.Label(new Rect(row.x + 8, row.y + 2 + UITheme.ValueHeight, row.width - 110, UITheme.CaptionHeight),
                     capable
                         ? $"{fleet.Composition.Infantry} Infanterie a bord"
                         : $"{fleet.Composition.Infantry}/{required} Infanterie — insuffisant",
-                    capable ? UITheme.MutedLabel : UITheme.Label);
+                    capable ? UITheme.Caption : UITheme.Value);
 
                 GUI.enabled = capable;
                 if (GUI.Button(new Rect(row.xMax - 100, row.y + 4, 94, rowHeight - 8), "Coloniser", UITheme.Button) && capable)
@@ -993,7 +1001,7 @@ namespace Espace.UI
             if (_diplomacy != null
                 && _diplomacy.GetStatus(EconomyService.PlayerOwnerId, system.OwnerId) != DiplomaticStatus.War)
             {
-                GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "RENSEIGNEMENT", UITheme.MutedLabel);
+                GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "RENSEIGNEMENT", UITheme.Caption);
                 DrawIntelRow(rect, system);
                 GUI.Label(new Rect(rect.x, rect.y + 90, rect.width, 18),
                     "Aucune offensive possible : vous n'etes pas en guerre avec cet empire.", UITheme.Label);
@@ -1025,8 +1033,8 @@ namespace Espace.UI
         private static void DrawIntelStat(Rect rect, string key, string value)
         {
             GUI.DrawTexture(rect, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
-            GUI.Label(new Rect(rect.x + 8, rect.y + 6, rect.width - 16, 14), key, UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x + 8, rect.y + 22, rect.width - 16, 26), value, UITheme.Title);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 6, rect.width - 16, UITheme.CaptionHeight), key, UITheme.Caption);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 6 + UITheme.CaptionHeight, rect.width - 16, UITheme.TitleHeight), value, UITheme.Title);
         }
 
         /// <summary>
@@ -1102,7 +1110,7 @@ namespace Espace.UI
 
         private void DrawOffensiveCandidates(Rect rect)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), "FLOTTES A PORTEE", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "FLOTTES A PORTEE", UITheme.Caption);
 
             if (_offensiveCandidates.Count == 0)
             {
@@ -1139,9 +1147,9 @@ namespace Espace.UI
                 }
                 GUI.enabled = true;
 
-                GUI.Label(new Rect(row.x + 8, row.y + 2, 16, 16), engaged ? "x" : "·", UITheme.Label);
-                GUI.Label(new Rect(row.x + 26, row.y + 2, row.width - 34, 16), candidate.Label, UITheme.Label);
-                GUI.Label(new Rect(row.x + 26, row.y + 17, row.width - 34, 14), candidate.Detail, UITheme.MutedLabel);
+                GUI.Label(new Rect(row.x + 8, row.y + 2, 16, UITheme.ValueHeight), engaged ? "x" : "·", UITheme.Value);
+                GUI.Label(new Rect(row.x + 26, row.y + 2, row.width - 34, UITheme.ValueHeight), candidate.Label, UITheme.Value);
+                GUI.Label(new Rect(row.x + 26, row.y + 2 + UITheme.ValueHeight, row.width - 34, UITheme.CaptionHeight), candidate.Detail, UITheme.Caption);
 
                 rowY += rowHeight + 4;
             }
@@ -1185,7 +1193,7 @@ namespace Espace.UI
             }
 
             GUI.Label(new Rect(rect.x, verdictY, rect.width, 32), verdict, verdictStyle);
-            GUI.Label(new Rect(rect.x, verdictY + 30, rect.width, 14), "prevision a effectifs constants", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, verdictY + 32, rect.width, UITheme.CaptionHeight), "prevision a effectifs constants", UITheme.Caption);
 
             float buttonHeight = Mathf.Clamp(rect.height * 0.34f, 32f, 44f);
             var launchRect = new Rect(rect.x, rect.yMax - buttonHeight, rect.width, buttonHeight);
@@ -1200,8 +1208,8 @@ namespace Espace.UI
 
         private static void DrawRecapStat(Rect rect, string key, string value)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 12), key, UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x, rect.y + 10, rect.width, 16), value, UITheme.Label);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), key, UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + UITheme.CaptionHeight, rect.width, UITheme.ValueHeight), value, UITheme.Value);
         }
 
         /// <summary>
@@ -1231,7 +1239,7 @@ namespace Espace.UI
         {
             OffensiveOutcome outcome = SimulateEngagement(system);
 
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 26), $"Engager le combat sur {system.Name}", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.TitleHeight), $"Engager le combat sur {system.Name}", UITheme.Title);
             GUI.Label(new Rect(rect.x, rect.y + 28, rect.width, 18),
                 $"{outcome.WaveCount} flotte(s), {outcome.UnitCount} unites — derniere arrivee dans {outcome.TravelDays} jour(s).",
                 UITheme.Label);

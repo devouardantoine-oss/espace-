@@ -143,6 +143,94 @@ namespace Espace.UI
             GUI.matrix = _previousMatrix;
         }
 
+        /// <summary>
+        /// Tailles de police, en unites d'interface.
+        /// <para>
+        /// <b>Toujours explicites, jamais heritees de <c>GUI.skin</c> :</b> un style qui laisse
+        /// <c>fontSize</c> a zero prend la taille par defaut de la police integree, qui varie
+        /// selon la version du moteur. Une disposition calculee en rectangles ne peut pas
+        /// reposer la-dessus — c'est ce qui tronquait les libelles de la fiche de systeme, IMGUI
+        /// ne signalant jamais qu'un texte deborde de son rectangle.
+        /// </para>
+        /// </summary>
+        public const int CaptionFontSize = 10;
+
+        /// <inheritdoc cref="CaptionFontSize"/>
+        public const int LabelFontSize = 12;
+
+        /// <inheritdoc cref="CaptionFontSize"/>
+        public const int ValueFontSize = 13;
+
+        /// <inheritdoc cref="CaptionFontSize"/>
+        public const int TitleFontSize = 15;
+
+        /// <summary>
+        /// Hauteur de rectangle minimale pour qu'un texte de <paramref name="fontSize"/> ne soit
+        /// pas rogne. La marge de quatre unites couvre les jambages et l'interligne.
+        /// </summary>
+        public static int LineHeight(int fontSize) => fontSize + 4;
+
+        /// <summary>Hauteur de ligne d'une legende (<see cref="Caption"/>).</summary>
+        public static int CaptionHeight => LineHeight(CaptionFontSize);
+
+        /// <summary>Hauteur de ligne d'un texte courant (<see cref="Label"/>).</summary>
+        public static int LabelHeight => LineHeight(LabelFontSize);
+
+        /// <summary>Hauteur de ligne d'une valeur (<see cref="Value"/>).</summary>
+        public static int ValueHeight => LineHeight(ValueFontSize);
+
+        /// <summary>Hauteur de ligne d'un titre (<see cref="Title"/>).</summary>
+        public static int TitleHeight => LineHeight(TitleFontSize);
+
+        private static GUIStyle _captionStyle;
+        private static GUIStyle _valueStyle;
+
+        /// <summary>
+        /// Legende en petites capitales grises : les intitules d'une fiche dense.
+        /// <para>
+        /// <b>Sans retour a la ligne</b>, contrairement a <see cref="MutedLabel"/> : dans un
+        /// rectangle d'une seule ligne, un mot renvoye a la ligne suivante disparait purement et
+        /// simplement. Mieux vaut un intitule tronque a droite, qui se voit et se corrige, qu'un
+        /// intitule a moitie efface, qui ressemble a un bug d'affichage.
+        /// </para>
+        /// </summary>
+        public static GUIStyle Caption
+        {
+            get
+            {
+                if (_captionStyle == null)
+                {
+                    _captionStyle = new GUIStyle(GUI.skin.label);
+                    _captionStyle.normal.textColor = MutedTextColor;
+                    _captionStyle.fontSize = CaptionFontSize;
+                    _captionStyle.wordWrap = false;
+                    _captionStyle.clipping = TextClipping.Clip;
+                    _captionStyle.padding = new RectOffset(0, 0, 0, 0);
+                }
+
+                return _captionStyle;
+            }
+        }
+
+        /// <summary>Valeur chiffree ou courte, sur une seule ligne. Voir <see cref="Caption"/> pour l'absence de retour a la ligne.</summary>
+        public static GUIStyle Value
+        {
+            get
+            {
+                if (_valueStyle == null)
+                {
+                    _valueStyle = new GUIStyle(GUI.skin.label);
+                    _valueStyle.normal.textColor = TextColor;
+                    _valueStyle.fontSize = ValueFontSize;
+                    _valueStyle.wordWrap = false;
+                    _valueStyle.clipping = TextClipping.Clip;
+                    _valueStyle.padding = new RectOffset(0, 0, 0, 0);
+                }
+
+                return _valueStyle;
+            }
+        }
+
         private static readonly Dictionary<Color, Texture2D> SolidTextures = new Dictionary<Color, Texture2D>();
 
         private static GUIStyle _panelStyle;
@@ -197,7 +285,7 @@ namespace Espace.UI
                 {
                     _titleStyle = new GUIStyle(GUI.skin.label);
                     _titleStyle.fontStyle = FontStyle.Bold;
-                    _titleStyle.fontSize = 14;
+                    _titleStyle.fontSize = TitleFontSize;
                     _titleStyle.normal.textColor = TextColor;
                 }
 
@@ -214,6 +302,7 @@ namespace Espace.UI
                 {
                     _labelStyle = new GUIStyle(GUI.skin.label);
                     _labelStyle.normal.textColor = TextColor;
+                    _labelStyle.fontSize = LabelFontSize;
                     _labelStyle.wordWrap = true;
                 }
 
@@ -230,6 +319,7 @@ namespace Espace.UI
                 {
                     _mutedLabelStyle = new GUIStyle(GUI.skin.label);
                     _mutedLabelStyle.normal.textColor = MutedTextColor;
+                    _mutedLabelStyle.fontSize = LabelFontSize;
                     _mutedLabelStyle.wordWrap = true;
                 }
 

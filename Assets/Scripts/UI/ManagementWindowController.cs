@@ -105,6 +105,7 @@ namespace Espace.UI
                 ResolveServices();
 
                 var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+                UiScreenRegions.Occupy(rect, UITheme.Scale);
                 GUI.Box(rect, string.Empty, UITheme.Panel);
 
                 GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, WindowWidth - 16, WindowHeight - 12));

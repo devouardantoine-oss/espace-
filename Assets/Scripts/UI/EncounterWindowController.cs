@@ -104,6 +104,7 @@ namespace Espace.UI
             encounter.GetSides(EconomyService.PlayerOwnerId, out Fleet own, out Fleet opponent);
 
             var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+            UiScreenRegions.Occupy(rect, UITheme.Scale);
             GUI.Box(rect, string.Empty, UITheme.Panel);
 
             GUILayout.BeginArea(new Rect(rect.x + 14, rect.y + 12, WindowWidth - 28, WindowHeight - 24));

@@ -82,6 +82,15 @@ namespace Espace.Gameplay.Galaxy
                 return;
             }
 
+            // IMGUI dessine par-dessus la scene mais ne consomme pas les entrees du nouvel Input
+            // System. Sans ce test, toucher un onglet de la fiche de systeme ne rencontrait aucun
+            // collisionneur, et cette methode en concluait « le joueur a touche le vide » —
+            // refermant le panneau que le joueur etait en train d'utiliser.
+            if (UiScreenRegions.ContainsPointer(releaseScreenPosition))
+            {
+                return;
+            }
+
             // Resolu paresseusement plutot qu'en Awake : garantit que GameBootstrap
             // (execution order -1000) a deja enregistre les services au premier appui.
             if (_eventBus == null && !ServiceLocator.TryGet(out _eventBus))

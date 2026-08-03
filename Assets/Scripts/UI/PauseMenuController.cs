@@ -67,6 +67,7 @@ namespace Espace.UI
                 if (_sceneLoader == null) ServiceLocator.TryGet(out _sceneLoader);
 
                 var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
+            UiScreenRegions.Occupy(rect, UITheme.Scale);
                 GUI.Box(rect, string.Empty, UITheme.Panel);
 
                 GUILayout.BeginArea(new Rect(rect.x + 10, rect.y + 8, WindowWidth - 20, WindowHeight - 16));

@@ -794,6 +794,23 @@ deux dépassements.
 > **Aucun changement de sauvegarde, aucune règle de jeu modifiée** : la planification ne fait
 > qu'anticiper et enchaîner des `TryMoveFleet`.
 
+### Corrections d'ergonomie après les premiers essais sur téléphone (Phase 20)
+
+Quatre défauts relevés sur l'appareil, invisibles dans l'éditeur :
+
+| Défaut | Cause | Correction |
+|---|---|---|
+| **Toucher un onglet fermait la fiche** | IMGUI dessine par-dessus la scène mais **ne consomme pas** les entrées du nouvel Input System. `GalaxySelectionController` lisait le pointeur directement, ne rencontrait aucun collisionneur sous le doigt, et en concluait « le joueur a touché le vide ». | `UiScreenRegions` (dans `Espace.Core`, seul espace de noms que l'interface *et* le gameplay référencent) : chaque panneau déclare son rectangle, la sélection l'interroge avant d'agir |
+| **Les noms de systèmes grossissaient au zoom et se chevauchaient** | `TextMesh` dimensionné en unités monde. Au zoom rapproché un seul nom barrait le tiers de l'écran ; aucun arbitrage n'existait entre voisins. | Échelle recalculée d'après la taille orthographique, et **placement du plus important au moins important** : un libellé qui empiéterait sur un déjà placé est omis. Perdre un nom vaut mieux qu'en rendre deux illisibles |
+| **Libellés tronqués dans la fiche** | Les styles ne fixaient **aucune taille de police** : ils héritaient de la police par défaut, plus grande que les rectangles calculés. IMGUI déborde sans rien signaler. | Tailles explicites dans `UITheme` (`CaptionFontSize` à `TitleFontSize`) et hauteurs de rectangle **dérivées** d'elles via `UITheme.LineHeight`, plus jamais devinées. Deux styles compacts sans retour à la ligne — dans un rectangle d'une ligne, un mot renvoyé à la ligne suivante disparaît purement et simplement |
+| **Barre d'état tronquée, « Gestion » et « Menu » hors écran** | `GUILayout` à largeurs fixes demandait **~1330 unités** sur un écran qui en garantit 700. Le débordement est silencieux. | Disposition en rectangles calculés : les commandes sont **ancrées aux deux bords** et le trésor occupe ce qui reste, en n'affichant que les colonnes qui tiennent. Ce qui disparaît en premier est de l'information, jamais une commande |
+
+> **Le trésor s'adapte** de 2 colonnes (700 unités de large) à 5 (923 et au-delà) ; « Gestion » et
+> « Menu » restent visibles dans tous les cas. Vérifié par le calcul sur cinq largeurs.
+>
+> **La fiche a été revérifiée** en 16:9, 19,5:9, 20:9, 21:9 et 22:9, avec et sans message de
+> retour : aucun débordement, aucun chevauchement, cibles tactiles au-dessus du seuil.
+
 ---
 
 ## 4. Tester la Phase 1
