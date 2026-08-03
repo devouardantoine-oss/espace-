@@ -26,6 +26,16 @@ namespace Espace.Gameplay.Galaxy
         [SerializeField]
         private float tapMaxMovementPixels = 12f;
 
+        /// <summary>
+        /// Nombre maximal de collisionneurs recuperes par appui. Trois suffit largement (un
+        /// systeme, un vaisseau, une marge) et le tampon est reutilise d'un appui a l'autre :
+        /// la surcharge de <c>Physics2D.OverlapPoint</c> a tableau n'alloue rien, contrairement
+        /// a <c>OverlapPointAll</c>.
+        /// </summary>
+        private readonly Collider2D[] _hits = new Collider2D[4];
+
+        private ContactFilter2D _hitFilter;
+
         private Camera _camera;
         private IEventBus _eventBus;
 
@@ -35,6 +45,12 @@ namespace Espace.Gameplay.Galaxy
         private void Awake()
         {
             _camera = GetComponent<Camera>();
+
+            // Les marqueurs de flotte sont des declencheurs (isTrigger) : sans cela, le filtre
+            // par defaut les ecarterait et un vaisseau ne serait jamais selectionnable.
+            _hitFilter = new ContactFilter2D { useTriggers = true };
+            _hitFilter.NoFilter();
+            _hitFilter.useTriggers = true;
         }
 
         private void Update()
@@ -75,16 +91,54 @@ namespace Espace.Gameplay.Galaxy
             }
 
             Vector3 worldPoint = _camera.ScreenToWorldPoint(new Vector3(releaseScreenPosition.x, releaseScreenPosition.y, -_camera.transform.position.z));
-            Collider2D hit = Physics2D.OverlapPoint(worldPoint);
 
-            if (hit != null && hit.TryGetComponent(out StarSystemMarker marker))
+            // Un vaisseau passant au-dessus d'un systeme couvre les deux collisionneurs.
+            // OverlapPoint n'en renvoie qu'un, choisi arbitrairement : il faut donc tous les
+            // recuperer et arbitrer explicitement, sinon selectionner une flotte au-dessus d'un
+            // systeme donnerait un resultat different d'une frame a l'autre.
+            int hitCount = Physics2D.OverlapPoint(worldPoint, _hitFilter, _hits);
+
+            if (TryPublishFleetSelection(hitCount))
             {
-                _eventBus.Publish(new SystemSelectedEvent(marker.Id));
+                return;
             }
-            else
+
+            for (int i = 0; i < hitCount; i++)
             {
+                if (_hits[i] != null && _hits[i].TryGetComponent(out StarSystemMarker marker))
+                {
+                    _eventBus.Publish(new SystemSelectedEvent(marker.Id));
+                    return;
+                }
+            }
+
+            // Le fond de la carte : les deux selections retombent, celle de systeme comme celle
+            // de flotte. Publier les deux evite qu'un panneau reste ouvert sur une entite que
+            // le joueur vient visiblement d'abandonner.
+            _eventBus.Publish(new FleetDeselectedEvent());
+            _eventBus.Publish(new SystemDeselectedEvent());
+        }
+
+        /// <summary>
+        /// Les vaisseaux ont la priorite sur les systemes (Phase 20) : ils sont dessines
+        /// par-dessus et sont bien plus petits, donc viser un vaisseau est un geste deliberé,
+        /// alors qu'atteindre un systeme sous un vaisseau ne l'est jamais.
+        /// </summary>
+        private bool TryPublishFleetSelection(int hitCount)
+        {
+            for (int i = 0; i < hitCount; i++)
+            {
+                if (_hits[i] == null || !_hits[i].TryGetComponent(out FleetMarker fleetMarker))
+                {
+                    continue;
+                }
+
                 _eventBus.Publish(new SystemDeselectedEvent());
+                _eventBus.Publish(new FleetSelectedEvent(fleetMarker.FleetId));
+                return true;
             }
+
+            return false;
         }
     }
 }

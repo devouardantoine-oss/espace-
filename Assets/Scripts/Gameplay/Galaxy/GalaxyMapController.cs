@@ -72,6 +72,32 @@ namespace Espace.Gameplay.Galaxy
             BuildFactionLabels(_map, territoryCells, cameraController);
 
             BuildSystemLabels(_map, worldPositions, cameraController);
+            BuildFleetMap(_map);
+        }
+
+        /// <summary>
+        /// Instancie l'affichage des flottes en vol (Phase 20).
+        /// <para>
+        /// Le composant vit dans <c>Espace.Gameplay.Military</c> et non dans <c>Galaxy</c> :
+        /// dessiner une flotte demande de lire <c>IMilitaryService</c>, et la dependance entre
+        /// les deux espaces de noms ne va que dans ce sens. La vue elle-meme
+        /// (<see cref="FleetMarker"/>) reste dans <c>Galaxy</c>, ignorante de <c>Fleet</c>, pour
+        /// que <see cref="GalaxySelectionController"/> puisse la reconnaitre au toucher.
+        /// </para>
+        /// </summary>
+        private void BuildFleetMap(GalaxyMap map)
+        {
+            Camera mainCamera = Camera.main;
+            if (mainCamera == null)
+            {
+                return;
+            }
+
+            var fleetsObject = new GameObject("FleetMap");
+            fleetsObject.transform.SetParent(transform, worldPositionStays: false);
+
+            var fleetMap = fleetsObject.AddComponent<Espace.Gameplay.Military.FleetMapController>();
+            fleetMap.Initialize(map, mainCamera);
         }
 
         /// <summary>

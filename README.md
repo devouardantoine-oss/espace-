@@ -14,7 +14,7 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 19 terminée — territoires et frontières.** Carte galactique (100 systèmes),
+> **Statut : Phase 20 en cours — flottes visibles sur la carte (étape 1/3 livrée).** Carte galactique (100 systèmes),
 > horloge de jeu, économie, 6 empires (1 joueur + 5 IA dont chacune **gère l'intégralité de son
 > territoire** et s'étend au-delà de ses voisins immédiats, avec un rayon d'expansion propre à
 > sa personnalité), armées (sept types d'unités dont quatre classes de vaisseaux —
@@ -696,6 +696,36 @@ de front. Cette phase les remplace par des **zones d'influence continues**.
 > **`SystemLabelController` n'est pas modifié** par cette phase (hors extraction de la police) :
 > les noms de systèmes gardent le comportement de la Phase 12.
 
+### Briques des flottes sur la carte (Phase 20, étape 1)
+
+Jusqu'ici, une flotte en voyage n'existait que dans les données : rien ne la dessinait, et la
+sélection ne connaissait que les systèmes. Une galaxie où les armées se déplacent sans que rien
+ne bouge à l'écran est une galaxie morte.
+
+| Classe | Rôle | Choix technique |
+|---|---|---|
+| `FleetPresentation` (nouveau) | position et cap d'une flotte en vol | fonction **pure**, séparée du rendu (même esprit que `TerritoryPartition` ou `ColonizationRules`) : vérifiable en EditMode sans scène ni caméra. C'est ce qui permet de garantir la propriété qui compte — **un vaisseau ne sort jamais de son tronçon** |
+| Avancement **toujours borné** | rencontres spatiales | une flotte immobilisée par une rencontre voit la date courante dépasser sa date d'arrivée, puisque son trajet est gelé mais pas le calendrier. Sans la borne, son vaisseau continuerait au-delà de sa destination, sur une carte où plus rien ne le ramènerait. Il s'arrête donc dessus — approximation assumée, `Fleet` ne conservant pas la position exacte du gel |
+| **`IGameClock` n'est pas touché** | fluidité obtenue au rendu | le calendrier avance par jours entiers, donc la position calculée saute d'un cran par jour. Exposer une fraction de jour aurait obligé à modifier les **sept doublures de test** qui implémentent `IGameClock`, pour un besoin purement cosmétique. `FleetMarker` amortit donc la position vers sa cible (lissage exponentiel indépendant de la fréquence d'affichage) : même résultat visuel, zéro risque sur le modèle |
+| `FleetMarker` (nouveau) | la vue d'un vaisseau | **volontairement ignorante de `Fleet`** : ne connaît qu'un identifiant entier et les valeurs à afficher. C'est ce qui permet à `GalaxySelectionController` — qui vit dans `Galaxy` — de le reconnaître au toucher sans que `Galaxy` ait à dépendre de `Military`. La dépendance ne va que dans un sens |
+| Taille constante **à l'écran** | vaisseau et cible tactile | un vaisseau dimensionné en unités monde serait un point invisible au zoom arrière et un objet géant au zoom avant. Le rayon du collisionneur suit la même échelle : la cible tactile ne change jamais de taille sous le doigt |
+| La **taille** du vaisseau porte la force | pas de texte sur la carte | l'échelle interpole entre 1 et 10 unités embarquées (le plafond par flotte). On lit la puissance d'une flotte sans ajouter un seul libellé à une carte qui en porte déjà beaucoup |
+| `RuntimeSpriteFactory.GetShipSprite` | silhouette procédurale | pointe de flèche échancrée à l'arrière, **orientée vers +X** : une rotation de Z égale au cap suffit à l'orienter, sans décalage à compenser. Anti-aliasing par **sur-échantillonnage** (4×4) plutôt que par distance au contour : la forme est concave, une distance signée demanderait de traiter chaque arête séparément |
+| `FleetTrailRenderer` (nouveau) | trajectoires | un seul maillage combiné, reconstruit à chaque frame **sans détection de changement** : il y a au plus une poignée de flottes en vol et quelques dizaines de quads, une signature à comparer coûterait plus de code que le calcul. Le tronçon déjà parcouru s'efface derrière le vaisseau |
+| **Seules les flottes du joueur laissent une trajectoire** | le renseignement se mérite | les vaisseaux ennemis sont visibles — une galaxie où rien ne bouge est morte — mais leur *destination* est un renseignement. Le projet a un système d'espionnage précisément pour cela, et la Phase 18 refuse déjà à l'IA toute omniscience que le joueur n'a pas : la réciproque doit tenir |
+| `GalaxySelectionController` (étendu) | vaisseaux prioritaires sur les systèmes | un vaisseau passant au-dessus d'un système couvre les deux collisionneurs. `OverlapPoint` n'en renvoie qu'un, choisi arbitrairement : la surcharge à tableau (qui n'alloue pas, contrairement à `OverlapPointAll`) les récupère tous et arbitre explicitement. Sans cela, toucher une flotte au-dessus d'un système donnerait un résultat différent d'une frame à l'autre |
+| Sélections **exclusives** | un seul panneau contextuel | sélectionner un vaisseau désélectionne le système, et inversement. Deux panneaux ouverts se disputeraient le bas de l'écran |
+| Marqueurs **mis en commun** (`ObjectPool`) | pas d'instanciation en jeu | les départs et arrivées sont fréquents à vitesse maximale ; instancier et détruire un GameObject à chaque fois produirait exactement le pic de ramasse-miettes que les conventions du projet interdisent |
+
+> **Seules les flottes en voyage sont dessinées.** Une flotte stationnée *est* la garnison de son
+> système : lui donner un vaisseau ajouterait une centaine d'icônes immobiles sur une carte qui
+> affiche déjà ses systèmes et ses territoires. Le panneau de système reste l'endroit où l'on
+> consulte une garnison.
+>
+> **Aucun changement de sauvegarde** (`GameSaveData.Version` reste à 4), aucune règle de jeu
+> modifiée : cette étape est entièrement de la présentation. La création de flotte, la
+> colonisation et le combat restent ceux des Phases 14 à 18.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -716,7 +746,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (533 tests, tous packages confondus).
+Voir §5 pour le compte total (546 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -897,7 +927,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 533 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 546 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -982,7 +1012,12 @@ le bord, **arête intérieure à un empire jamais dessinée** — c'est ce qui f
 entre un bloc continu et une mosaïque —, frontière contestée plus intense qu'une façade sur le
 vide, rubans jamais hors du disque, maillage vidé quand un empire perd tout ; paliers de lecture,
 opacités monotones, frontière toujours plus lisible que la zone qu'elle borde, nom de faction
-éteint dès que les noms de systèmes prennent le relais). La
+éteint dès que les noms de systèmes prennent le relais).
+`FleetPresentationTests` (Phase 20 — avancement nul au départ, moitié à mi-parcours, **borné aux
+deux extrémités** donc un vaisseau ne sort jamais de son tronçon même immobilisé par une
+rencontre spatiale, étape de durée nulle qui ne divise pas par zéro, cap suivant le sens de
+marche, points confondus renvoyant un cap défini, flotte stationnée qui ne dessine rien, et un
+balayage de 160 jours vérifiant qu'aucune position ne dépasse les extrémités). La
 Phase 14
 (refonte des flottes) n'introduit pas de nouvelle classe de test dédiée : ses ajouts (plafonds,
 `GetFleetsForEmpire`, généralisation de `SplitAttackForce`, nouveaux types de vaisseaux)
@@ -1125,6 +1160,9 @@ sombre mais fatal dès qu'on colorie deux empires voisins.
 | 17 | Déplacement longue distance (itinéraire automatique, durée selon la distance) + rencontres spatiales | ✅ terminée |
 | 18 | IA plus dynamique (multi-système, expansion longue distance, rayon par personnalité) | ✅ terminée |
 | 19 | Territoires et frontières (cellules de contrôle, frontières contestées, noms de factions, échelle de lecture) | ✅ terminée |
+| 20.1 | Flottes visibles et sélectionnables sur la carte (vaisseaux orientés, trajectoires) | ✅ terminée |
+| 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ⏳ à venir |
+| 20.3 | Planification d'offensive et suivi des opérations | ⏳ à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

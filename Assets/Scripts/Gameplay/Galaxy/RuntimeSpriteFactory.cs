@@ -137,5 +137,122 @@ namespace Espace.Gameplay.Galaxy
         /// de dupliquer une texture identique sous un autre nom.
         /// </summary>
         public static Sprite GetMoonSprite() => GetCircleSprite();
+
+        /// <summary>
+        /// Contour du vaisseau, en coordonnees normalisees centrees sur le pivot, <b>pointe
+        /// vers +X</b> : une rotation de <c>Z</c> egale au cap suffit alors a l'orienter dans le
+        /// sens du trajet, sans decalage a compenser.
+        /// <para>
+        /// La forme est une pointe de fleche echancree a l'arriere : c'est l'echancrure qui la
+        /// rend lisible comme un vaisseau plutot que comme un triangle, et qui indique l'avant
+        /// meme a quelques pixels de haut.
+        /// </para>
+        /// </summary>
+        private static readonly Vector2[] ShipHull =
+        {
+            new Vector2( 0.47f,  0.00f),
+            new Vector2(-0.30f,  0.33f),
+            new Vector2(-0.13f,  0.00f),
+            new Vector2(-0.30f, -0.33f),
+        };
+
+        /// <summary>Cote de la grille de sur-echantillonnage utilisee pour l'anti-aliasing du vaisseau.</summary>
+        private const int ShipSupersample = 4;
+
+        private static Sprite _cachedShipSprite;
+
+        /// <summary>
+        /// Sprite d'un vaisseau vu de dessus, pointe vers +X, centre sur son pivot (Phase 20).
+        /// <para>
+        /// <b>Anti-aliasing par sur-echantillonnage plutot que par distance au contour :</b> la
+        /// forme est concave, une distance signee au bord demanderait de gerer chaque arete
+        /// separement. Compter les sous-pixels a l'interieur du polygone donne le meme resultat
+        /// pour quelques lignes de code, et le cout est paye une seule fois — la texture est
+        /// mise en cache comme toutes les autres de cette fabrique.
+        /// </para>
+        /// </summary>
+        public static Sprite GetShipSprite()
+        {
+            if (_cachedShipSprite != null)
+            {
+                return _cachedShipSprite;
+            }
+
+            var texture = new Texture2D(TextureSize, TextureSize, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GeneratedShip",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            var pixels = new Color32[TextureSize * TextureSize];
+            const float step = 1f / ShipSupersample;
+
+            for (int y = 0; y < TextureSize; y++)
+            {
+                for (int x = 0; x < TextureSize; x++)
+                {
+                    int inside = 0;
+
+                    for (int sy = 0; sy < ShipSupersample; sy++)
+                    {
+                        for (int sx = 0; sx < ShipSupersample; sx++)
+                        {
+                            float u = (x + (sx + 0.5f) * step) / TextureSize - 0.5f;
+                            float v = (y + (sy + 0.5f) * step) / TextureSize - 0.5f;
+
+                            if (IsInsidePolygon(ShipHull, u, v))
+                            {
+                                inside++;
+                            }
+                        }
+                    }
+
+                    float alpha = (float)inside / (ShipSupersample * ShipSupersample);
+                    pixels[y * TextureSize + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _cachedShipSprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, TextureSize, TextureSize),
+                new Vector2(0.5f, 0.5f),
+                PixelsPerUnit);
+            _cachedShipSprite.name = "GeneratedShipSprite";
+
+            return _cachedShipSprite;
+        }
+
+        /// <summary>
+        /// Test d'appartenance a un polygone quelconque, par lancer de rayon horizontal (regle
+        /// pair-impair). Vaut aussi pour un polygone concave, contrairement a un test par
+        /// demi-plans.
+        /// </summary>
+        private static bool IsInsidePolygon(Vector2[] polygon, float x, float y)
+        {
+            bool inside = false;
+
+            for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+            {
+                Vector2 a = polygon[i];
+                Vector2 b = polygon[j];
+
+                if (a.y > y == b.y > y)
+                {
+                    continue;
+                }
+
+                float crossingX = (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x;
+                if (x < crossingX)
+                {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        }
     }
 }
