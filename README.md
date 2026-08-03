@@ -14,7 +14,7 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 20 en cours — flottes et fiche de système (étapes 1 et 2/3 livrées).** Carte galactique (100 systèmes),
+> **Statut : Phase 20 terminée — flottes, fiche de système et offensives.** Carte galactique (100 systèmes),
 > horloge de jeu, économie, 6 empires (1 joueur + 5 IA dont chacune **gère l'intégralité de son
 > territoire** et s'étend au-delà de ses voisins immédiats, avec un rayon d'expansion propre à
 > sa personnalité), armées (sept types d'unités dont quatre classes de vaisseaux —
@@ -758,6 +758,30 @@ deux dépassements.
 > **Aucun changement de sauvegarde ni de règle de jeu.** Toutes les actions passent par les
 > services existants ; seule l'interface change.
 
+### Briques de l'offensive (Phase 20, étape 3)
+
+| Décision | Pourquoi |
+|---|---|
+| **Aucune « probabilité de victoire » n'est affichée** | parce qu'il n'y en a pas. `CombatResolver` est **entièrement déterministe** — `attackerWon = attackerPower > defenderPower`, sans le moindre tirage. Annoncer « 68 % de victoire » aurait été une invention pure. La fiche annonce donc ce qui va réellement se produire : l'issue, les pertes, et si le système changera de mains. C'est à la fois plus honnête et strictement plus utile qu'un pourcentage |
+| **Une bataille par arrivée, pas une bataille combinée** | c'est ce que fait le jeu : `MilitaryService` résout chaque arrivée indépendamment. Trois flottes arrivant à trois dates livrent trois batailles successives et se font battre en détail. `OffensivePlanner` simule les vagues **dans leur ordre d'arrivée**, ce qui rend cette vérité visible au lieu de la cacher derrière un total flatteur — et apprend au joueur à concentrer ses forces |
+| `FleetTravel` **extrait** de `MilitaryService` | la planification annonce au joueur la durée que le service appliquera. Deux implémentations de la même formule divergeraient à la première retouche d'équilibrage, et l'interface se mettrait à promettre des dates que le jeu ne tiendrait pas. Le service délègue désormais ; il n'y a qu'une formule |
+| Le tri des vagues est un **ordre total** (délai puis identifiant) | deux flottes arrivant le même jour sont toujours simulées dans le même ordre : la prévision affichée ne change pas d'une frame à l'autre |
+| Itinéraires **mis en cache par cible** | chaque candidate coûte un Dijkstra sur cent systèmes, et `OnGUI` est appelé au moins deux fois par frame. Les recalculer à chaque appel ferait chuter la fluidité dès l'ouverture de l'onglet |
+| Le même prédicat de traversée que le service | `FleetRouting.IsTraversableWaypoint` : une flotte annoncée comme atteignant la cible doit réellement pouvoir partir |
+| **Prévision, pas certitude** | la garnison peut être renforcée avant l'arrivée, et le commandement comme la recherche de l'adversaire ne sont pas connus du joueur — c'est le rôle de l'espionnage. La fiche l'écrit : « prévision à effectifs constants » |
+| Les échecs de lancement sont **rapportés individuellement** | le plafond de flottes en campagne peut refuser une partie de l'offensive ; le joueur doit savoir combien sont parties et pourquoi les autres ne l'ont pas fait |
+| Onglet **Opérations** dans la fenêtre de gestion | l'onglet Flottes reste l'inventaire complet ; celui-ci est le tableau de bord : uniquement ce qui bouge, avec son état, plus un fil des derniers dénouements. Une bataille se résout en un instant — sans cette trace, une offensive résolue pendant que le joueur regardait ailleurs ne laisserait rien à consulter |
+| Les batailles **entre tiers** n'entrent pas dans le fil | les lister reviendrait à offrir au joueur un renseignement qu'il n'a pas payé |
+
+> **Vérification par simulation.** La propriété qui fonde la phase est vérifiée en exécutant le
+> planificateur : la même force de 8 unités contre une garnison de 5 Croiseurs **prend le
+> système en groupé** (4 pertes) et **est repoussée en échelonné** (6 pertes). Une frappe sans
+> Infanterie détruit la garnison sans prendre le système. Le résultat ne dépend pas de l'ordre
+> dans lequel les flottes sont cochées.
+>
+> **Aucun changement de sauvegarde, aucune règle de jeu modifiée** : la planification ne fait
+> qu'anticiper et enchaîner des `TryMoveFleet`.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -778,7 +802,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (546 tests, tous packages confondus).
+Voir §5 pour le compte total (561 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -959,7 +983,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 546 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 561 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1194,7 +1218,7 @@ sombre mais fatal dès qu'on colorie deux empires voisins.
 | 19 | Territoires et frontières (cellules de contrôle, frontières contestées, noms de factions, échelle de lecture) | ✅ terminée |
 | 20.1 | Flottes visibles et sélectionnables sur la carte (vaisseaux orientés, trajectoires) | ✅ terminée |
 | 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ✅ terminée |
-| 20.3 | Planification d'offensive et suivi des opérations | ⏳ à venir |
+| 20.3 | Planification d'offensive et suivi des opérations | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

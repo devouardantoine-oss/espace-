@@ -18,6 +18,7 @@ namespace Espace.UI
     {
         Empires,
         Flottes,
+        Operations,
         Diplomatie,
         Recherche,
         Espionnage,
@@ -54,6 +55,23 @@ namespace Espace.UI
 
         private static readonly ManagementTab[] AllTabs = (ManagementTab[])Enum.GetValues(typeof(ManagementTab));
         private static readonly ResearchDomain[] AllDomains = (ResearchDomain[])Enum.GetValues(typeof(ResearchDomain));
+
+        /// <summary>
+        /// Derniers denouements d'operation, du plus recent au plus ancien (Phase 20).
+        /// <para>
+        /// <b>Memorises ici plutot que dans un service :</b> une bataille se resout en un
+        /// instant — il n'existe aucun etat « en combat » a interroger apres coup. Sans cette
+        /// trace, une offensive lancee puis resolue pendant que le joueur regardait ailleurs ne
+        /// laisserait aucune trace consultable. Le journal est volontairement court et non
+        /// sauvegarde : c'est un fil d'actualite, pas un historique.
+        /// </para>
+        /// </summary>
+        private readonly List<string> _operationReports = new List<string>();
+
+        /// <summary>Au-dela, les rapports les plus anciens sont oublies.</summary>
+        private const int MaxOperationReports = 6;
+
+        private IEventBus _operationEventBus;
 
         private bool _visible;
         private ManagementTab _activeTab = ManagementTab.Empires;
@@ -121,6 +139,141 @@ namespace Espace.UI
             if (_military == null) ServiceLocator.TryGet(out _military);
         }
 
+        private void OnEnable()
+        {
+            if (ServiceLocator.TryGet(out _operationEventBus))
+            {
+                _operationEventBus.Subscribe<BattleResolvedEvent>(OnBattleResolved);
+                _operationEventBus.Subscribe<SystemColonizedEvent>(OnSystemColonized);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (_operationEventBus == null)
+            {
+                return;
+            }
+
+            _operationEventBus.Unsubscribe<BattleResolvedEvent>(OnBattleResolved);
+            _operationEventBus.Unsubscribe<SystemColonizedEvent>(OnSystemColonized);
+            _operationEventBus = null;
+        }
+
+        private void OnBattleResolved(BattleResolvedEvent battle)
+        {
+            if (battle.AttackerEmpireId != EconomyService.PlayerOwnerId
+                && battle.DefenderEmpireId != EconomyService.PlayerOwnerId)
+            {
+                // Les batailles entre tiers ne sont pas des operations du joueur : les lister
+                // reviendrait a lui offrir un renseignement qu'il n'a pas paye.
+                return;
+            }
+
+            bool attacking = battle.AttackerEmpireId == EconomyService.PlayerOwnerId;
+            string verdict = battle.AttackerWon
+                ? attacking ? "victoire" : "systeme perdu"
+                : attacking ? "offensive repoussee" : "assaut repousse";
+
+            PushReport($"{LocationLabel(battle.SystemId)} — {verdict} (pertes {(attacking ? battle.AttackerLosses : battle.DefenderLosses)})");
+        }
+
+        private void OnSystemColonized(SystemColonizedEvent colonized)
+        {
+            if (colonized.EmpireId != EconomyService.PlayerOwnerId)
+            {
+                return;
+            }
+
+            PushReport($"{LocationLabel(colonized.SystemId)} — colonise ({colonized.InfantryLost} Infanterie perdue)");
+        }
+
+        private void PushReport(string report)
+        {
+            _operationReports.Insert(0, report);
+            if (_operationReports.Count > MaxOperationReports)
+            {
+                _operationReports.RemoveAt(_operationReports.Count - 1);
+            }
+        }
+
+        /// <summary>
+        /// Suivi des operations en cours (Phase 20) : uniquement ce qui bouge, avec son etat.
+        /// L'onglet Flottes reste l'inventaire complet ; celui-ci est le tableau de bord.
+        /// </summary>
+        private void DrawOperationsTab()
+        {
+            GUILayout.Label("Operations", UITheme.Title);
+
+            if (_military == null || _map == null)
+            {
+                GUILayout.Label("Service militaire indisponible.", UITheme.MutedLabel);
+                return;
+            }
+
+            var campaigning = new List<Fleet>();
+            foreach (Fleet fleet in _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId))
+            {
+                if (fleet.Status != FleetStatus.Stationed)
+                {
+                    campaigning.Add(fleet);
+                }
+            }
+
+            GUILayout.Label(
+                _military.CanDeployAnotherFleet(EconomyService.PlayerOwnerId)
+                    ? $"{campaigning.Count} flotte(s) en campagne — une place reste libre"
+                    : $"{campaigning.Count} flotte(s) en campagne — plafond atteint, recherchez la Logistique",
+                UITheme.MutedLabel);
+
+            GUILayout.Space(6);
+
+            if (campaigning.Count == 0)
+            {
+                GUILayout.Label("Aucune operation en cours.", UITheme.MutedLabel);
+            }
+
+            foreach (Fleet fleet in campaigning)
+            {
+                DrawOperationRow(fleet);
+            }
+
+            GUILayout.Space(10);
+            GUILayout.Label("Rapports recents", UITheme.Title);
+
+            if (_operationReports.Count == 0)
+            {
+                GUILayout.Label("Aucun denouement depuis l'ouverture de la partie.", UITheme.MutedLabel);
+                return;
+            }
+
+            foreach (string report in _operationReports)
+            {
+                GUILayout.Label(report, UITheme.Label);
+            }
+        }
+
+        private void DrawOperationRow(Fleet fleet)
+        {
+            string destination = fleet.DestinationSystemId.HasValue
+                ? LocationLabel(fleet.DestinationSystemId.Value)
+                : "destination inconnue";
+
+            string state = fleet.Status == FleetStatus.AwaitingEncounter
+                ? "RENCONTRE"
+                : "EN ROUTE";
+
+            int remainingHops = fleet.Route != null ? fleet.Route.Count - 1 - fleet.RouteIndex : 0;
+
+            GUILayout.Label($"[{state}]  {fleet.Name}  ->  {destination}", UITheme.Label);
+            GUILayout.Label(
+                $"{fleet.Composition.TotalCount} unites · {remainingHops} saut(s) restant(s)"
+                + (fleet.ArrivalDate.HasValue ? $" · etape le {fleet.ArrivalDate.Value}" : string.Empty)
+                + (fleet.IsRetreating ? " · repli" : string.Empty),
+                UITheme.MutedLabel);
+            GUILayout.Space(4);
+        }
+
         private void DrawTabStrip()
         {
             GUILayout.BeginVertical(GUILayout.Width(TabStripWidth));
@@ -153,6 +306,9 @@ namespace Espace.UI
                     break;
                 case ManagementTab.Flottes:
                     DrawFlottesTab();
+                    break;
+                case ManagementTab.Operations:
+                    DrawOperationsTab();
                     break;
                 case ManagementTab.Diplomatie:
                     DrawDiplomatieTab();

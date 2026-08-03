@@ -1,10 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using Espace.Core;
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
+using Espace.Gameplay.Research;
 using UnityEngine;
 
 namespace Espace.UI
@@ -71,6 +73,8 @@ namespace Espace.UI
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
         private IMilitaryService _military;
+        private IDiplomacyService _diplomacy;
+        private IResearchService _research;
 
         private StarSystemId? _selectedSystemId;
         private PanelTab _tab = PanelTab.Overview;
@@ -90,6 +94,39 @@ namespace Espace.UI
 
         /// <summary>Vrai quand l'onglet Armee affiche la grille de recrutement plutot que les flottes sur place.</summary>
         private bool _recruiting;
+
+        /// <summary>Une flotte candidate a une offensive, avec ce que la planification a calcule pour elle.</summary>
+        private readonly struct OffensiveCandidate
+        {
+            public readonly int FleetId;
+            public readonly string Label;
+            public readonly string Detail;
+            public readonly UnitBundle Composition;
+            public readonly int TravelDays;
+            public readonly bool Reachable;
+            public readonly float AttackModifier;
+
+            public OffensiveCandidate(int fleetId, string label, string detail, UnitBundle composition,
+                int travelDays, bool reachable, float attackModifier)
+            {
+                FleetId = fleetId; Label = label; Detail = detail; Composition = composition;
+                TravelDays = travelDays; Reachable = reachable; AttackModifier = attackModifier;
+            }
+        }
+
+        /// <summary>
+        /// Candidates calculees pour la cible courante. <b>Mises en cache :</b> chaque candidate
+        /// coute un Dijkstra sur cent systemes, et <c>OnGUI</c> est appele au moins deux fois par
+        /// frame (mise en page puis dessin). Les recalculer a chaque appel ferait chuter la
+        /// fluidite des l'ouverture de l'onglet.
+        /// </summary>
+        private readonly List<OffensiveCandidate> _offensiveCandidates = new List<OffensiveCandidate>();
+
+        /// <summary>Cible pour laquelle <see cref="_offensiveCandidates"/> a ete calculee, ou <c>null</c> si le cache est vide.</summary>
+        private StarSystemId? _offensiveCacheKey;
+
+        private readonly HashSet<int> _engagedFleetIds = new HashSet<int>();
+        private bool _offensiveConfirming;
 
         private void OnEnable()
         {
@@ -133,6 +170,7 @@ namespace Espace.UI
                 _tab = PanelTab.Overview;
                 _draftComposition = null;
                 _recruiting = false;
+                InvalidateOffensiveCache();
             }
 
             _selectedSystemId = selectedEvent.SystemId;
@@ -144,6 +182,15 @@ namespace Espace.UI
             _selectedSystemId = null;
             _draftComposition = null;
             _recruiting = false;
+            InvalidateOffensiveCache();
+        }
+
+        private void InvalidateOffensiveCache()
+        {
+            _offensiveCacheKey = null;
+            _offensiveCandidates.Clear();
+            _engagedFleetIds.Clear();
+            _offensiveConfirming = false;
         }
 
         /// <summary>Envoie la flotte <paramref name="fleetId"/> vers <paramref name="destinationId"/>, en revalidant qu'elle existe toujours.</summary>
@@ -219,6 +266,8 @@ namespace Espace.UI
                 if (_empireRegistry == null) ServiceLocator.TryGet(out _empireRegistry);
                 if (_economy == null) ServiceLocator.TryGet(out _economy);
                 if (_military == null) ServiceLocator.TryGet(out _military);
+                if (_diplomacy == null) ServiceLocator.TryGet(out _diplomacy);
+                if (_research == null) ServiceLocator.TryGet(out _research);
 
                 DrawCard(system);
             }
@@ -271,6 +320,12 @@ namespace Espace.UI
             if (_draftComposition != null && system.OwnerId == EconomyService.PlayerOwnerId)
             {
                 DrawFleetComposer(new Rect(card.x + Padding, card.y + Padding, card.width - 2 * Padding, card.height - 2 * Padding), system);
+                return;
+            }
+
+            if (_offensiveConfirming)
+            {
+                DrawOffensiveConfirmation(new Rect(card.x + Padding, card.y + Padding, card.width - 2 * Padding, card.height - 2 * Padding), system);
                 return;
             }
 
@@ -354,7 +409,7 @@ namespace Espace.UI
             bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
             bool free = system.OwnerId == StarSystemState.UnownedOwnerId;
 
-            string militaryLabel = ownedByPlayer ? "Armee" : free ? "Coloniser" : "Renseignement";
+            string militaryLabel = ownedByPlayer ? "Armee" : free ? "Coloniser" : "Offensive";
             string economyBadge = ownedByPlayer && _economy != null
                 ? $"{RemainingBuildingCount(system)} a construire"
                 : null;
@@ -553,7 +608,7 @@ namespace Espace.UI
                 return;
             }
 
-            DrawIntelTab(rect, system);
+            DrawOffensiveTab(rect, system);
         }
 
         private void DrawOwnedMilitary(Rect rect, StarSystemState system)
@@ -921,32 +976,331 @@ namespace Espace.UI
             }
         }
 
+        // -------------------------------------------------------------- offensive
+
         /// <summary>
-        /// Systeme etranger : ce que l'on sait de lui. La planification d'offensive s'installera
-        /// ici a l'etape suivante ; afficher des maintenant un bouton inerte serait pire que de
-        /// ne rien afficher.
+        /// Planification d'offensive sur un systeme etranger : les flottes a portee avec leur
+        /// delai, et la <b>prevision</b> de ce qui va se passer.
+        /// <para>
+        /// <b>Aucun pourcentage de victoire n'est affiche, parce qu'il n'y en a pas :</b>
+        /// <c>CombatResolver</c> est entierement deterministe, le camp le plus puissant
+        /// l'emporte sans le moindre tirage. Annoncer « 68 % » serait une invention. La fiche
+        /// annonce donc l'issue reelle, les pertes prevues, et si le systeme changera de mains.
+        /// </para>
         /// </summary>
-        private void DrawIntelTab(Rect rect, StarSystemState system)
+        private void DrawOffensiveTab(Rect rect, StarSystemState system)
         {
-            GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "RENSEIGNEMENT", UITheme.MutedLabel);
+            if (_diplomacy != null
+                && _diplomacy.GetStatus(EconomyService.PlayerOwnerId, system.OwnerId) != DiplomaticStatus.War)
+            {
+                GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "RENSEIGNEMENT", UITheme.MutedLabel);
+                DrawIntelRow(rect, system);
+                GUI.Label(new Rect(rect.x, rect.y + 90, rect.width, 18),
+                    "Aucune offensive possible : vous n'etes pas en guerre avec cet empire.", UITheme.Label);
+                return;
+            }
 
+            EnsureOffensiveCandidates(system);
+
+            const float recapWidth = 200f;
+            var list = new Rect(rect.x, rect.y, rect.width - recapWidth - Padding, rect.height);
+            var recap = new Rect(rect.xMax - recapWidth, rect.y, recapWidth, rect.height);
+
+            DrawOffensiveCandidates(list);
+            DrawOffensiveRecap(recap, system);
+        }
+
+        private void DrawIntelRow(Rect rect, StarSystemState system)
+        {
             UnitBundle garrison = _military.GetGarrison(system.Id, system.OwnerId);
+            float columnWidth = (rect.width - 2 * Gap) / 3f;
 
-            var columnWidth = (rect.width - 2 * Gap) / 3f;
-            DrawIntelStat(new Rect(rect.x, rect.y + 20, columnWidth, 60), "GARNISON", $"{garrison.TotalCount}");
-            DrawIntelStat(new Rect(rect.x + columnWidth + Gap, rect.y + 20, columnWidth, 60), "PUISSANCE", $"~{_military.EstimatePower(garrison):0}");
-            DrawIntelStat(new Rect(rect.x + 2 * (columnWidth + Gap), rect.y + 20, columnWidth, 60), "TERRAIN",
-                $"+{system.DevelopmentLevel * 5} %");
-
-            GUI.Label(new Rect(rect.x, rect.y + 86, rect.width, 18),
-                "Envoyez une flotte sur ce systeme depuis un des votres pour l'attaquer.", UITheme.MutedLabel);
+            DrawIntelStat(new Rect(rect.x, rect.y + 18, columnWidth, 60), "GARNISON", $"{garrison.TotalCount}");
+            DrawIntelStat(new Rect(rect.x + columnWidth + Gap, rect.y + 18, columnWidth, 60), "PUISSANCE",
+                $"~{_military.EstimatePower(garrison):0}");
+            DrawIntelStat(new Rect(rect.x + 2 * (columnWidth + Gap), rect.y + 18, columnWidth, 60), "TERRAIN",
+                $"+{system.DevelopmentLevel * 10} %");
         }
 
         private static void DrawIntelStat(Rect rect, string key, string value)
         {
             GUI.DrawTexture(rect, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
-            GUI.Label(new Rect(rect.x + 8, rect.y + 6, rect.width - 16, 16), key, UITheme.MutedLabel);
-            GUI.Label(new Rect(rect.x + 8, rect.y + 24, rect.width - 16, 26), value, UITheme.Title);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 6, rect.width - 16, 14), key, UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 22, rect.width - 16, 26), value, UITheme.Title);
+        }
+
+        /// <summary>
+        /// Calcule, une seule fois par cible, l'itineraire et le delai de chaque flotte
+        /// stationnee du joueur. Le meme predicat de traversee que <c>MilitaryService</c> est
+        /// utilise (<see cref="FleetRouting.IsTraversableWaypoint"/>) : une flotte annoncee
+        /// comme atteignant la cible doit reellement pouvoir partir.
+        /// </summary>
+        private void EnsureOffensiveCandidates(StarSystemState target)
+        {
+            if (_offensiveCacheKey.HasValue && _offensiveCacheKey.Value.Equals(target.Id))
+            {
+                return;
+            }
+
+            _offensiveCandidates.Clear();
+            _engagedFleetIds.Clear();
+            _offensiveCacheKey = target.Id;
+
+            float logistics = 1f + (_research?.GetBonus(EconomyService.PlayerOwnerId, ResearchDomain.Logistics) ?? 0f);
+            float command = CommandModifier(EconomyService.PlayerOwnerId);
+
+            foreach (Fleet fleet in _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId))
+            {
+                if (fleet.Status != FleetStatus.Stationed || fleet.Composition.IsEmpty)
+                {
+                    continue;
+                }
+
+                string origin = _map.TryGetSystem(fleet.CurrentSystemId, out StarSystemState from) ? from.Name : "?";
+                float morale = from?.Stability ?? 1f;
+                float attackModifier = morale * command * (1f + fleet.Admiral.AttackBonus);
+
+                bool reachable = HyperlanePathfinder.TryFindPath(
+                    _map, fleet.CurrentSystemId, target.Id,
+                    waypoint => FleetRouting.IsTraversableWaypoint(waypoint, EconomyService.PlayerOwnerId),
+                    out IReadOnlyList<StarSystemId> route);
+
+                int days = reachable
+                    ? FleetTravel.JourneyDays(_map, route,
+                        FleetTravel.EffectiveSpeed(fleet.Composition, _military.UnitCatalog, logistics, fleet.Admiral.SpeedBonus))
+                    : 0;
+
+                _offensiveCandidates.Add(new OffensiveCandidate(
+                    fleet.Id,
+                    $"{fleet.Name} — {origin}",
+                    reachable
+                        ? $"{fleet.Composition.TotalCount} u. · {fleet.Composition.Infantry} Inf. · arrivee J+{days}"
+                        : $"{fleet.Composition.TotalCount} u. · aucune route praticable",
+                    fleet.Composition,
+                    days,
+                    reachable,
+                    attackModifier));
+            }
+
+            _offensiveCandidates.Sort((a, b) =>
+            {
+                if (a.Reachable != b.Reachable) return a.Reachable ? -1 : 1;
+                int byDays = a.TravelDays.CompareTo(b.TravelDays);
+                return byDays != 0 ? byDays : a.FleetId.CompareTo(b.FleetId);
+            });
+        }
+
+        /// <summary>Modificateur de commandement du joueur : personnalite de son empire et recherche en Armement.</summary>
+        private float CommandModifier(int empireId)
+        {
+            float personality = _empireRegistry != null && _empireRegistry.TryGetEmpire(empireId, out Empire empire)
+                ? EmpirePersonalityProfile.Get(empire.Personality).CommandModifier
+                : 1f;
+
+            return personality * (1f + (_research?.GetBonus(empireId, ResearchDomain.Weapons) ?? 0f));
+        }
+
+        private void DrawOffensiveCandidates(Rect rect)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), "FLOTTES A PORTEE", UITheme.MutedLabel);
+
+            if (_offensiveCandidates.Count == 0)
+            {
+                GUI.Label(new Rect(rect.x, rect.y + 18, rect.width, 18),
+                    "Aucune flotte stationnee. Creez-en une depuis un de vos systemes.", UITheme.MutedLabel);
+                return;
+            }
+
+            float listHeight = rect.height - 18;
+            float rowHeight = Mathf.Clamp((listHeight - (_offensiveCandidates.Count - 1) * 4) / _offensiveCandidates.Count, 26f, 36f);
+            float rowY = rect.y + 18;
+
+            foreach (OffensiveCandidate candidate in _offensiveCandidates)
+            {
+                if (rowY + rowHeight > rect.yMax)
+                {
+                    break;
+                }
+
+                bool engaged = _engagedFleetIds.Contains(candidate.FleetId);
+                var row = new Rect(rect.x, rowY, rect.width, rowHeight);
+
+                GUI.DrawTexture(row, UITheme.SolidTexture(engaged
+                    ? new Color(UITheme.AccentBackground.r, UITheme.AccentBackground.g, UITheme.AccentBackground.b, 0.28f)
+                    : new Color(1f, 1f, 1f, 0.04f)));
+
+                GUI.enabled = candidate.Reachable;
+                if (GUI.Button(row, GUIContent.none, UITheme.TabButton) && candidate.Reachable)
+                {
+                    if (!_engagedFleetIds.Remove(candidate.FleetId))
+                    {
+                        _engagedFleetIds.Add(candidate.FleetId);
+                    }
+                }
+                GUI.enabled = true;
+
+                GUI.Label(new Rect(row.x + 8, row.y + 2, 16, 16), engaged ? "x" : "·", UITheme.Label);
+                GUI.Label(new Rect(row.x + 26, row.y + 2, row.width - 34, 16), candidate.Label, UITheme.Label);
+                GUI.Label(new Rect(row.x + 26, row.y + 17, row.width - 34, 14), candidate.Detail, UITheme.MutedLabel);
+
+                rowY += rowHeight + 4;
+            }
+        }
+
+        private void DrawOffensiveRecap(Rect rect, StarSystemState system)
+        {
+            OffensiveOutcome outcome = SimulateEngagement(system);
+
+            float statHeight = 24f;
+            float half = (rect.width - Gap) * 0.5f;
+
+            DrawRecapStat(new Rect(rect.x, rect.y, half, statHeight), "FLOTTES", $"{outcome.WaveCount}");
+            DrawRecapStat(new Rect(rect.x + half + Gap, rect.y, half, statHeight), "UNITES", $"{outcome.UnitCount}");
+            DrawRecapStat(new Rect(rect.x, rect.y + statHeight, half, statHeight), "PUISSANCE", $"{outcome.AttackPower:0}");
+            DrawRecapStat(new Rect(rect.x + half + Gap, rect.y + statHeight, half, statHeight), "DEFENSE", $"{outcome.DefensePower:0}");
+
+            float verdictY = rect.y + 2 * statHeight + 2;
+            string verdict;
+            GUIStyle verdictStyle;
+
+            if (outcome.WaveCount == 0)
+            {
+                verdict = "Choisissez au moins une flotte";
+                verdictStyle = UITheme.MutedLabel;
+            }
+            else if (outcome.SystemCaptured)
+            {
+                verdict = $"Systeme pris · J+{outcome.TravelDays} · {outcome.AttackerLosses} perte(s)";
+                verdictStyle = UITheme.Label;
+            }
+            else if (outcome.WonWithoutOccupation)
+            {
+                verdict = $"Garnison detruite, systeme non pris — aucune Infanterie survivante";
+                verdictStyle = UITheme.Label;
+            }
+            else
+            {
+                verdict = $"Offensive repoussee · {outcome.AttackerLosses} perte(s) · {outcome.SurvivingDefenders} defenseur(s) restant(s)";
+                verdictStyle = UITheme.Label;
+            }
+
+            GUI.Label(new Rect(rect.x, verdictY, rect.width, 32), verdict, verdictStyle);
+            GUI.Label(new Rect(rect.x, verdictY + 30, rect.width, 14), "prevision a effectifs constants", UITheme.MutedLabel);
+
+            float buttonHeight = Mathf.Clamp(rect.height * 0.34f, 32f, 44f);
+            var launchRect = new Rect(rect.x, rect.yMax - buttonHeight, rect.width, buttonHeight);
+
+            GUI.enabled = outcome.WaveCount > 0;
+            if (GUI.Button(launchRect, "Planifier l'offensive", UITheme.Button) && outcome.WaveCount > 0)
+            {
+                _offensiveConfirming = true;
+            }
+            GUI.enabled = true;
+        }
+
+        private static void DrawRecapStat(Rect rect, string key, string value)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 12), key, UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y + 10, rect.width, 16), value, UITheme.Label);
+        }
+
+        /// <summary>
+        /// Rejoue l'offensive telle que le jeu la resoudra : une bataille par arrivee, dans
+        /// l'ordre des arrivees. C'est ce qui rend visible qu'echelonner ses flottes, c'est se
+        /// faire battre en detail.
+        /// </summary>
+        private OffensiveOutcome SimulateEngagement(StarSystemState system)
+        {
+            var waves = new List<OffensiveWave>(_engagedFleetIds.Count);
+            foreach (OffensiveCandidate candidate in _offensiveCandidates)
+            {
+                if (_engagedFleetIds.Contains(candidate.FleetId))
+                {
+                    waves.Add(new OffensiveWave(candidate.FleetId, candidate.Composition, candidate.TravelDays, candidate.AttackModifier));
+                }
+            }
+
+            return OffensivePlanner.Simulate(
+                waves,
+                _military.GetGarrison(system.Id, system.OwnerId),
+                OffensivePlanner.VisibleDefenderModifier(system.Stability, system.DevelopmentLevel),
+                _military.UnitCatalog);
+        }
+
+        private void DrawOffensiveConfirmation(Rect rect, StarSystemState system)
+        {
+            OffensiveOutcome outcome = SimulateEngagement(system);
+
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 26), $"Engager le combat sur {system.Name}", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + 28, rect.width, 18),
+                $"{outcome.WaveCount} flotte(s), {outcome.UnitCount} unites — derniere arrivee dans {outcome.TravelDays} jour(s).",
+                UITheme.Label);
+
+            GUI.Label(new Rect(rect.x, rect.y + 52, rect.width, 18),
+                outcome.SystemCaptured
+                    ? $"Prevision : le systeme tombe, {outcome.AttackerLosses} unite(s) perdue(s)."
+                    : outcome.WonWithoutOccupation
+                        ? "Prevision : la garnison est detruite mais le systeme reste a son proprietaire."
+                        : $"Prevision : l'offensive est repoussee, {outcome.AttackerLosses} unite(s) perdue(s).",
+                UITheme.Label);
+
+            GUI.Label(new Rect(rect.x, rect.y + 74, rect.width, 32),
+                "Les flottes engagees seront indisponibles pendant tout le trajet. La garnison adverse "
+                + "peut etre renforcee d'ici leur arrivee : cette prevision suppose des effectifs constants.",
+                UITheme.MutedLabel);
+
+            var cancelRect = new Rect(rect.x, rect.yMax - 44, 160, 44);
+            var confirmRect = new Rect(rect.x + 168, rect.yMax - 44, rect.width - 168, 44);
+
+            if (GUI.Button(cancelRect, "Annuler", UITheme.Button))
+            {
+                _offensiveConfirming = false;
+                return;
+            }
+
+            if (GUI.Button(confirmRect, $"Lancer l'offensive — {outcome.UnitCount} unites", UITheme.Button))
+            {
+                LaunchOffensive(system);
+            }
+        }
+
+        /// <summary>
+        /// Envoie chaque flotte engagee. Les echecs sont rapportes tels quels : le plafond de
+        /// flottes en campagne peut en refuser une partie, et le joueur doit savoir laquelle.
+        /// </summary>
+        private void LaunchOffensive(StarSystemState system)
+        {
+            int launched = 0;
+            string lastError = null;
+
+            foreach (int fleetId in _engagedFleetIds.OrderBy(id => id).ToList())
+            {
+                Fleet fleet = FindPlayerFleet(fleetId);
+                if (fleet == null || fleet.Status != FleetStatus.Stationed)
+                {
+                    continue;
+                }
+
+                if (_military.TryMoveFleet(fleet, system.Id, out string error))
+                {
+                    launched++;
+                    continue;
+                }
+
+                lastError = error;
+                GameLog.Warning($"[Offensive] {fleet.Name} : {error}");
+            }
+
+            _offensiveConfirming = false;
+            InvalidateOffensiveCache();
+
+            _feedback = launched == 0
+                ? lastError ?? "Aucune flotte n'a pu partir."
+                : lastError == null
+                    ? $"Offensive lancee sur {system.Name} : {launched} flotte(s) en route."
+                    : $"{launched} flotte(s) en route. Les autres ont ete refusees : {lastError}";
+
+            GameLog.Info($"[Offensive] {_feedback}");
         }
 
         // ------------------------------------------------------------------ divers

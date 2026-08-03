@@ -426,40 +426,31 @@ namespace Espace.Gameplay.Military
         /// </summary>
         private GameDate ComputeLegArrivalDate(Fleet fleet, IReadOnlyList<StarSystemId> route, int legIndex)
         {
-            float speed = SlowestSpeed(fleet.Composition) * ResearchMultiplier(fleet.OwnerId, ResearchDomain.Logistics)
-                * (1f + fleet.Admiral.SpeedBonus);
+            int daysSinceDeparture = FleetTravel.DaysToLeg(
+                FleetTravel.CumulativeDistance(_map, route, legIndex),
+                EffectiveSpeedOf(fleet),
+                legIndex);
 
-            float cumulativeDistance = 0f;
-            for (int leg = 0; leg <= legIndex && leg + 1 < route.Count; leg++)
-            {
-                cumulativeDistance += HyperlanePathfinder.LegDistance(_map, route[leg], route[leg + 1]);
-            }
-
-            int daysSinceDeparture = Mathf.Max(legIndex + 1, Mathf.CeilToInt(cumulativeDistance / speed));
             return (fleet.JourneyStartDate ?? _gameClock.CurrentDate).AddDays(daysSinceDeparture);
         }
 
-        /// <summary>La vitesse d'une flotte mixte est celle de son unite la plus lente.</summary>
-        private float SlowestSpeed(UnitBundle composition)
+        /// <summary>
+        /// Vitesse effective de <paramref name="fleet"/>, recherche en Logistique et bonus
+        /// d'Amiral compris.
+        /// <para>
+        /// L'arithmetique vit dans <see cref="FleetTravel"/>, partagee avec
+        /// <see cref="OffensivePlanner"/> : la planification d'offensive annonce au joueur la
+        /// duree que ce service appliquera, et deux implementations de la meme formule
+        /// divergeraient a la premiere retouche d'equilibrage.
+        /// </para>
+        /// </summary>
+        internal float EffectiveSpeedOf(Fleet fleet)
         {
-            float slowest = float.MaxValue;
-            bool any = false;
-
-            foreach (UnitTypeDefinition unitType in _unitCatalog)
-            {
-                if (unitType == null || composition.Get(unitType.UnitType) <= 0)
-                {
-                    continue;
-                }
-
-                any = true;
-                if (unitType.Speed < slowest)
-                {
-                    slowest = unitType.Speed;
-                }
-            }
-
-            return any ? slowest : 1f;
+            return FleetTravel.EffectiveSpeed(
+                fleet.Composition,
+                _unitCatalog,
+                ResearchMultiplier(fleet.OwnerId, ResearchDomain.Logistics),
+                fleet.Admiral.SpeedBonus);
         }
 
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
