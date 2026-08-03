@@ -14,7 +14,7 @@ ravitaillement, terrain, commandement).
 - **Temps :** hybride temps réel / tour — horloge continue avec pause et vitesses (façon
   *Crusader Kings*), simplifiée pour des sessions mobiles courtes (Phase 3)
 
-> **Statut : Phase 20 en cours — flottes visibles sur la carte (étape 1/3 livrée).** Carte galactique (100 systèmes),
+> **Statut : Phase 20 en cours — flottes et fiche de système (étapes 1 et 2/3 livrées).** Carte galactique (100 systèmes),
 > horloge de jeu, économie, 6 empires (1 joueur + 5 IA dont chacune **gère l'intégralité de son
 > territoire** et s'étend au-delà de ses voisins immédiats, avec un rayon d'expansion propre à
 > sa personnalité), armées (sept types d'unités dont quatre classes de vaisseaux —
@@ -726,6 +726,38 @@ ne bouge à l'écran est une galaxie morte.
 > modifiée : cette étape est entièrement de la présentation. La création de flotte, la
 > colonisation et le combat restent ceux des Phases 14 à 18.
 
+### Briques de la fiche de système (Phase 20, étape 2)
+
+L'ancienne fiche mesurait **420 unités de haut sur un écran qui en offre environ 315** en 20:9 :
+elle était structurellement plus grande que l'écran. Ses sept boutons de recrutement alignés
+horizontalement demandaient plus de 700 unités de large pour une zone qui en offrait 344. Les
+deux barres de défilement n'étaient pas un défaut de réglage, mais la conséquence directe de ces
+deux dépassements.
+
+| Décision | Pourquoi |
+|---|---|
+| **En-tête permanent + trois onglets en bas** | avec sept champs d'identité et treize actions, aucune disposition ne fait tenir l'ensemble dans 596 × 125 sans passer les cibles tactiles sous le seuil utilisable. Les onglets sont le seul découpage qui laisse chaque section respirer **et** qui accueille une mécanique future sans redécouper la fenêtre : ce sera un onglet de plus. L'identité, elle, ne bascule jamais |
+| Onglets **en bas**, pas en haut | c'est la zone du pouce en paysage. Un onglet en haut d'un écran de 6 pouces tenu à deux mains demande de changer de prise |
+| Disposition en **`Rect` calculés**, pas en `GUILayout` imbriqué | IMGUI ne signale pas un dépassement, il le rogne silencieusement. Calculer chaque rectangle rend le débordement impossible par construction plutôt que de l'espérer |
+| **Hauteurs proportionnelles**, pas en dur | la fiche a été vérifiée par le calcul en 16:9, 19,5:9, 20:9, 21:9 et 22:9, avec et sans message de retour. Les valeurs fixes cassaient dans trois de ces dix cas : bouton d'investissement laissant 14 unités aux bâtiments, boutons d'armée à 25 unités de haut, aperçu débordant de 13 |
+| Les lignes d'information **cèdent la place aux actions** | sur un écran très allongé, ce sont les détails de garnison qui disparaissent, jamais les boutons. `WriteLine` n'écrit une ligne que si elle tient encore |
+| Le composeur de flotte prend **toute la fiche** | réparti dans les 125 unités du corps, ses boutons « − / + » tombaient à 22 unités de haut, moitié moins que le seuil utilisable. Une action de saisie mérite l'écran entier |
+| Valeur **entre** les deux boutons du composeur | empilée au-dessus, elle chevauchait les boutons dès que la tuile descendait sous 62 unités, c'est-à-dire sur tout écran plus allongé que du 19,5:9 |
+| Recrutement en **4 colonnes × 2 rangées** | c'était le débordement horizontal : sept tuiles alignées ne tenaient pas. Quatre colonnes laissent environ 94 unités par tuile |
+| Le détail de colonisation **n'est plus dupliqué** dans l'Aperçu | il occupe son propre onglet, accompagné des flottes capables de s'en charger. Le doublon faisait déborder l'Aperçu de treize unités dès qu'un message s'affichait |
+
+**Ce que la fiche sait faire de plus :**
+
+| Fonction | Détail |
+|---|---|
+| **Créer une flotte** | le joueur choisit quelles unités embarquent, jusqu'au plafond de 10. Le reste tient la garnison — l'ancien bouton envoyait *toute* la garnison et laissait systématiquement le système sans défense. S'appuie sur `TryDetachFleet`, qui existait depuis la Phase 14 sans qu'aucune interface ne l'expose |
+| **Coloniser explicitement** | l'onglet d'un système libre liste les flottes du joueur et affiche, pour chacune, ce qui lui manque. L'ordre reste un `TryMoveFleet` : le service vérifie l'exigence d'Infanterie **au départ** depuis la Phase 16 et retire les unités à l'arrivée. Dupliquer cette règle pour un bouton dédié la ferait diverger à la première retouche d'équilibrage |
+| **Ordre par flotte, plus par système** | `_awaitingDestinationFleetId` remplace `_moveOriginSystemId`. Depuis qu'un système peut héberger sa garnison *et* des flottes détachées, désigner l'origine ne suffit plus à désigner la flotte : l'ancien code déplaçait systématiquement la garnison, même après un détachement |
+| **Plafond de flottes en campagne affiché** | déduit de `GetFleetsForEmpire` et `CanDeployAnotherFleet`, sans ajouter de membre à `IMilitaryService` — **cinq doublures de test l'implémentent**, et l'étendre les aurait toutes cassées pour un affichage |
+
+> **Aucun changement de sauvegarde ni de règle de jeu.** Toutes les actions passent par les
+> services existants ; seule l'interface change.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -1161,7 +1193,7 @@ sombre mais fatal dès qu'on colorie deux empires voisins.
 | 18 | IA plus dynamique (multi-système, expansion longue distance, rayon par personnalité) | ✅ terminée |
 | 19 | Territoires et frontières (cellules de contrôle, frontières contestées, noms de factions, échelle de lecture) | ✅ terminée |
 | 20.1 | Flottes visibles et sélectionnables sur la carte (vaisseaux orientés, trajectoires) | ✅ terminée |
-| 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ⏳ à venir |
+| 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ✅ terminée |
 | 20.3 | Planification d'offensive et suivi des opérations | ⏳ à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système

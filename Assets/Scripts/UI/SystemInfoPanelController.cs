@@ -10,46 +10,86 @@ using UnityEngine;
 namespace Espace.UI
 {
     /// <summary>
-    /// Panneau du systeme selectionne, en bas a gauche de l'ecran : fiche d'identite (nom,
-    /// population, richesse, developpement, stabilite, proprietaire, gisements, routes,
-    /// garnisons de tous les empires) et, si le systeme appartient au joueur, les actions qui
-    /// s'y rapportent (investir, construire, recruter, deplacer la garnison).
+    /// Fiche du systeme selectionne : un en-tete permanent (identite et statistiques) et un
+    /// corps qui bascule entre trois sections via des onglets places en bas (Phase 20).
     /// <para>
-    /// <b>Fusionne trois panneaux de diagnostic distincts des Phases 2, 4 et 6 :</b> l'ancien
-    /// encart de selection d'<c>GalaxyMapController</c>, l'encart d'actions
-    /// d'<c>EconomyDebugPanel</c> et la totalite de <c>MilitaryDebugPanel</c> portaient tous
-    /// sur le meme systeme selectionne et s'empilaient a l'ecran independamment. Un seul
-    /// panneau contextuel est plus lisible et evite de recalculer trois fois la meme position
-    /// d'ancrage.
+    /// <b>Aucune barre de defilement, nulle part.</b> L'ancienne fiche mesurait 420 unites de
+    /// haut sur un ecran qui en offre environ 315 en 20:9 — elle etait structurellement plus
+    /// grande que l'ecran, et ses sept boutons de recrutement alignes horizontalement dans une
+    /// zone de 344 debordaient de plus du double. La fiche est desormais dimensionnee a partir
+    /// de la place reellement disponible, et chaque section dispose de la pleine largeur.
+    /// </para>
+    /// <para>
+    /// <b>Pourquoi des onglets plutot qu'un decoupage en colonnes ?</b> Avec sept champs
+    /// d'identite et treize actions, aucune disposition ne fait tenir l'ensemble dans
+    /// 620 × 190 sans reduire les cibles tactiles sous le seuil utilisable. Les onglets sont le
+    /// seul decoupage qui laisse chaque section respirer <i>et</i> qui accueille une mecanique
+    /// future sans redecouper la fenetre : ce sera un onglet de plus.
+    /// </para>
+    /// <para>
+    /// <b>L'en-tete ne bascule jamais.</b> Nom, proprietaire et jauges restent visibles quelle
+    /// que soit la section : on ne perd pas de vue quel systeme on est en train de gerer.
+    /// </para>
+    /// <para>
+    /// <b>Disposition en <c>Rect</c> calcules, pas en <c>GUILayout</c> imbrique :</b> IMGUI ne
+    /// signale pas un depassement, il le rogne silencieusement. Calculer chaque rectangle rend
+    /// le debordement impossible par construction plutot que de l'esperer.
     /// </para>
     /// </summary>
     public sealed class SystemInfoPanelController : MonoBehaviour
     {
-        private const int PanelWidth = 360;
-        private const int PanelHeight = 420;
-        private const int Gap = 10;
+        private enum PanelTab
+        {
+            Overview,
+            Economy,
+            Military,
+        }
 
-        /// <summary>Meme borne que <c>EconomyService.MaxDevelopmentLevel</c> (non exposee sur l'interface) : desactive le bouton Investir au lieu de laisser <c>TryInvestInDevelopment</c> echouer silencieusement.</summary>
+        private const int CardWidth = 620;
+        private const int MaxCardHeight = 252;
+        private const int HeaderHeight = 62;
+        private const int TabsHeight = 52;
+
+        /// <summary>Hauteur de la barre d'etat du jeu (voir <c>HudController.BarHeight</c>) : la fiche se centre en dessous.</summary>
+        private const int HudBarHeight = 44;
+
+        private const int Margin = 10;
+        private const int Padding = 12;
+        private const int Gap = 6;
+
+        /// <summary>Bande reservee au message de retour, retiree du corps quand il y en a un.</summary>
+        private const int FeedbackHeight = 16;
+
+        /// <summary>Meme borne que <c>EconomyService.MaxDevelopmentLevel</c>, non exposee sur l'interface.</summary>
         private const int MaxDevelopmentLevel = 5;
+
+        /// <summary>Plafond d'unites par flotte, aligne sur <c>MilitaryService.MaxUnitsPerFleet</c>.</summary>
+        private const int MaxUnitsPerFleet = 10;
 
         private IEventBus _eventBus;
         private GalaxyMap _map;
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
         private IMilitaryService _military;
+
         private StarSystemId? _selectedSystemId;
-        private Vector2 _scroll;
+        private PanelTab _tab = PanelTab.Overview;
+        private string _feedback;
 
         /// <summary>
-        /// Systeme de depart de la flotte a deplacer quand le mode de ciblage est arme
-        /// (Phase 17). <b>Stocke a part de <see cref="_selectedSystemId"/></b> : au clic sur la
-        /// destination, la selection bascule sur ce nouveau systeme (souvent etranger, donc le
-        /// panneau n'afficherait meme plus la section Armee) — l'origine doit survivre a ce
-        /// basculement.
+        /// Flotte dont on attend la destination (Phase 20). <b>Identifiee par son numero, plus
+        /// par son systeme d'origine :</b> depuis qu'un systeme peut heberger sa garnison
+        /// <i>et</i> des flottes detachees, designer l'origine ne suffit plus a designer la
+        /// flotte — l'ancien code deplacait systematiquement la garnison, meme apres un
+        /// detachement.
         /// </summary>
-        private StarSystemId? _moveOriginSystemId;
+        private int? _awaitingDestinationFleetId;
 
-        private string _moveFeedback;
+        /// <summary>Composition en cours de saisie, indexee par <see cref="UnitType"/>. Ouvre la feuille de creation de flotte quand elle n'est pas nulle.</summary>
+        private int[] _draftComposition;
+
+        /// <summary>Vrai quand l'onglet Armee affiche la grille de recrutement plutot que les flottes sur place.</summary>
+        private bool _recruiting;
 
         private void OnEnable()
         {
@@ -73,17 +113,26 @@ namespace Espace.UI
         }
 
         /// <summary>
-        /// Le mode de ciblage est consomme <b>avant</b> de reecrire la selection : c'est le clic
-        /// sur la destination qui declenche l'ordre, et l'origine ne doit pas avoir ete perdue
-        /// entre-temps.
+        /// Le mode « choisir une destination » est consomme <b>avant</b> de reecrire la
+        /// selection : c'est ce toucher qui declenche l'ordre, et la flotte visee ne doit pas
+        /// avoir ete perdue entre-temps.
         /// </summary>
         private void OnSystemSelected(SystemSelectedEvent selectedEvent)
         {
-            if (_moveOriginSystemId.HasValue)
+            if (_awaitingDestinationFleetId.HasValue)
             {
-                StarSystemId origin = _moveOriginSystemId.Value;
-                _moveOriginSystemId = null;
-                ExecuteMoveOrder(origin, selectedEvent.SystemId);
+                int fleetId = _awaitingDestinationFleetId.Value;
+                _awaitingDestinationFleetId = null;
+                ExecuteMoveOrder(fleetId, selectedEvent.SystemId);
+            }
+
+            if (!_selectedSystemId.HasValue || !_selectedSystemId.Value.Equals(selectedEvent.SystemId))
+            {
+                // Changer de systeme reinitialise la section : on revient a l'Apercu, qui est
+                // toujours pertinent, plutot que de retomber sur un onglet vide.
+                _tab = PanelTab.Overview;
+                _draftComposition = null;
+                _recruiting = false;
             }
 
             _selectedSystemId = selectedEvent.SystemId;
@@ -91,32 +140,30 @@ namespace Espace.UI
 
         private void OnSystemDeselected(SystemDeselectedEvent deselectedEvent)
         {
-            // Un clic dans le vide annule un ordre de deplacement en cours plutot que de le
-            // laisser arme sans que rien ne le rappelle a l'ecran.
-            _moveOriginSystemId = null;
+            _awaitingDestinationFleetId = null;
             _selectedSystemId = null;
+            _draftComposition = null;
+            _recruiting = false;
         }
 
-        /// <summary>Envoie la garnison de <paramref name="originId"/> vers <paramref name="destinationId"/>, en revalidant que la flotte existe toujours.</summary>
-        private void ExecuteMoveOrder(StarSystemId originId, StarSystemId destinationId)
+        /// <summary>Envoie la flotte <paramref name="fleetId"/> vers <paramref name="destinationId"/>, en revalidant qu'elle existe toujours.</summary>
+        private void ExecuteMoveOrder(int fleetId, StarSystemId destinationId)
         {
-            if (originId.Equals(destinationId))
-            {
-                _moveFeedback = "Deplacement annule : la flotte est deja sur ce systeme.";
-                return;
-            }
-
             if (_military == null && !ServiceLocator.TryGet(out _military))
             {
                 return;
             }
 
-            // La flotte a pu partir, fusionner ou etre detruite entre l'armement du mode et le
-            // clic sur la destination.
-            if (!_military.TryGetStationedFleet(originId, EconomyService.PlayerOwnerId, out Fleet fleet)
-                || fleet.Status != FleetStatus.Stationed)
+            Fleet fleet = FindPlayerFleet(fleetId);
+            if (fleet == null || fleet.Status != FleetStatus.Stationed)
             {
-                _moveFeedback = "Deplacement annule : plus aucune flotte disponible sur le systeme de depart.";
+                _feedback = "Ordre annule : cette flotte n'est plus disponible.";
+                return;
+            }
+
+            if (fleet.CurrentSystemId.Equals(destinationId))
+            {
+                _feedback = "Ordre annule : la flotte est deja sur ce systeme.";
                 return;
             }
 
@@ -125,14 +172,29 @@ namespace Espace.UI
                 string destinationName = _map != null && _map.TryGetSystem(destinationId, out StarSystemState destination)
                     ? destination.Name
                     : destinationId.ToString();
-                _moveFeedback = $"{fleet.Name} fait route vers {destinationName}.";
-                GameLog.Info($"[Military] {_moveFeedback}");
+                _feedback = $"{fleet.Name} fait route vers {destinationName}.";
+                GameLog.Info($"[Military] {_feedback}");
                 return;
             }
 
-            _moveFeedback = error;
+            _feedback = error;
             GameLog.Warning($"[Military] {error}");
         }
+
+        private Fleet FindPlayerFleet(int fleetId)
+        {
+            foreach (Fleet fleet in _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId))
+            {
+                if (fleet.Id == fleetId)
+                {
+                    return fleet;
+                }
+            }
+
+            return null;
+        }
+
+        // ------------------------------------------------------------------ rendu
 
         private void OnGUI()
         {
@@ -158,35 +220,7 @@ namespace Espace.UI
                 if (_economy == null) ServiceLocator.TryGet(out _economy);
                 if (_military == null) ServiceLocator.TryGet(out _military);
 
-                var rect = new Rect(Gap, UITheme.ScreenHeight - PanelHeight - Gap, PanelWidth, PanelHeight);
-                GUI.Box(rect, string.Empty, UITheme.Panel);
-
-                GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, PanelWidth - 16, PanelHeight - 12));
-                _scroll = GUILayout.BeginScrollView(_scroll);
-
-                DrawIdentity(system);
-
-                if (system.OwnerId == StarSystemState.UnownedOwnerId)
-                {
-                    GUILayout.Space(6);
-                    DrawColonizationInfo(system);
-                }
-
-                bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
-                if (ownedByPlayer && _economy != null)
-                {
-                    GUILayout.Space(6);
-                    DrawEconomyActions(system);
-                }
-
-                if (ownedByPlayer && _military != null)
-                {
-                    GUILayout.Space(6);
-                    DrawMilitaryActions(system);
-                }
-
-                GUILayout.EndScrollView();
-                GUILayout.EndArea();
+                DrawCard(system);
             }
             finally
             {
@@ -195,142 +229,741 @@ namespace Espace.UI
         }
 
         /// <summary>
-        /// Cout de colonisation d'un systeme libre (Phase 16). Appelle directement les regles
-        /// pures <see cref="ColonizationRules"/> plutot que de passer par une methode de
-        /// service : <c>Espace.UI</c> reference deja <c>Espace.Gameplay</c>, et il n'y a aucun
-        /// etat a interroger.
+        /// Calcule le rectangle de la fiche et dessine ses trois zones.
+        /// <para>
+        /// La hauteur s'adapte a la place restante sous la barre d'etat plutot que d'etre fixe :
+        /// un ecran tres allonge (21:9, 22:9) offre moins de 300 unites de haut, et une valeur
+        /// en dur y deborderait — exactement le defaut que cette refonte corrige.
+        /// </para>
         /// </summary>
-        private void DrawColonizationInfo(StarSystemState system)
+        private void DrawCard(StarSystemState system)
         {
-            int required = ColonizationRules.RequiredInfantry(system);
-            int lost = ColonizationRules.InfantryLost(system);
+            float available = UITheme.ScreenHeight - HudBarHeight - 2 * Margin;
+            float cardHeight = Mathf.Min(MaxCardHeight, available);
+            float cardWidth = Mathf.Min(CardWidth, UITheme.ScreenWidth - 2 * Margin);
 
-            GUILayout.Label($"Colonisation : {required} Infanterie requise", UITheme.Label);
-            GUILayout.Label($"dont {lost} perdue(s) a l'installation", UITheme.MutedLabel);
-        }
+            float x = (UITheme.ScreenWidth - cardWidth) * 0.5f;
+            float y = HudBarHeight + Mathf.Max(Margin, (available - cardHeight) * 0.5f + Margin);
 
-        private void DrawIdentity(StarSystemState system)
-        {
-            GUILayout.Label(system.Name, UITheme.Title);
-            GUILayout.Label($"Population : {system.Population} M   |   Richesse : {system.Wealth}/100", UITheme.Label);
-            GUILayout.Label($"Developpement : {system.DevelopmentLevel}/{MaxDevelopmentLevel}   |   Stabilite : {HudFormatter.FormatPercent(system.Stability)}", UITheme.Label);
-            GUILayout.Label($"Proprietaire : {OwnerLabel(system.OwnerId)}", UITheme.Label);
-            GUILayout.Label($"Gisements : {(system.ResourceDeposits.Length == 0 ? "aucun" : string.Join(", ", system.ResourceDeposits))}", UITheme.MutedLabel);
-            GUILayout.Label($"Routes hyperspatiales : {_map.GetNeighbors(system.Id).Count}", UITheme.MutedLabel);
-            GUILayout.Label($"Garnisons : {GarrisonSummaryLabel(system)}", UITheme.MutedLabel);
-        }
+            var card = new Rect(x, y, cardWidth, cardHeight);
+            GUI.Box(card, GUIContent.none, UITheme.Panel);
 
-        private void DrawEconomyActions(StarSystemState system)
-        {
-            GUILayout.Label("Economie", UITheme.Title);
+            var headerRect = new Rect(card.x, card.y, card.width, HeaderHeight);
+            var tabsRect = new Rect(card.x, card.yMax - TabsHeight, card.width, TabsHeight);
+            var bodyRect = new Rect(
+                card.x + Padding,
+                headerRect.yMax + Gap,
+                card.width - 2 * Padding,
+                tabsRect.y - headerRect.yMax - 2 * Gap);
 
-            bool atMaxDevelopment = system.DevelopmentLevel >= MaxDevelopmentLevel;
-            string investLabel = atMaxDevelopment
-                ? "Developpement maximal atteint"
-                : $"Investir dans le developpement ({_economy.GetInvestmentCost(system.Id):0} Cr)";
-
-            GUI.enabled = !atMaxDevelopment;
-            if (GUILayout.Button(investLabel, UITheme.Button) && !atMaxDevelopment)
+            // Le message de retour occupe une bande reservee sous le corps plutot que de se
+            // superposer a lui : ecrit par-dessus, il masquerait la derniere ligne d'une liste
+            // exactement au moment ou le joueur vient d'agir dessus.
+            if (!string.IsNullOrEmpty(_feedback))
             {
-                if (!_economy.TryInvestInDevelopment(system.Id, out string error))
+                bodyRect.height -= FeedbackHeight;
+                GUI.Label(new Rect(bodyRect.x, bodyRect.yMax + 2, bodyRect.width, FeedbackHeight), _feedback, UITheme.MutedLabel);
+            }
+
+            // La feuille de composition prend toute la fiche : repartie dans les 125 unites du
+            // corps, ses boutons « − / + » tomberaient a 22 unites de haut, moitie moins que le
+            // seuil tactile utilisable. Une action de saisie merite l'ecran entier.
+            if (_draftComposition != null && system.OwnerId == EconomyService.PlayerOwnerId)
+            {
+                DrawFleetComposer(new Rect(card.x + Padding, card.y + Padding, card.width - 2 * Padding, card.height - 2 * Padding), system);
+                return;
+            }
+
+            DrawHeader(headerRect, system);
+            DrawBody(bodyRect, system);
+            DrawTabs(tabsRect, system);
+        }
+
+        // ------------------------------------------------------------------ en-tete
+
+        private void DrawHeader(Rect rect, StarSystemState system)
+        {
+            GUI.Box(rect, GUIContent.none, UITheme.Header);
+
+            var inner = new Rect(rect.x + Padding, rect.y + 8, rect.width - 2 * Padding, rect.height - 16);
+
+            const float identityWidth = 186f;
+            GUI.Label(new Rect(inner.x, inner.y, identityWidth, 24), system.Name, UITheme.Title);
+            GUI.Label(new Rect(inner.x, inner.y + 22, identityWidth, 18), OwnerLabel(system.OwnerId), UITheme.MutedLabel);
+
+            // Quatre jauges cote a cote : les statistiques qui decident d'une action sont lues
+            // d'un coup d'œil, sans avoir a comparer des nombres alignes en colonne.
+            float gaugesX = inner.x + identityWidth + Gap;
+            float gaugesWidth = inner.xMax - gaugesX;
+            float columnWidth = (gaugesWidth - 3 * Gap) / 4f;
+
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 0),
+                "POPULATION", $"{system.Population} M", Mathf.Clamp01(system.Population / 4000f), new Color(0.56f, 0.72f, 0.96f));
+
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 1),
+                "RICHESSE", $"{system.Wealth}/100", Mathf.Clamp01(system.Wealth / 100f), new Color(0.90f, 0.80f, 0.20f));
+
+            DrawGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 2),
+                "STABILITE", HudFormatter.FormatPercent(system.Stability), Mathf.Clamp01(system.Stability),
+                system.Stability > 0.6f ? UITheme.PositiveColor : UITheme.NegativeColor);
+
+            DrawPipGauge(GaugeRect(gaugesX, inner.y, columnWidth, inner.height, 3),
+                "DEVELOPPEMENT", $"{system.DevelopmentLevel}/{MaxDevelopmentLevel}", system.DevelopmentLevel, MaxDevelopmentLevel);
+        }
+
+        private static Rect GaugeRect(float x, float y, float width, float height, int index) =>
+            new Rect(x + index * (width + Gap), y + 6, width, height - 6);
+
+        /// <summary>Libelle, valeur et barre de remplissage : la forme dit l'etat avant meme que le chiffre soit lu.</summary>
+        private static void DrawGauge(Rect rect, string key, string value, float fill, Color color)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), key, UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y + 12, rect.width, 16), value, UITheme.Label);
+
+            var track = new Rect(rect.x, rect.y + 30, rect.width, 4);
+            GUI.DrawTexture(track, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.10f)));
+            GUI.DrawTexture(new Rect(track.x, track.y, track.width * Mathf.Clamp01(fill), track.height), UITheme.SolidTexture(color));
+        }
+
+        /// <summary>
+        /// Variante a pastilles pour le developpement : c'est une echelle discrete de 0 a 5, pas
+        /// une proportion. Une barre continue suggererait des valeurs intermediaires qui
+        /// n'existent pas.
+        /// </summary>
+        private static void DrawPipGauge(Rect rect, string key, string value, int filled, int total)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), key, UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y + 12, rect.width, 16), value, UITheme.Label);
+
+            float pipWidth = (rect.width - (total - 1) * 3f) / total;
+            for (int i = 0; i < total; i++)
+            {
+                var pip = new Rect(rect.x + i * (pipWidth + 3f), rect.y + 30, pipWidth, 4);
+                GUI.DrawTexture(pip, UITheme.SolidTexture(i < filled
+                    ? UITheme.AccentBackground
+                    : new Color(1f, 1f, 1f, 0.10f)));
+            }
+        }
+
+        // ------------------------------------------------------------------ onglets
+
+        private void DrawTabs(Rect rect, StarSystemState system)
+        {
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1), UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.08f)));
+
+            bool ownedByPlayer = system.OwnerId == EconomyService.PlayerOwnerId;
+            bool free = system.OwnerId == StarSystemState.UnownedOwnerId;
+
+            string militaryLabel = ownedByPlayer ? "Armee" : free ? "Coloniser" : "Renseignement";
+            string economyBadge = ownedByPlayer && _economy != null
+                ? $"{RemainingBuildingCount(system)} a construire"
+                : null;
+            string militaryBadge = ownedByPlayer && _military != null
+                ? $"{_military.GetGarrison(system.Id, EconomyService.PlayerOwnerId).TotalCount} unites"
+                : null;
+
+            var inner = new Rect(rect.x + 8, rect.y + 5, rect.width - 16, rect.height - 10);
+            float tabWidth = (inner.width - 2 * Gap) / 3f;
+
+            DrawTab(new Rect(inner.x, inner.y, tabWidth, inner.height), PanelTab.Overview, "Apercu", null);
+            DrawTab(new Rect(inner.x + tabWidth + Gap, inner.y, tabWidth, inner.height), PanelTab.Economy, "Economie", economyBadge);
+            DrawTab(new Rect(inner.x + 2 * (tabWidth + Gap), inner.y, tabWidth, inner.height), PanelTab.Military, militaryLabel, militaryBadge);
+        }
+
+        private void DrawTab(Rect rect, PanelTab tab, string label, string badge)
+        {
+            bool active = _tab == tab;
+
+            if (GUI.Button(rect, GUIContent.none, active ? UITheme.ActiveTabButton : UITheme.TabButton))
+            {
+                _tab = tab;
+                _draftComposition = null;
+                _recruiting = false;
+                _feedback = null;
+            }
+
+            bool hasBadge = !string.IsNullOrEmpty(badge);
+            float labelY = hasBadge ? rect.y + 8 : rect.y + (rect.height - 18) * 0.5f;
+
+            GUI.Label(new Rect(rect.x, labelY, rect.width, 18), label, UITheme.Label);
+            if (hasBadge)
+            {
+                GUI.Label(new Rect(rect.x, rect.y + 26, rect.width, 14), badge, UITheme.MutedLabel);
+            }
+        }
+
+        private int RemainingBuildingCount(StarSystemState system)
+        {
+            int built = _economy.GetBuildings(system.Id).Count;
+            return Mathf.Max(0, _economy.BuildingCatalog.Count - built);
+        }
+
+        // ------------------------------------------------------------------ corps
+
+        private void DrawBody(Rect rect, StarSystemState system)
+        {
+            switch (_tab)
+            {
+                case PanelTab.Economy:
+                    DrawEconomyTab(rect, system);
+                    break;
+                case PanelTab.Military:
+                    DrawMilitaryTab(rect, system);
+                    break;
+                default:
+                    DrawOverviewTab(rect, system);
+                    break;
+            }
+        }
+
+        private void DrawOverviewTab(Rect rect, StarSystemState system)
+        {
+            float half = (rect.width - Padding) * 0.5f;
+            var left = new Rect(rect.x, rect.y, half, rect.height);
+            var right = new Rect(rect.x + half + Padding, rect.y, half, rect.height);
+
+            GUI.Label(new Rect(left.x, left.y, left.width, 14), "GISEMENTS", UITheme.MutedLabel);
+            GUI.Label(new Rect(left.x, left.y + 14, left.width, 18),
+                system.ResourceDeposits.Length == 0 ? "Aucun" : string.Join(", ", system.ResourceDeposits),
+                UITheme.Label);
+
+            GUI.Label(new Rect(left.x, left.y + 36, left.width, 14), "RESEAU", UITheme.MutedLabel);
+            GUI.Label(new Rect(left.x, left.y + 50, left.width, 18),
+                $"{_map.GetNeighbors(system.Id).Count} routes hyperspatiales", UITheme.Label);
+
+            // Le detail de colonisation n'est pas repris ici : il occupe l'onglet « Coloniser »,
+            // ou il est accompagne des flottes capables de s'en charger. Le dupliquer faisait
+            // deborder l'Apercu de treize unites des qu'un message de retour s'affichait.
+
+            GUI.Label(new Rect(right.x, right.y, right.width, 14), "FORCES EN PRESENCE", UITheme.MutedLabel);
+
+            if (_military == null)
+            {
+                GUI.Label(new Rect(right.x, right.y + 18, right.width, 18), "Inconnues", UITheme.MutedLabel);
+                return;
+            }
+
+            IReadOnlyList<Fleet> fleets = _military.GetFleetsAt(system.Id);
+            if (fleets.Count == 0)
+            {
+                GUI.Label(new Rect(right.x, right.y + 18, right.width, 18), "Aucune garnison", UITheme.MutedLabel);
+                return;
+            }
+
+            float lineY = right.y + 18;
+            foreach (Fleet fleet in fleets)
+            {
+                if (lineY + 18 > right.yMax)
                 {
-                    GameLog.Warning($"[Economy] {error}");
+                    break;
                 }
+
+                GUI.Label(new Rect(right.x, lineY, right.width - 70, 18), OwnerLabel(fleet.OwnerId), UITheme.Label);
+                GUI.Label(new Rect(right.xMax - 70, lineY, 70, 18), $"{fleet.Composition.TotalCount} unites", UITheme.MutedLabel);
+                lineY += 20;
+            }
+        }
+
+        private void DrawEconomyTab(Rect rect, StarSystemState system)
+        {
+            if (system.OwnerId != EconomyService.PlayerOwnerId || _economy == null)
+            {
+                GUI.Label(new Rect(rect.x, rect.y + rect.height * 0.4f, rect.width, 20),
+                    "Aucune action economique : ce systeme ne vous appartient pas.", UITheme.MutedLabel);
+                return;
+            }
+
+            bool atMax = system.DevelopmentLevel >= MaxDevelopmentLevel;
+
+            // Hauteur proportionnelle plutot que fixe : sur un ecran tres allonge, 46 unites en
+            // dur ne laissaient que 14 unites aux tuiles de batiment, illisibles et intouchables.
+            float investHeight = Mathf.Clamp(rect.height * 0.34f, 32f, 46f);
+            var investRect = new Rect(rect.x, rect.y, rect.width, investHeight);
+
+            GUI.enabled = !atMax;
+            string investLabel = atMax
+                ? "Developpement maximal atteint"
+                : $"Investir dans le developpement   —   niveau {system.DevelopmentLevel} → {system.DevelopmentLevel + 1}   ·   {_economy.GetInvestmentCost(system.Id):0} Cr";
+
+            if (GUI.Button(investRect, investLabel, UITheme.Button) && !atMax)
+            {
+                _feedback = _economy.TryInvestInDevelopment(system.Id, out string error) ? null : error;
             }
             GUI.enabled = true;
 
-            foreach (BuildingType building in _economy.BuildingCatalog)
+            GUI.Label(new Rect(rect.x, investRect.yMax + 4, rect.width, 14), "BATIMENTS", UITheme.MutedLabel);
+
+            // Les cinq batiments sur une seule rangee : la pleine largeur de la fiche leur laisse
+            // environ 118 unites chacun, contre 60 dans l'ancienne colonne. Aucun ne deborde.
+            var gridArea = new Rect(rect.x, investRect.yMax + 20, rect.width, rect.yMax - investRect.yMax - 20);
+            IReadOnlyList<BuildingType> catalog = _economy.BuildingCatalog;
+            int columns = Mathf.Max(1, catalog.Count);
+            float tileWidth = (gridArea.width - (columns - 1) * Gap) / columns;
+
+            for (int i = 0; i < catalog.Count; i++)
             {
+                BuildingType building = catalog[i];
                 if (building == null)
                 {
                     continue;
                 }
 
-                bool alreadyBuilt = _economy.GetBuildings(system.Id).Any(b => b.Type == building);
-                string label = alreadyBuilt
-                    ? $"{building.DisplayName} (construit)"
-                    : $"{building.DisplayName} ({building.CreditsCost:0} Cr)";
+                var tile = new Rect(gridArea.x + i * (tileWidth + Gap), gridArea.y, tileWidth, gridArea.height);
+                bool built = _economy.GetBuildings(system.Id).Any(b => b.Type == building);
 
-                GUI.enabled = !alreadyBuilt;
-                if (GUILayout.Button(label, UITheme.Button) && !alreadyBuilt)
+                GUI.enabled = !built;
+                if (GUI.Button(tile, $"{building.DisplayName}\n{(built ? "construit" : $"{building.CreditsCost:0} Cr")}", UITheme.Button) && !built)
                 {
-                    if (!_economy.TryStartConstruction(system.Id, building, out string error))
-                    {
-                        GameLog.Warning($"[Economy] {error}");
-                    }
+                    _feedback = _economy.TryStartConstruction(system.Id, building, out string error) ? null : error;
                 }
-
                 GUI.enabled = true;
             }
         }
 
-        private void DrawMilitaryActions(StarSystemState system)
+        // ------------------------------------------------------------------ armee
+
+        private void DrawMilitaryTab(Rect rect, StarSystemState system)
         {
-            GUILayout.Label("Armee", UITheme.Title);
-
-            UnitBundle garrison = _military.GetGarrison(system.Id, EconomyService.PlayerOwnerId);
-            GUILayout.Label($"Garnison : {garrison.TotalCount} unites (puissance ~{_military.EstimatePower(garrison):0})", UITheme.Label);
-            GUILayout.Label(garrison.ToString(), UITheme.MutedLabel);
-
-            if (_military.TryGetStationedFleet(system.Id, EconomyService.PlayerOwnerId, out Fleet garrisonFleet))
+            if (_military == null)
             {
-                GUILayout.Label(
-                    $"Amiral {garrisonFleet.Admiral.Name} — Attaque {HudFormatter.FormatSigned(garrisonFleet.Admiral.AttackBonus * 100f)}% "
-                    + $"/ Vitesse {HudFormatter.FormatSigned(garrisonFleet.Admiral.SpeedBonus * 100f)}% "
-                    + $"/ Defense {HudFormatter.FormatSigned(garrisonFleet.Admiral.DefenseBonus * 100f)}%",
-                    UITheme.MutedLabel);
+                return;
             }
 
-            GUILayout.Label("Recruter :", UITheme.MutedLabel);
-            GUILayout.BeginHorizontal();
-            foreach (UnitTypeDefinition unitType in _military.UnitCatalog)
+            if (system.OwnerId == EconomyService.PlayerOwnerId)
             {
+                if (_draftComposition != null)
+                {
+                    DrawFleetComposer(rect, system);
+                }
+                else if (_awaitingDestinationFleetId.HasValue)
+                {
+                    DrawDestinationPrompt(rect);
+                }
+                else
+                {
+                    DrawOwnedMilitary(rect, system);
+                }
+
+                return;
+            }
+
+            if (system.OwnerId == StarSystemState.UnownedOwnerId)
+            {
+                DrawColonizationTab(rect, system);
+                return;
+            }
+
+            DrawIntelTab(rect, system);
+        }
+
+        private void DrawOwnedMilitary(Rect rect, StarSystemState system)
+        {
+            const float leftWidth = 190f;
+            var left = new Rect(rect.x, rect.y, leftWidth, rect.height);
+            var right = new Rect(rect.x + leftWidth + Padding, rect.y, rect.width - leftWidth - Padding, rect.height);
+
+            UnitBundle garrison = _military.GetGarrison(system.Id, EconomyService.PlayerOwnerId);
+
+            // Etat du plafond de flottes en campagne : deduit de ce que le service expose deja
+            // (nombre de flottes non stationnees, et la possibilite d'en lancer une de plus)
+            // plutot que d'ajouter un membre a IMilitaryService, que cinq doublures de test
+            // implementent.
+            int deployed = _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId).Count(f => f.Status != FleetStatus.Stationed);
+            bool canDeploy = _military.CanDeployAnotherFleet(EconomyService.PlayerOwnerId);
+
+            // Les boutons sont places en premier et gardent toujours une hauteur touchable ;
+            // les lignes d'information au-dessus ne sont ecrites que si elles tiennent encore.
+            // Sur un ecran tres allonge, ce sont les details qui disparaissent, jamais l'action.
+            float buttonHeight = Mathf.Clamp(left.height * 0.34f, 32f, 44f);
+            float contentBottom = left.yMax - buttonHeight - 6f;
+            float lineY = left.y;
+
+            WriteLine(left, ref lineY, contentBottom, 14, "GARNISON", UITheme.MutedLabel);
+            WriteLine(left, ref lineY, contentBottom, 24, $"{garrison.TotalCount} unites", UITheme.Title);
+            WriteLine(left, ref lineY, contentBottom, 14, $"puissance ~{_military.EstimatePower(garrison):0}", UITheme.MutedLabel);
+            WriteLine(left, ref lineY, contentBottom, 14, garrison.ToString(), UITheme.MutedLabel);
+            WriteLine(left, ref lineY, contentBottom, 14,
+                canDeploy ? $"{deployed} flotte(s) en campagne" : $"{deployed} en campagne — plafond atteint",
+                canDeploy ? UITheme.MutedLabel : UITheme.Label);
+
+            float buttonWidth = (left.width - Gap) * 0.5f;
+            var createRect = new Rect(left.x, left.yMax - buttonHeight, buttonWidth, buttonHeight);
+            var recruitRect = new Rect(left.x + buttonWidth + Gap, left.yMax - buttonHeight, buttonWidth, buttonHeight);
+
+            GUI.enabled = garrison.TotalCount > 0;
+            if (GUI.Button(createRect, "Creer\nune flotte", UITheme.Button) && garrison.TotalCount > 0)
+            {
+                _draftComposition = new int[System.Enum.GetValues(typeof(UnitType)).Length];
+                _feedback = null;
+            }
+            GUI.enabled = true;
+
+            if (GUI.Button(recruitRect, _recruiting ? "Voir les\nflottes" : "Recruter\ndes unites", UITheme.Button))
+            {
+                _recruiting = !_recruiting;
+                _feedback = null;
+            }
+
+            if (_recruiting)
+            {
+                DrawRecruitGrid(right, system);
+            }
+            else
+            {
+                DrawFleetList(right, system);
+            }
+        }
+
+        /// <summary>
+        /// Ecrit une ligne et avance le curseur, ou ne fait rien si elle ne tient plus. Evite
+        /// d'avoir a decliner chaque disposition par hauteur d'ecran.
+        /// </summary>
+        private static void WriteLine(Rect column, ref float y, float bottom, float height, string text, GUIStyle style)
+        {
+            if (y + height > bottom)
+            {
+                return;
+            }
+
+            GUI.Label(new Rect(column.x, y, column.width, height), text, style);
+            y += height;
+        }
+
+        /// <summary>
+        /// Grille de recrutement, en quatre colonnes plutot qu'en une rangee de sept.
+        /// <para>
+        /// C'est le debordement horizontal de l'ancienne fiche : sept boutons alignes avec leur
+        /// description tenaient dans plus de 700 unites, pour une zone qui en offrait 344. Quatre
+        /// colonnes sur deux rangees laissent environ 94 unites par tuile, soit une cible tactile
+        /// confortable et un libelle lisible.
+        /// </para>
+        /// </summary>
+        private void DrawRecruitGrid(Rect rect, StarSystemState system)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 14), "RECRUTER", UITheme.MutedLabel);
+
+            IReadOnlyList<UnitTypeDefinition> catalog = _military.UnitCatalog;
+            var grid = new Rect(rect.x, rect.y + 16, rect.width, rect.height - 16);
+
+            const int columns = 4;
+            int rows = Mathf.Max(1, Mathf.CeilToInt(catalog.Count / (float)columns));
+            float tileWidth = (grid.width - (columns - 1) * Gap) / columns;
+            float tileHeight = (grid.height - (rows - 1) * Gap) / rows;
+
+            for (int i = 0; i < catalog.Count; i++)
+            {
+                UnitTypeDefinition unitType = catalog[i];
                 if (unitType == null)
                 {
                     continue;
                 }
 
-                GUILayout.BeginVertical();
-                if (GUILayout.Button($"{unitType.DisplayName}\n{unitType.CreditsCost:0} Cr", UITheme.Button))
-                {
-                    if (!_military.TryRecruitUnits(system.Id, unitType, 1, out string error))
-                    {
-                        GameLog.Warning($"[Military] {error}");
-                    }
-                }
+                var tile = new Rect(
+                    grid.x + (i % columns) * (tileWidth + Gap),
+                    grid.y + (i / columns) * (tileHeight + Gap),
+                    tileWidth,
+                    tileHeight);
 
-                if (!string.IsNullOrEmpty(unitType.RoleDescription))
+                bool allowed = system.DevelopmentLevel >= unitType.MinimumDevelopmentLevel;
+
+                GUI.enabled = allowed;
+                string label = allowed
+                    ? $"{unitType.DisplayName}\n{unitType.CreditsCost:0} Cr"
+                    : $"{unitType.DisplayName}\ndev. {unitType.MinimumDevelopmentLevel} requis";
+
+                if (GUI.Button(tile, label, UITheme.Button) && allowed)
                 {
-                    GUILayout.Label(unitType.RoleDescription, UITheme.MutedLabel, GUILayout.Width(90));
+                    _feedback = _military.TryRecruitUnits(system.Id, unitType, 1, out string error) ? null : error;
                 }
-                GUILayout.EndVertical();
+                GUI.enabled = true;
             }
-            GUILayout.EndHorizontal();
+        }
 
-            if (garrison.TotalCount > 0)
+        /// <summary>
+        /// Les flottes du joueur presentes sur ce systeme, garnison comprise. Chacune peut
+        /// recevoir un ordre de destination independamment des autres.
+        /// </summary>
+        private void DrawFleetList(Rect rect, StarSystemState system)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "FLOTTES SUR PLACE", UITheme.MutedLabel);
+
+            var playerFleets = _military.GetFleetsAt(system.Id)
+                .Where(f => f.OwnerId == EconomyService.PlayerOwnerId)
+                .ToList();
+
+            if (playerFleets.Count == 0)
             {
-                GUILayout.Space(4);
+                GUI.Label(new Rect(rect.x, rect.y + 20, rect.width, 18), "Aucune", UITheme.MutedLabel);
+                return;
+            }
 
-                if (_moveOriginSystemId.HasValue)
+            float rowHeight = Mathf.Min(44f, (rect.height - 20 - (playerFleets.Count - 1) * 4) / playerFleets.Count);
+            float rowY = rect.y + 20;
+
+            foreach (Fleet fleet in playerFleets)
+            {
+                if (rowY + rowHeight > rect.yMax)
                 {
-                    GUILayout.Label("Cliquez le systeme de destination sur la carte.", UITheme.Label);
-                    if (GUILayout.Button("Annuler le deplacement", UITheme.Button, GUILayout.Height(28)))
-                    {
-                        _moveOriginSystemId = null;
-                    }
+                    break;
                 }
-                else if (GUILayout.Button("Deplacer une flotte", UITheme.Button, GUILayout.Height(32)))
+
+                var row = new Rect(rect.x, rowY, rect.width, rowHeight);
+                GUI.DrawTexture(row, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
+
+                GUI.Label(new Rect(row.x + 8, row.y + 3, row.width - 110, 18), fleet.Name, UITheme.Label);
+                GUI.Label(new Rect(row.x + 8, row.y + 21, row.width - 110, 16),
+                    $"{fleet.Composition.TotalCount} u. · amiral {fleet.Admiral.Name}", UITheme.MutedLabel);
+
+                var sendRect = new Rect(row.xMax - 94, row.y + 5, 88, rowHeight - 10);
+                if (GUI.Button(sendRect, "Envoyer", UITheme.Button))
                 {
-                    // Le mode reste arme jusqu'au prochain clic sur la carte : c'est ce clic qui
-                    // designe la destination (Phase 17, plus besoin d'adjacence).
-                    _moveOriginSystemId = system.Id;
-                    _moveFeedback = null;
+                    _awaitingDestinationFleetId = fleet.Id;
+                    _feedback = null;
+                }
+
+                rowY += rowHeight + 4;
+            }
+        }
+
+        /// <summary>
+        /// Feuille de composition : le joueur choisit quelles unites embarquent, dans la limite
+        /// du plafond par flotte. C'est ce qui distingue « creer une flotte » de « envoyer toute
+        /// la garnison », l'ancien comportement qui laissait systematiquement le systeme sans
+        /// defense.
+        /// </summary>
+        private void DrawFleetComposer(Rect rect, StarSystemState system)
+        {
+            UnitBundle garrison = _military.GetGarrison(system.Id, EconomyService.PlayerOwnerId);
+            int total = _draftComposition.Sum();
+
+            const float titleHeight = 40f;
+            const float footerHeight = 52f;
+
+            GUI.Label(new Rect(rect.x, rect.y, rect.width - 240, 24), "Composition de la flotte", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + 22, rect.width - 240, 16),
+                $"{total}/{MaxUnitsPerFleet} unites embarquees — le reste tient la garnison", UITheme.MutedLabel);
+
+            var types = (UnitType[])System.Enum.GetValues(typeof(UnitType));
+            var grid = new Rect(rect.x, rect.y + titleHeight, rect.width, rect.height - titleHeight - footerHeight);
+
+            const int columns = 4;
+            int rows = Mathf.Max(1, Mathf.CeilToInt(types.Length / (float)columns));
+            float tileWidth = (grid.width - (columns - 1) * Gap) / columns;
+            float tileHeight = (grid.height - (rows - 1) * Gap) / rows;
+
+            for (int i = 0; i < types.Length; i++)
+            {
+                UnitType type = types[i];
+                int available = garrison.Get(type);
+                int chosen = _draftComposition[(int)type];
+
+                var tile = new Rect(
+                    grid.x + (i % columns) * (tileWidth + Gap),
+                    grid.y + (i / columns) * (tileHeight + Gap),
+                    tileWidth,
+                    tileHeight);
+
+                GUI.DrawTexture(tile, UITheme.SolidTexture(new Color(1f, 1f, 1f, available > 0 ? 0.05f : 0.02f)));
+
+                GUI.Label(new Rect(tile.x + 6, tile.y + 4, tile.width - 12, 14), ShortName(type), UITheme.MutedLabel);
+
+                // Valeur placee <b>entre</b> les deux boutons plutot qu'au-dessus : empilee, elle
+                // chevauchait les boutons des que la tuile descendait sous 62 unites de haut,
+                // c'est-a-dire sur tout ecran plus allonge que du 19,5:9.
+                float stepperHeight = Mathf.Max(28f, tile.height - 22f);
+                float stepperY = tile.yMax - stepperHeight - 4;
+                float stepperWidth = (tile.width - 12f) * 0.3f;
+                float valueWidth = tile.width - 12f - 2 * stepperWidth;
+
+                var minusRect = new Rect(tile.x + 6, stepperY, stepperWidth, stepperHeight);
+                var plusRect = new Rect(tile.xMax - 6 - stepperWidth, stepperY, stepperWidth, stepperHeight);
+                GUI.Label(new Rect(minusRect.xMax, stepperY + (stepperHeight - 22) * 0.5f, valueWidth, 22),
+                    $"{chosen}/{available}", UITheme.Title);
+
+                GUI.enabled = chosen > 0;
+                if (GUI.Button(minusRect, "-", UITheme.Button) && chosen > 0)
+                {
+                    _draftComposition[(int)type]--;
+                }
+
+                GUI.enabled = chosen < available && total < MaxUnitsPerFleet;
+                if (GUI.Button(plusRect, "+", UITheme.Button) && chosen < available && total < MaxUnitsPerFleet)
+                {
+                    _draftComposition[(int)type]++;
+                }
+                GUI.enabled = true;
+            }
+
+            var cancelRect = new Rect(rect.x, rect.yMax - 44, 160, 44);
+            var confirmRect = new Rect(rect.x + 168, rect.yMax - 44, rect.width - 168, 44);
+
+            if (GUI.Button(cancelRect, "Annuler", UITheme.Button))
+            {
+                _draftComposition = null;
+                return;
+            }
+
+            GUI.enabled = total > 0;
+            if (GUI.Button(confirmRect, total > 0 ? $"Detacher {total} unite(s) en une nouvelle flotte" : "Choisissez au moins une unite", UITheme.Button)
+                && total > 0)
+            {
+                ConfirmFleetCreation(system);
+            }
+            GUI.enabled = true;
+        }
+
+        private void ConfirmFleetCreation(StarSystemState system)
+        {
+            UnitBundle units = UnitBundle.Zero;
+            var types = (UnitType[])System.Enum.GetValues(typeof(UnitType));
+            foreach (UnitType type in types)
+            {
+                int count = _draftComposition[(int)type];
+                if (count > 0)
+                {
+                    units += UnitBundle.Of(type, count);
                 }
             }
 
-            if (!string.IsNullOrEmpty(_moveFeedback))
+            if (_military.TryDetachFleet(system.Id, EconomyService.PlayerOwnerId, units, out Fleet fleet, out string error))
             {
-                GUILayout.Label(_moveFeedback, UITheme.MutedLabel);
+                _feedback = $"{fleet.Name} constituee ({units.TotalCount} unites). Choisissez sa destination.";
+                GameLog.Info($"[Military] {_feedback}");
+                _draftComposition = null;
+                return;
+            }
+
+            _feedback = error;
+            GameLog.Warning($"[Military] {error}");
+        }
+
+        private void DrawDestinationPrompt(Rect rect)
+        {
+            GUI.Label(new Rect(rect.x, rect.y + rect.height * 0.25f, rect.width, 22),
+                "Touchez le systeme de destination sur la carte.", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + rect.height * 0.25f + 24, rect.width, 18),
+                "Un systeme libre sera colonise si la flotte transporte assez d'Infanterie ; un systeme ennemi sera attaque.",
+                UITheme.MutedLabel);
+
+            if (GUI.Button(new Rect(rect.x, rect.yMax - 44, 200, 40), "Annuler l'ordre", UITheme.Button))
+            {
+                _awaitingDestinationFleetId = null;
+            }
+        }
+
+        /// <summary>
+        /// Colonisation explicite d'un systeme libre : la fiche liste les flottes du joueur
+        /// capables de s'y installer, avec ce qui leur manque quand elles ne le peuvent pas.
+        /// <para>
+        /// L'ordre lui-meme reste un <c>TryMoveFleet</c> — le service verifie l'exigence
+        /// d'Infanterie <b>au depart</b> depuis la Phase 16, et retire les unites a l'arrivee.
+        /// Dupliquer cette regle ici pour un bouton dedie la ferait diverger a la premiere
+        /// retouche d'equilibrage.
+        /// </para>
+        /// </summary>
+        private void DrawColonizationTab(Rect rect, StarSystemState system)
+        {
+            int required = ColonizationRules.RequiredInfantry(system);
+            int lost = ColonizationRules.InfantryLost(system);
+
+            const float leftWidth = 200f;
+            GUI.Label(new Rect(rect.x, rect.y, leftWidth, 16), "COLONISATION", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y + 16, leftWidth, 26), $"{required} Infanterie", UITheme.Title);
+            GUI.Label(new Rect(rect.x, rect.y + 42, leftWidth, 16), $"dont {lost} perdue(s) a l'installation", UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x, rect.y + 60, leftWidth, 16), $"stabilite {HudFormatter.FormatPercent(system.Stability)}", UITheme.MutedLabel);
+
+            var listRect = new Rect(rect.x + leftWidth + Padding, rect.y, rect.width - leftWidth - Padding, rect.height);
+            GUI.Label(new Rect(listRect.x, listRect.y, listRect.width, 16), "FLOTTES DISPONIBLES", UITheme.MutedLabel);
+
+            var candidates = _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId)
+                .Where(f => f.Status == FleetStatus.Stationed)
+                .OrderByDescending(f => f.Composition.Infantry)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                GUI.Label(new Rect(listRect.x, listRect.y + 20, listRect.width, 18),
+                    "Aucune flotte stationnee. Creez-en une depuis un de vos systemes.", UITheme.MutedLabel);
+                return;
+            }
+
+            float rowHeight = 40f;
+            float rowY = listRect.y + 20;
+
+            foreach (Fleet fleet in candidates)
+            {
+                if (rowY + rowHeight > listRect.yMax)
+                {
+                    break;
+                }
+
+                bool capable = fleet.Composition.Infantry >= required;
+                string origin = _map.TryGetSystem(fleet.CurrentSystemId, out StarSystemState from) ? from.Name : "?";
+
+                var row = new Rect(listRect.x, rowY, listRect.width, rowHeight);
+                GUI.DrawTexture(row, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
+
+                GUI.Label(new Rect(row.x + 8, row.y + 2, row.width - 110, 18), $"{fleet.Name} — {origin}", UITheme.Label);
+                GUI.Label(new Rect(row.x + 8, row.y + 20, row.width - 110, 16),
+                    capable
+                        ? $"{fleet.Composition.Infantry} Infanterie a bord"
+                        : $"{fleet.Composition.Infantry}/{required} Infanterie — insuffisant",
+                    capable ? UITheme.MutedLabel : UITheme.Label);
+
+                GUI.enabled = capable;
+                if (GUI.Button(new Rect(row.xMax - 100, row.y + 4, 94, rowHeight - 8), "Coloniser", UITheme.Button) && capable)
+                {
+                    ExecuteMoveOrder(fleet.Id, system.Id);
+                }
+                GUI.enabled = true;
+
+                rowY += rowHeight + 4;
+            }
+        }
+
+        /// <summary>
+        /// Systeme etranger : ce que l'on sait de lui. La planification d'offensive s'installera
+        /// ici a l'etape suivante ; afficher des maintenant un bouton inerte serait pire que de
+        /// ne rien afficher.
+        /// </summary>
+        private void DrawIntelTab(Rect rect, StarSystemState system)
+        {
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, 16), "RENSEIGNEMENT", UITheme.MutedLabel);
+
+            UnitBundle garrison = _military.GetGarrison(system.Id, system.OwnerId);
+
+            var columnWidth = (rect.width - 2 * Gap) / 3f;
+            DrawIntelStat(new Rect(rect.x, rect.y + 20, columnWidth, 60), "GARNISON", $"{garrison.TotalCount}");
+            DrawIntelStat(new Rect(rect.x + columnWidth + Gap, rect.y + 20, columnWidth, 60), "PUISSANCE", $"~{_military.EstimatePower(garrison):0}");
+            DrawIntelStat(new Rect(rect.x + 2 * (columnWidth + Gap), rect.y + 20, columnWidth, 60), "TERRAIN",
+                $"+{system.DevelopmentLevel * 5} %");
+
+            GUI.Label(new Rect(rect.x, rect.y + 86, rect.width, 18),
+                "Envoyez une flotte sur ce systeme depuis un des votres pour l'attaquer.", UITheme.MutedLabel);
+        }
+
+        private static void DrawIntelStat(Rect rect, string key, string value)
+        {
+            GUI.DrawTexture(rect, UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)));
+            GUI.Label(new Rect(rect.x + 8, rect.y + 6, rect.width - 16, 16), key, UITheme.MutedLabel);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 24, rect.width - 16, 26), value, UITheme.Title);
+        }
+
+        // ------------------------------------------------------------------ divers
+
+        /// <summary>Abreviation tenant dans une tuile de composition, ou le nom complet deborderait.</summary>
+        private static string ShortName(UnitType type)
+        {
+            switch (type)
+            {
+                case UnitType.Infantry: return "Infant.";
+                case UnitType.Armored: return "Blindes";
+                case UnitType.SpecialForces: return "F. spec.";
+                case UnitType.Fighter: return "Chass.";
+                case UnitType.Frigate: return "Fregate";
+                case UnitType.Cruiser: return "Croiseur";
+                case UnitType.Battleship: return "Cuirasse";
+                default: return type.ToString();
             }
         }
 
@@ -347,28 +980,6 @@ namespace Espace.UI
             }
 
             return ownerId.ToString();
-        }
-
-        private string GarrisonSummaryLabel(StarSystemState system)
-        {
-            if (_military == null)
-            {
-                return "inconnue";
-            }
-
-            IReadOnlyList<Fleet> fleets = _military.GetFleetsAt(system.Id);
-            if (fleets.Count == 0)
-            {
-                return "aucune";
-            }
-
-            var parts = new List<string>(fleets.Count);
-            foreach (Fleet fleet in fleets)
-            {
-                parts.Add($"{OwnerLabel(fleet.OwnerId)} : {fleet.Composition.TotalCount}");
-            }
-
-            return string.Join(" | ", parts);
         }
     }
 }
