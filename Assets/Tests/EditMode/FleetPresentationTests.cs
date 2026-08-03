@@ -142,12 +142,19 @@ namespace Espace.Tests.EditMode
         public void TryComputePose_NeverLeavesItsLeg()
         {
             GalaxyMap map = MakeMap();
-            Fleet fleet = MakeTravellingFleet(new GameDate(1, 1, 1), new GameDate(1, 1, 11));
+
+            // Depart place volontairement loin dans le calendrier : le balayage descend a
+            // quarante jours avant le depart, et <see cref="GameDate"/> refuse — a juste titre —
+            // toute date anterieure au premier jour de la partie. Partir du jour 1 ferait donc
+            // echouer le test sur sa propre arithmetique plutot que sur ce qu'il verifie.
+            var departure = new GameDate(2, 1, 1);
+            GameDate arrival = departure.AddDays(10);
+            Fleet fleet = MakeTravellingFleet(departure, arrival);
 
             // Balaye largement au-dela des deux extremites du tronçon.
             for (int day = -40; day < 120; day++)
             {
-                GameDate date = new GameDate(1, 1, 1).AddDays(day);
+                GameDate date = departure.AddDays(day);
                 Assert.IsTrue(FleetPresentation.TryComputePose(fleet, map, date, out FleetPose pose));
 
                 Assert.GreaterOrEqual(pose.Position.x, -1e-3f, $"Vaisseau derriere son depart au jour {day}.");
