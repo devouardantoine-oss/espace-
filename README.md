@@ -811,6 +811,47 @@ Quatre défauts relevés sur l'appareil, invisibles dans l'éditeur :
 > **La fiche a été revérifiée** en 16:9, 19,5:9, 20:9, 21:9 et 22:9, avec et sans message de
 > retour : aucun débordement, aucun chevauchement, cibles tactiles au-dessus du seuil.
 
+### Briques de la musique d'ambiance (Phase 21)
+
+Une playlist unique, jouée dès le lancement, dans un ordre fixe et en boucle, du menu
+principal jusqu'à la fin de la partie.
+
+| Brique | Rôle |
+|---|---|
+| `MusicSettings` (`Espace.Core`) | Durées de fondu, intervalle de silence, volume par défaut. Structure pure, **valeurs assainies dans le constructeur** : elles viennent d'un champ d'éditeur, donc de l'extérieur du code |
+| `MusicPlaylistCursor` (`Espace.Core`) | Machine à états de l'enchaînement : `Silent → FadingIn → Playing → FadingOut`. **Ne lit aucun son** — il dit seulement quel morceau doit jouer et à quel volume. C'est ce qui rend les fondus vérifiables en EditMode |
+| `IMusicService` / `MusicService` (`Espace.Core`) | Possède l'`AudioSource`, traduit les décisions du curseur en appels moteur, garde le volume dans `PlayerPrefs` |
+| `MusicLibrary` (`Espace.Core`) | Découverte automatique des fichiers de `Assets/Resources/Music`, triés par nom (comparaison **ordinale**, pas culturelle) |
+| `MusicPlaylist` (`Espace.Data`) | Asset **optionnel** : ordre explicite et durées sur mesure, pour qui ne veut pas de l'ordre alphabétique |
+| `AudioImportSetup` (`Espace.Editor`) | `Tools → Espace → Configure Audio Import` : force `Streaming` + `Vorbis` sur tous les fichiers audio |
+
+**Ajouter une musique se résume à déposer un fichier** dans `Assets/Resources/Music`, puis à
+lancer `Tools → Espace → Configure Audio Import`. Préfixer les fichiers (`01_`, `02_`…) fixe
+l'ordre de lecture. Voir `Assets/Resources/Music/LISEZ-MOI.txt`.
+
+Quatre décisions méritent d'être expliquées :
+
+- **Une seule `AudioSource`, pas deux.** Un vrai fondu enchaîné — deux morceaux qui se
+  superposent — demanderait deux sources et le double de mémoire de décodage. L'enchaînement
+  retenu (fondu de sortie, silence de 3 à 8 s, fondu d'entrée) ne superpose jamais deux
+  morceaux : une source suffit.
+- **`Streaming`, jamais `Decompress On Load`.** C'est le réglage d'import par défaut d'Unity et
+  c'est le plus coûteux qui soit ici : un morceau de trois minutes se retrouve décompressé en
+  mémoire, soit environ **30 Mo de PCM pour 3 Mo de fichier**. Quatre morceaux suffisent à faire
+  fermer l'application par Android. En streaming, le coût est un tampon de quelques centaines de
+  kilo-octets, quelle que soit la durée.
+- **Le volume est une préférence d'appareil (`PlayerPrefs`), pas un état de partie.** Le mettre
+  dans la sauvegarde imposerait au joueur, en rechargeant, le réglage sonore d'un autre moment —
+  voire d'un autre téléphone. Aucun format de sauvegarde n'a donc changé.
+- **Rythmée en `unscaledDeltaTime`.** La musique ne suit ni la vitesse ×4 ni la pause : elle
+  accompagne le joueur, elle ne simule rien. `GameBootstrap` relaie en plus `OnApplicationPause`,
+  sans quoi revenir dans le jeu après quelques minutes reprendrait la playlist deux morceaux plus
+  loin.
+
+> **Le jeu fonctionne sans aucun fichier audio** : le service se déclare silencieux en
+> *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
+> « Musique » du menu pause n'apparaît pas.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -820,7 +861,7 @@ erreur ni warning :
 
 ```
 [Bootstrap] Configuration appliquee (cible : 60 FPS).
-[Bootstrap] 4 services enregistres.
+[Bootstrap] 5 services enregistres.
 [FSM] Entree dans BootState
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
@@ -831,7 +872,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (591 tests, tous packages confondus).
+Voir §5 pour le compte total (612 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -865,7 +906,7 @@ test). La console doit afficher, sans erreur ni warning :
 
 ```
 [Bootstrap] Configuration appliquee (cible : 60 FPS).
-[Bootstrap] 4 services enregistres.
+[Bootstrap] 5 services enregistres.
 [FSM] Entree dans BootState
 [FSM] Sortie de BootState
 [FSM] Entree dans MainMenuState - le socle est operationnel.
@@ -1012,7 +1053,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 591 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 612 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1220,6 +1261,34 @@ d'aire cumulée mesuré : 0,0000 %). Cette dernière propriété est la plus uti
 cellule mal découpée laisserait un trou ou un recouvrement, invisible à l'œil sur une carte
 sombre mais fatal dès qu'on colorie deux empires voisins.
 
+### Ajouter et vérifier la musique (Phase 21)
+
+1. **Déposer les fichiers** dans `Assets/Resources/Music`, nommés `01_…`, `02_…` pour fixer
+   l'ordre (`.ogg` de préférence). Le dossier contient un `LISEZ-MOI.txt` qui rappelle la marche
+   à suivre et sert de tableau des sources et licences.
+2. **Lancer `Tools → Espace → Configure Audio Import`.** La console indique combien de fichiers
+   ont été réimportés en `Streaming`/`Vorbis`. **Cette étape n'est pas facultative** : sans elle,
+   quelques morceaux suffisent à faire fermer l'application par Android (voir §3, Phase 21).
+3. **Play sur `Bootstrap.unity`.** La console doit afficher
+   `[Music] N morceau(x) charge(s), volume 60 %`, et le premier morceau démarre en fondu dès
+   l'écran de menu.
+4. **Vérifier l'enchaînement** — laisser tourner jusqu'à la fin d'un morceau : le son doit
+   descendre en 2 s, laisser 3 à 8 s de silence, puis remonter en 2 s sur le morceau suivant. Le
+   dernier morceau enchaîne sur le premier.
+5. **Vérifier la persistance entre scènes** — « Nouvelle partie », puis menu pause →
+   « Menu principal » : la musique **ne doit pas repartir du début** à chaque changement d'écran.
+6. **Régler le volume** — menu pause, ligne « Musique » : « Son coupé / Son actif » et les
+   boutons `-` / `+`. Le titre du morceau en cours est affiché. Le réglage doit survivre à une
+   fermeture complète de l'application (il est dans `PlayerPrefs`, pas dans la sauvegarde).
+
+Sans aucun fichier audio, la console affiche `[Music] Aucun morceau charge` en *Info* et le bloc
+« Musique » du menu pause n'apparaît pas — c'est le comportement attendu, pas un défaut.
+
+**Tests unitaires** (inclus dans le Run All du Test Runner) : `MusicPlaylistCursorTests` (17) et
+`MusicSettingsTests` (4) couvrent le démarrage immédiat, la montée et la descente des fondus, la
+durée du silence et son bornage, la boucle sur une playlist de 1 et de 3 morceaux, le morceau
+plus court que le fondu, la playlist vide et la frame de durée nulle.
+
 ---
 
 ## 6. Feuille de route
@@ -1248,6 +1317,7 @@ sombre mais fatal dès qu'on colorie deux empires voisins.
 | 20.1 | Flottes visibles et sélectionnables sur la carte (vaisseaux orientés, trajectoires) | ✅ terminée |
 | 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ✅ terminée |
 | 20.3 | Planification d'offensive et suivi des opérations | ✅ terminée |
+| 21 | Musique d'ambiance (playlist en boucle, fondus, réglage du volume) | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
