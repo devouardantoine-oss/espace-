@@ -35,6 +35,10 @@ namespace Espace.Managers
         [SerializeField]
         private GameClockConfig gameClockConfig;
 
+        [Tooltip("Playlist explicite. Si vide, les fichiers audio de Assets/Resources/Music sont joues par ordre de nom.")]
+        [SerializeField]
+        private MusicPlaylist musicPlaylist;
+
         /// <summary>
         /// Instance active. Statique uniquement pour detecter les doublons apres un
         /// rechargement de scene — ce n'est pas un point d'acces public aux services,
@@ -46,6 +50,7 @@ namespace Espace.Managers
         private EventBus _eventBus;
         private SceneLoaderService _sceneLoader;
         private GameClock _gameClock;
+        private MusicService _music;
         private bool _servicesReady;
 
         private void Awake()
@@ -78,6 +83,24 @@ namespace Espace.Managers
             // que N MonoBehaviours avec chacun leur Update.
             _gameManager.Tick(Time.deltaTime);
             _gameClock.Tick(Time.deltaTime);
+
+            // Temps non affecte par l'echelle : la musique ne suit ni la vitesse de jeu ni la
+            // pause. Elle accompagne le joueur, elle ne simule rien.
+            _music.Tick(Time.unscaledDeltaTime);
+        }
+
+        /// <summary>
+        /// Relaye la mise en arriere-plan de l'application au service de musique, seul service
+        /// que cela concerne : la simulation, elle, est deja figee par l'arret des <c>Update</c>.
+        /// </summary>
+        private void OnApplicationPause(bool paused)
+        {
+            if (_instance != this)
+            {
+                return;
+            }
+
+            _music?.SetApplicationPaused(paused);
         }
 
         private void OnDestroy()
@@ -124,16 +147,37 @@ namespace Espace.Managers
                 GameLog.Warning("[Bootstrap] Aucun GameClockConfig assigne : GameClockSettings.Default est utilise.");
             }
             _gameClock = new GameClock(clockSettings, _eventBus);
+            _music = CreateMusicService();
 
             ServiceLocator.Register<IEventBus>(_eventBus);
             ServiceLocator.Register<ISceneLoader>(_sceneLoader);
             ServiceLocator.Register<IGameClock>(_gameClock);
+            ServiceLocator.Register<IMusicService>(_music);
 
             // GameManager est enregistre sous son type concret : c'est le chef d'orchestre
             // du flux, il n'a pas vocation a etre substitue.
             ServiceLocator.Register(_gameManager);
 
             GameLog.Info($"[Bootstrap] {ServiceLocator.Count} services enregistres.");
+        }
+
+        /// <summary>
+        /// Construit le service de musique a partir de la playlist assignee, ou a defaut des
+        /// fichiers deposes dans <c>Assets/Resources/Music</c>.
+        /// <para>
+        /// L'absence de playlist n'est pas signalee comme un manque, contrairement au
+        /// <see cref="GameClockConfig"/> : le jeu fonctionne parfaitement sans musique, alors
+        /// qu'il ne fonctionne pas sans horloge.
+        /// </para>
+        /// </summary>
+        private MusicService CreateMusicService()
+        {
+            if (musicPlaylist != null)
+            {
+                return new MusicService(musicPlaylist.Tracks, musicPlaylist.ToSettings());
+            }
+
+            return new MusicService(MusicLibrary.LoadFromResources(), MusicSettings.Default);
         }
 
         /// <summary>
@@ -146,6 +190,7 @@ namespace Espace.Managers
             _sceneLoader.Initialize();
             _gameManager.Initialize();
             _gameClock.Initialize();
+            _music.Initialize();
 
             _servicesReady = true;
         }
@@ -155,6 +200,7 @@ namespace Espace.Managers
         {
             _servicesReady = false;
 
+            _music?.Shutdown();
             _gameClock?.Shutdown();
             _gameManager?.Shutdown();
             _sceneLoader?.Shutdown();
@@ -162,6 +208,7 @@ namespace Espace.Managers
 
             ServiceLocator.Clear();
 
+            _music = null;
             _gameClock = null;
             _gameManager = null;
             _sceneLoader = null;
