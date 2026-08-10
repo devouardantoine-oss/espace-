@@ -896,10 +896,20 @@ bord de la faillite ne part plus en guerre même s'il est le plus fort.
 > **Un échec ne coûte plus systématiquement de l'opinion** — seulement s'il est attribué. Une
 > réussite attribuée, elle, en coûte désormais.
 
-> **P7 reste partielle, et c'est assumé.** Le rapport de forces militaire est laissé à 1 :
-> l'évaluer exigerait `IMilitaryService`, que `AIDecisionMaker` ne reçoit pas. Les postures
-> *Defending* et *Aggressive* restent donc hors d'atteinte ; seules *Consolidating* et
-> *Expanding*, qui portent la décision fiscale, sont opérationnelles.
+> **Les quatre postures sont opérationnelles.** `AIDecisionMaker` reçoit désormais
+> `IMilitaryService` — que `AIController` détenait déjà pour les décisions militaires, donc
+> aucune interface n'a été élargie. Le rapport de forces se lit sur `EmpireHoldings.TotalPower`
+> et `NeighboringEmpires`, deux fonctions qui existaient depuis la Phase 5.
+>
+> **Le rapport se calcule sur les seuls voisins immédiats**, pas sur la galaxie entière : un
+> empire lointain trois fois plus puissant ne menace personne tant qu'aucune frontière ne le
+> sépare de vous. C'est aussi ce que le joueur perçoit en regardant sa carte — l'IA ne sait rien
+> de plus que lui. Sans voisin, le rapport vaut 1 : ni menace, ni proie, l'empire se juge alors
+> sur sa seule situation intérieure.
+>
+> Le rapport est **plafonné à 5** : au-delà, « je domine très largement » et « j'écrase »
+> appellent la même décision, et diviser par une puissance quasi nulle ne produirait que des
+> nombres absurdes.
 
 ---
 
@@ -1627,7 +1637,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.4 | Coût d'administration payé en influence | ✅ terminée |
 | 22.5 | Entretien de flotte contraignant | ✅ terminée |
 | 22.6 | Espionnage gradué, branché dans le service | ✅ terminée |
-| 22.7 | Évaluation stratégique de l'IA | 🚧 partielle |
+| 22.7 | Évaluation stratégique de l'IA | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

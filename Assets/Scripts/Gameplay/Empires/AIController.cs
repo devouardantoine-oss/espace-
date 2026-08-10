@@ -86,7 +86,7 @@ namespace Espace.Gameplay.Empires
                     continue;
                 }
 
-                AIDecisionMaker.DecideAndAct(empire, _map, _economy);
+                AIDecisionMaker.DecideAndAct(empire, _map, _economy, _military);
                 ResearchDecisionMaker.DecideAndAct(empire, _research);
                 EspionageDecisionMaker.DecideAndAct(empire, _empireRegistry, _map, _espionage);
                 DiplomacyDecisionMaker.DecideAndAct(empire, _map, _military, _diplomacy);
