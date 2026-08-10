@@ -852,6 +852,36 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques de la sélection du monde d'origine « orbite » (Phase 21.4)
+
+La chaîne est bouclée : **menu → civilisation → monde → jeu**. La planète tourne en grand à
+droite, le dossier se réécrit à gauche à chaque changement de candidat.
+
+| Brique | Rôle |
+|---|---|
+| `WorldProfile` (`Espace.Gameplay.Galaxy`) | Traduit un `StarSystemState` en portrait comparable : type de monde, trois notes de ressources, difficulté, secteur |
+| `FactionPickerController` (étape monde réécrite) | Dossier, navigation entre candidats, planète accrochée à la caméra |
+| `PlanetVisual` (posé en 21.1) | Enfin utilisé : c'est cet écran qui le justifiait |
+
+- **Rien n'est inventé.** Le générateur produisait déjà des systèmes très différents — gisements,
+  développement, nombre de voisins — mais l'ancien écran n'en montrait que le nom. Le joueur
+  choisissait au hasard, non par négligence mais faute d'avoir de quoi choisir autrement.
+- **La carte d'aperçu est conservée**, alors que la Phase 13 n'en gardait que les noms : le
+  dossier a besoin des gisements et du voisinage pour dresser un portrait.
+- **La planète est accrochée à la caméra**, pas posée dans le monde : le fond du menu dérive
+  lentement, et une planète en coordonnées absolues sortirait du cadre.
+
+> **Deux défauts trouvés par les tests et le calcul.** Le type de monde reposait d'abord sur des
+> seuils absolus — mais le développement relève les trois notes à la fois, si bien qu'un monde
+> très développé ne descendait jamais sous le seuil « peu de nourriture » et ne pouvait plus être
+> désertique, quels que soient ses gisements. Le type suit désormais le profil *relatif*. Côté
+> mise en page, le dossier réclamait 209 unités de haut pour 158 disponibles sur un téléphone
+> dense : nom et rang partagent maintenant une ligne, les quatre faits tiennent sur une seule, et
+> le nombre de voisins s'efface quand la place manque. 136 unités nécessaires, vérifié sur quatre
+> formats.
+
+---
+
 ### Briques du choix de civilisation « prise de contrôle » (Phase 21.3)
 
 Les six empires du roster ont désormais un corps. **Aucun n'a été remplacé** : les noms et les
@@ -984,7 +1014,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (646 tests, tous packages confondus).
+Voir §5 pour le compte total (658 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1165,7 +1195,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 646 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 658 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1433,7 +1463,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 21.1 | Socle visuel des écrans d'ouverture (palettes par faction, habillage, rendu de planète) | ✅ terminée |
 | 21.2 | Menu principal « galaxie vivante » | ✅ terminée |
 | 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ✅ terminée |
-| 21.4 | Sélection du monde d'origine « orbite » | ⏳ à venir |
+| 21.4 | Sélection du monde d'origine « orbite » | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

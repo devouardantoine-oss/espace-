@@ -44,6 +44,21 @@ namespace Espace.UI
         private const float TabHeight = 28f;
         private const float TabGap = 4f;
         private const float ConfirmHeight = 34f;
+
+        /// <summary>Part de la largeur occupee par le dossier de monde (Phase 21.4). Le reste revient a la planete.</summary>
+        private const float WorldPanelFraction = 0.46f;
+
+        /// <summary>Hauteur reservee aux deux lignes de commandes de l'ecran de monde.</summary>
+        private const float WorldFooterHeight = 88f;
+
+        /// <summary>Rayon de la planete, en fraction de la demi-hauteur visible. 0,42 la fait occuper 84 % de la hauteur.</summary>
+        private const float PlanetRadiusFraction = 0.42f;
+
+        /// <summary>Position horizontale de la planete, en fraction de la demi-largeur visible.</summary>
+        private const float PlanetOffsetFraction = 0.44f;
+
+        /// <summary>Distance de la planete devant la camera. Plus pres que le fond stellaire, qui est a 2.</summary>
+        private const float PlanetDistance = 6f;
         private const string GalaxyMapSceneName = "GalaxyMap";
 
         private enum Step
@@ -55,7 +70,10 @@ namespace Espace.UI
         private bool _isOpen;
         private Step _step;
         private EmpireDefinition _chosenFaction;
-        private string[] _candidateSystemNames;
+        private GalaxyMap _previewMap;
+        private StarSystemId[] _candidateSlots;
+        private int _selectedWorld;
+        private PlanetVisual _planet;
         private Vector2 _scroll;
 
         /// <summary>Faction mise en avant a l'ecran. Distincte de <see cref="_chosenFaction"/>, qui n'est renseignee qu'a la validation.</summary>
@@ -79,7 +97,8 @@ namespace Espace.UI
             _isOpen = true;
             _step = Step.Faction;
             _chosenFaction = null;
-            _candidateSystemNames = null;
+            _candidateSlots = null;
+            _selectedWorld = 0;
             _scroll = Vector2.zero;
             _highlighted = DefaultHighlightedIndex();
             _palette = PaletteOf(_highlighted);
@@ -470,62 +489,363 @@ namespace Espace.UI
             _palette = _palette.Approach(PaletteOf(_highlighted), UiEasing.PaletteSmoothing, Time.unscaledDeltaTime);
         }
 
+        /// <summary>
+        /// Choix du monde d'origine, concept « orbite » (Phase 21.4).
+        /// <para>
+        /// <b>Un monde a la fois, en grand.</b> L'ancien ecran alignait six noms dans un
+        /// ascenseur : le joueur choisissait au hasard, non par negligence mais parce qu'il
+        /// n'avait rien pour choisir autrement. Le generateur produisait pourtant deja des
+        /// systemes tres differents — cet ecran ne fabrique aucune donnee, il montre celles qui
+        /// existaient sans etre lues (voir <see cref="WorldProfile"/>).
+        /// </para>
+        /// <para>
+        /// <b>La planete vit dans la scene, le dossier dans IMGUI</b> : meme partage que partout
+        /// ailleurs. Elle est accrochee a la camera pour rester cadree quelle que soit la derive
+        /// du fond.
+        /// </para>
+        /// </summary>
         private void DrawSystemStep()
         {
-            GUILayout.Label($"Systeme de depart de {_chosenFaction.DisplayName}", UITheme.Title);
-            GUILayout.Space(8);
+            float w = UITheme.ScreenWidth;
+            float h = UITheme.ScreenHeight;
 
-            if (_candidateSystemNames == null)
+            UiScreenRegions.Occupy(new Rect(0f, 0f, w * WorldPanelFraction, h), UITheme.Scale);
+
+            // Un voile degrade seulement sur la moitie gauche : le dossier doit se lire sans
+            // que la planete, a droite, soit assombrie.
+            GUI.DrawTexture(
+                new Rect(0f, 0f, w * WorldPanelFraction, h),
+                UiTextures.Gradient(_palette.Background, new Color(_palette.Background.r, _palette.Background.g, _palette.Background.b, 0.55f)));
+
+            StarSystemState system = SelectedSystem();
+            if (system == null)
             {
-                GUILayout.Label("Calcul des emplacements possibles...", UITheme.MutedLabel);
+                GUI.Label(new Rect(Margin, Margin, w - Margin * 2f, 24f), "Calcul des emplacements possibles...", UITheme.MutedLabel);
+                return;
             }
-            else
+
+            WorldProfile profile = WorldProfile.Describe(system, _previewMap.GetNeighbors(system.Id).Count);
+            float dossierWidth = w * WorldPanelFraction - Margin * 2f;
+
+            DrawWorldDossier(new Rect(Margin, Margin, dossierWidth, h - Margin * 2f - WorldFooterHeight), system, profile);
+            DrawWorldFooter(w, h, dossierWidth, system);
+        }
+
+        private void DrawWorldDossier(Rect area, StarSystemState system, WorldProfile profile)
+        {
+            float y = area.y;
+
+            // Le nom et le rang du candidat partagent la meme ligne. Un premier jet les
+            // empilait, mais le dossier reclamait alors 209 unites de haut pour 158 disponibles
+            // sur un telephone tres dense : trois blocs se faisaient rogner en silence.
+            var title = new GUIStyle(UITheme.Title) { fontSize = 24, normal = { textColor = _palette.Text } };
+            var rank = new GUIStyle(UITheme.Caption)
             {
-                for (int i = 0; i < _candidateSystemNames.Length; i++)
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = _palette.Accent },
+            };
+
+            GUI.Label(new Rect(area.x, y, area.width * 0.66f, 28f), system.Name.ToUpperInvariant(), title);
+            GUI.Label(
+                new Rect(area.x + area.width * 0.66f, y + 8f, area.width * 0.34f, UITheme.CaptionHeight),
+                $"{_selectedWorld + 1:00} / {_candidateSlots.Length:00}",
+                rank);
+            y += 28f;
+
+            UITheme.DrawHairline(new Rect(area.x, y, area.width, 1f), _palette.AccentAt(0.30f));
+            y += 9f;
+
+            // Quatre faits sur une ligne : le regard les prend d'un bloc, alors qu'empiles ils
+            // se liraient un par un — et ne tiendraient pas.
+            float quarter = area.width / 4f;
+            DrawFact(new Rect(area.x, y, quarter, 0f), "TYPE", TypeNameOf(profile.Kind));
+            DrawFact(new Rect(area.x + quarter, y, quarter, 0f), "POPULATION", FormatPopulation(system.Population));
+            DrawFact(new Rect(area.x + quarter * 2f, y, quarter, 0f), "SECTEUR", profile.SectorName.Replace("Secteur ", string.Empty));
+            DrawFact(
+                new Rect(area.x + quarter * 3f, y, quarter, 0f),
+                "DIFFICULTE",
+                profile.Difficulty.ToString().ToUpperInvariant(),
+                DifficultyColorOf(profile.Difficulty));
+            y += UITheme.CaptionHeight + UITheme.ValueHeight + 10f;
+
+            DrawRating(area, ref y, "METAUX", profile.Metals);
+            DrawRating(area, ref y, "ENERGIE", profile.Energy);
+            DrawRating(area, ref y, "NOURRITURE", profile.Food);
+
+            // Le nombre de voisins est la premiere chose sacrifiee quand la place manque : la
+            // difficulte, affichee plus haut, en resume deja l'essentiel.
+            if (y + UITheme.CaptionHeight + UITheme.ValueHeight <= area.yMax)
+            {
+                y += 6f;
+                DrawFact(new Rect(area.x, y, area.width, 0f), "VOISINS DIRECTS", $"{profile.NeighbourCount:00} systemes relies");
+            }
+        }
+
+        /// <summary>Un intitule et sa valeur, empiles. La hauteur du rectangle est ignoree : seule l'origine compte.</summary>
+        private void DrawFact(Rect at, string label, string value, Color? valueColor = null)
+        {
+            var caption = new GUIStyle(UITheme.Caption) { normal = { textColor = _palette.TextMuted } };
+            var body = new GUIStyle(UITheme.Value) { normal = { textColor = valueColor ?? _palette.Text } };
+
+            GUI.Label(new Rect(at.x, at.y, at.width, UITheme.CaptionHeight), label, caption);
+            GUI.Label(new Rect(at.x, at.y + UITheme.CaptionHeight, at.width, UITheme.ValueHeight), value, body);
+        }
+
+        /// <summary>
+        /// Note en carres pleins plutot qu'en barre continue : cinq crans se comptent d'un coup
+        /// d'œil, alors qu'une barre demande de comparer des longueurs.
+        /// </summary>
+        private void DrawRating(Rect area, ref float y, string label, int rating)
+        {
+            const float labelWidth = 82f;
+            const float pipSize = 8f;
+            const float pipGap = 4f;
+
+            var caption = new GUIStyle(UITheme.Caption) { normal = { textColor = _palette.TextMuted } };
+            GUI.Label(new Rect(area.x, y, labelWidth, UITheme.CaptionHeight), label, caption);
+
+            float x = area.x + labelWidth + 6f;
+            float pipY = y + (UITheme.CaptionHeight - pipSize) * 0.5f;
+
+            for (int i = 0; i < WorldProfile.MaximumRating; i++)
+            {
+                Color color = i < rating ? _palette.Accent : _palette.AccentAt(0.18f);
+                GUI.DrawTexture(new Rect(x + i * (pipSize + pipGap), pipY, pipSize, pipSize), UITheme.SolidTexture(color));
+            }
+
+            y += UITheme.CaptionHeight + 5f;
+        }
+
+        /// <summary>Navigation entre candidats a gauche, validation a droite.</summary>
+        private void DrawWorldFooter(float w, float h, float dossierWidth, StarSystemState system)
+        {
+            float y = h - Margin - ConfirmHeight;
+
+            var arrow = new GUIStyle(UITheme.Button)
+            {
+                fontSize = UITheme.ValueFontSize,
+                normal =
                 {
-                    if (GUILayout.Button(_candidateSystemNames[i], UITheme.Button, GUILayout.Height(32)))
-                    {
-                        Confirm(i);
-                        return;
-                    }
-                }
+                    background = UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.05f)),
+                    textColor = _palette.Text,
+                },
+            };
+
+            if (GUI.Button(new Rect(Margin, y, 34f, ConfirmHeight), "\u25C0", arrow))
+            {
+                StepWorld(-1);
             }
 
-            GUILayout.Space(12);
-            if (GUILayout.Button("Retour", UITheme.Button, GUILayout.Height(28)))
+            if (GUI.Button(new Rect(Margin + 38f, y, 34f, ConfirmHeight), "\u25B6", arrow))
+            {
+                StepWorld(1);
+            }
+
+            // Points de position : le joueur doit savoir combien de mondes il lui reste a voir
+            // avant de trancher, sinon il valide le premier par prudence.
+            float dotY = y + ConfirmHeight * 0.5f - 2f;
+            for (int i = 0; i < _candidateSlots.Length; i++)
+            {
+                bool active = i == _selectedWorld;
+                GUI.DrawTexture(
+                    new Rect(Margin + 82f + i * 12f, dotY, active ? 10f : 5f, 4f),
+                    UITheme.SolidTexture(active ? _palette.Accent : _palette.AccentAt(0.35f)));
+            }
+
+            var back = new GUIStyle(UITheme.Button)
+            {
+                fontSize = UITheme.CaptionFontSize,
+                normal =
+                {
+                    background = UITheme.SolidTexture(new Color(1f, 1f, 1f, 0.04f)),
+                    textColor = _palette.TextMuted,
+                },
+            };
+
+            if (GUI.Button(new Rect(Margin, y - ConfirmHeight - 8f, 96f, ConfirmHeight), "RETOUR", back))
             {
                 _step = Step.Faction;
+                HidePlanet();
             }
+
+            var confirm = new GUIStyle(UITheme.Button)
+            {
+                fontSize = UITheme.ValueFontSize,
+                normal =
+                {
+                    background = UITheme.SolidTexture(_palette.AccentAt(0.24f)),
+                    textColor = _palette.Text,
+                },
+            };
+
+            // Le bouton de validation occupe la ligne du dessus, avec « Retour » : la ligne du
+            // bas est deja prise par les fleches et les points de position, et les faire
+            // cohabiter sur 320 unites de large les ferait se chevaucher.
+            float confirmWidth = Mathf.Min(252f, dossierWidth - 104f);
+            var rect = new Rect(Margin + dossierWidth - confirmWidth, y - ConfirmHeight - 8f, confirmWidth, ConfirmHeight);
+
+            if (GUI.Button(rect, $"ETABLIR LA CAPITALE — {system.Name.ToUpperInvariant()}", confirm))
+            {
+                Confirm(_selectedWorld);
+            }
+
+            GUI.DrawTexture(new Rect(rect.x, rect.y, 2f, rect.height), UITheme.SolidTexture(_palette.Accent));
+        }
+
+        private void StepWorld(int delta)
+        {
+            if (_candidateSlots == null || _candidateSlots.Length == 0)
+            {
+                return;
+            }
+
+            _selectedWorld = (_selectedWorld + delta + _candidateSlots.Length) % _candidateSlots.Length;
+            ShowSelectedWorld();
+        }
+
+        private StarSystemState SelectedSystem()
+        {
+            if (_previewMap == null || _candidateSlots == null || _candidateSlots.Length == 0)
+            {
+                return null;
+            }
+
+            return _previewMap.GetSystem(_candidateSlots[Mathf.Clamp(_selectedWorld, 0, _candidateSlots.Length - 1)]);
+        }
+
+        /// <summary>
+        /// Cree la planete si besoin et lui donne le visage du monde selectionne.
+        /// <para>
+        /// <b>Accrochee a la camera</b>, pas posee dans le monde : le fond du menu derive
+        /// lentement, et une planete laissee en coordonnees absolues sortirait du cadre.
+        /// </para>
+        /// </summary>
+        private void ShowSelectedWorld()
+        {
+            StarSystemState system = SelectedSystem();
+            if (system == null)
+            {
+                return;
+            }
+
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            if (_planet == null)
+            {
+                var host = new GameObject("[WorldPreview]");
+                host.transform.SetParent(camera.transform, worldPositionStays: false);
+                _planet = host.AddComponent<PlanetVisual>();
+            }
+
+            _planet.gameObject.SetActive(true);
+
+            WorldProfile profile = WorldProfile.Describe(system, _previewMap.GetNeighbors(system.Id).Count);
+
+            // La graine est l'identifiant du systeme : le meme monde presente toujours le meme
+            // visage, ici comme en partie.
+            _planet.Show(profile.Kind, system.Id.Value, PlanetRadiusFor(camera));
+            FramePlanet(camera);
+        }
+
+        private void HidePlanet()
+        {
+            if (_planet != null)
+            {
+                _planet.gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>
+        /// La planete est accrochee a la camera, donc detruite avec la scene ; ce nettoyage
+        /// couvre le cas ou seul l'objet d'interface disparait, sans changement de scene.
+        /// </summary>
+        private void OnDestroy()
+        {
+            if (_planet != null)
+            {
+                Destroy(_planet.gameObject);
+                _planet = null;
+            }
+        }
+
+        private static float PlanetRadiusFor(Camera camera) => camera.orthographicSize * PlanetRadiusFraction;
+
+        /// <summary>Place la planete dans la moitie droite, hors du dossier.</summary>
+        private void FramePlanet(Camera camera)
+        {
+            if (_planet == null)
+            {
+                return;
+            }
+
+            float halfWidth = camera.orthographicSize * camera.aspect;
+            _planet.transform.localPosition = new Vector3(halfWidth * PlanetOffsetFraction, 0f, PlanetDistance);
+            _planet.SetRadius(PlanetRadiusFor(camera));
+        }
+
+        private static string TypeNameOf(PlanetKind kind)
+        {
+            switch (kind)
+            {
+                case PlanetKind.Ocean: return "Oceanique";
+                case PlanetKind.Arid: return "Aride";
+                case PlanetKind.Ice: return "Glace";
+                case PlanetKind.Toxic: return "Toxique";
+                case PlanetKind.Barren: return "Sterile";
+                default: return "Tellurique";
+            }
+        }
+
+        private Color DifficultyColorOf(WorldDifficulty difficulty)
+        {
+            switch (difficulty)
+            {
+                case WorldDifficulty.Facile: return new Color(0.55f, 0.85f, 0.62f, 1f);
+                case WorldDifficulty.Difficile: return new Color(0.90f, 0.62f, 0.58f, 1f);
+                default: return new Color(0.92f, 0.82f, 0.45f, 1f);
+            }
+        }
+
+        /// <summary>Population en milliards, avec une decimale : « 2,4 Md » se lit plus vite que « 2 400 ».</summary>
+        private static string FormatPopulation(int population)
+        {
+            return population >= 1000
+                ? $"{population / 1000f:0.0} Md"
+                : $"{population} M";
         }
 
         private void SelectFaction(EmpireDefinition definition)
         {
             _chosenFaction = definition;
-            _candidateSystemNames = ComputeCandidateSystemNames();
+            ComputeCandidates();
+            _selectedWorld = 0;
             _step = Step.System;
             _scroll = Vector2.zero;
+            ShowSelectedWorld();
         }
 
         /// <summary>
-        /// Regenere une galaxie jetable (voir la remarque de la classe) uniquement pour en lire
-        /// les noms des emplacements de depart candidats.
+        /// Regenere une galaxie jetable (voir la remarque de la classe) et en retient les
+        /// emplacements de depart candidats.
+        /// <para>
+        /// La carte est <b>conservee</b>, contrairement a la Phase 13 qui n'en gardait que les
+        /// noms : l'ecran de monde a besoin des gisements, du developpement et du nombre de
+        /// voisins pour dresser un portrait comparable.
+        /// </para>
         /// </summary>
-        private string[] ComputeCandidateSystemNames()
+        private void ComputeCandidates()
         {
-            GalaxyMap previewMap = GalaxyGenerator.Generate(galaxyConfig.ToGenerationParameters());
-            StarSystemId[] candidateSlots = EmpirePlacement.ChooseHomeSystems(previewMap, empireDefinitions.Length);
-
-            var names = new string[candidateSlots.Length];
-            for (int i = 0; i < candidateSlots.Length; i++)
-            {
-                names[i] = previewMap.GetSystem(candidateSlots[i]).Name;
-            }
-
-            return names;
+            _previewMap = GalaxyGenerator.Generate(galaxyConfig.ToGenerationParameters());
+            _candidateSlots = EmpirePlacement.ChooseHomeSystems(_previewMap, empireDefinitions.Length);
         }
 
         private void Confirm(int homeSystemSlotIndex)
         {
+            HidePlanet();
             SaveFileLocator.DeleteIfExists();
 
             if (ServiceLocator.TryGet(out IGameClock gameClock))
