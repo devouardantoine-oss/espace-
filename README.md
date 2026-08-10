@@ -985,6 +985,16 @@ Trois décisions méritent d'être expliquées :
   un tour complet l'échantillon retombe sur son point de départ : la carte reboucle sans le
   moindre raccord, sans avoir à fondre les deux bords l'un dans l'autre.
 
+> **Le niveau des mers est déduit du terrain, pas fixé d'avance.** Le premier jet donnait à
+> chaque type de monde une altitude de référence — mais la part d'océan qu'elle produit dépend de
+> la distribution exacte du bruit, et celle-ci diffère d'une implémentation de Perlin à l'autre.
+> Le premier passage du Test Runner dans Unity l'a montré net : un monde réglé « aride » s'y
+> retrouvait couvert à **28 % d'eau** là où la calibration hors-ligne en annonçait 10. Chaque type
+> déclare désormais la **part de sa surface** qu'il veut immergée, et le niveau correspondant est
+> calculé sur le relief réellement engendré (par histogramme, sans tri). La part obtenue est celle
+> demandée, quelle que soit la source de bruit — et le test qui a échoué vérifie maintenant cette
+> égalité plutôt que des bornes en dur.
+
 > **Deux défauts trouvés par les tests avant toute exécution dans Unity.** Le premier fondu de
 > couture, limité aux derniers pourcents de la largeur, rapprochait les deux bords sans jamais
 > les faire coïncider : la cicatrice restait. Le second, plus insidieux, n'a été vu qu'en
@@ -1014,7 +1024,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (658 tests, tous packages confondus).
+Voir §5 pour le compte total (659 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1195,7 +1205,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 658 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 659 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la

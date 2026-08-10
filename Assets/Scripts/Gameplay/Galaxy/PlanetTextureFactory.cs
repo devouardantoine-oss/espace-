@@ -80,26 +80,82 @@ namespace Espace.Gameplay.Galaxy
             public readonly Color Highland;
             public readonly Color Ice;
 
-            /// <summary>Altitude en dessous de laquelle la surface est liquide, entre 0 et 1.</summary>
-            public readonly float SeaLevel;
+            /// <summary>Part de la surface couverte d'eau, entre 0 et 1. Le niveau des mers en est deduit pour chaque monde.</summary>
+            public readonly float WaterShare;
 
             /// <summary>Latitude absolue (0 = equateur, 1 = pole) a partir de laquelle la glace apparait. 1 signifie « aucune calotte ».</summary>
             public readonly float IceLatitude;
 
-            public SurfacePalette(Color deepWater, Color shallowWater, Color lowland, Color highland, Color ice, float seaLevel, float iceLatitude)
+            public SurfacePalette(Color deepWater, Color shallowWater, Color lowland, Color highland, Color ice, float waterShare, float iceLatitude)
             {
                 DeepWater = deepWater;
                 ShallowWater = shallowWater;
                 Lowland = lowland;
                 Highland = highland;
                 Ice = ice;
-                SeaLevel = seaLevel;
+                WaterShare = waterShare;
                 IceLatitude = iceLatitude;
             }
         }
 
-        /// <summary>Niveau des mers du type indique, entre 0 et 1. Zero signifie un monde entierement sec.</summary>
-        public static float SeaLevelOf(PlanetKind kind) => PaletteOf(kind).SeaLevel;
+        /// <summary>
+        /// Part de la surface couverte d'eau pour le type indique, entre 0 et 1. Zero signifie
+        /// un monde entierement sec.
+        /// <para>
+        /// <b>Une part, pas une altitude.</b> Le premier jet fixait un niveau des mers absolu —
+        /// mais la part d'ocean qu'il produit depend de la distribution exacte du bruit, et
+        /// celle-ci varie d'une implementation de Perlin a l'autre. Un monde regle « aride »
+        /// s'est ainsi retrouve couvert a 28 % d'eau sous Unity la ou la calibration hors-ligne
+        /// en annoncait 10. Exprimer directement l'intention — « un dixieme de la surface » —
+        /// donne le meme resultat quelle que soit la source de bruit.
+        /// </para>
+        /// </summary>
+        public static float WaterShareOf(PlanetKind kind) => PaletteOf(kind).WaterShare;
+
+        /// <summary>
+        /// Altitude en dessous de laquelle se trouve exactement <paramref name="waterShare"/> de
+        /// la surface.
+        /// <para>
+        /// Calcule par histogramme plutot que par tri : le champ compte des dizaines de milliers
+        /// de valeurs, et un tri allouerait autant, a chaque changement de monde sur un ecran ou
+        /// le joueur fait defiler les candidats.
+        /// </para>
+        /// </summary>
+        public static float SeaLevelFor(float[] elevation, float waterShare)
+        {
+            if (elevation == null || elevation.Length == 0 || waterShare <= 0f)
+            {
+                return 0f;
+            }
+
+            if (waterShare >= 1f)
+            {
+                return 1f;
+            }
+
+            const int buckets = 256;
+            var histogram = new int[buckets];
+            for (int i = 0; i < elevation.Length; i++)
+            {
+                int bucket = Mathf.Clamp((int)(elevation[i] * buckets), 0, buckets - 1);
+                histogram[bucket]++;
+            }
+
+            int target = Mathf.RoundToInt(elevation.Length * waterShare);
+            int running = 0;
+
+            for (int bucket = 0; bucket < buckets; bucket++)
+            {
+                running += histogram[bucket];
+                if (running >= target)
+                {
+                    // Borne haute du seau : tout ce qui est strictement en dessous est immerge.
+                    return (bucket + 1) / (float)buckets;
+                }
+            }
+
+            return 1f;
+        }
 
         /// <summary>
         /// Champ d'altitude equirectangulaire, valeurs entre 0 et 1, indexe <c>y * width + x</c>.
@@ -150,6 +206,7 @@ namespace Espace.Gameplay.Galaxy
 
             float[] elevation = CreateElevation(seed, width, height);
             SurfacePalette palette = PaletteOf(kind);
+            float seaLevel = SeaLevelFor(elevation, palette.WaterShare);
 
             var texture = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: true)
             {
@@ -171,7 +228,7 @@ namespace Espace.Gameplay.Galaxy
                 for (int x = 0; x < width; x++)
                 {
                     int index = y * width + x;
-                    pixels[index] = Shade(elevation[index], latitude, palette);
+                    pixels[index] = Shade(elevation[index], seaLevel, latitude, palette);
                 }
             }
 
@@ -180,21 +237,21 @@ namespace Espace.Gameplay.Galaxy
             return texture;
         }
 
-        private static Color32 Shade(float elevation, float latitude, SurfacePalette palette)
+        private static Color32 Shade(float elevation, float seaLevel, float latitude, SurfacePalette palette)
         {
             Color color;
 
-            if (elevation < palette.SeaLevel)
+            if (elevation < seaLevel)
             {
                 // Rapporte a la profondeur relative plutot qu'a l'altitude brute : les hauts-fonds
-                // restent visibles quel que soit le niveau des mers du type de planete.
-                float depth = palette.SeaLevel > 0f ? elevation / palette.SeaLevel : 1f;
+                // restent visibles quelle que soit la part d'ocean du type de planete.
+                float depth = seaLevel > 0f ? elevation / seaLevel : 1f;
                 color = Color.Lerp(palette.DeepWater, palette.ShallowWater, depth * depth);
             }
             else
             {
-                float span = 1f - palette.SeaLevel;
-                float height = span > 0f ? (elevation - palette.SeaLevel) / span : elevation;
+                float span = 1f - seaLevel;
+                float height = span > 0f ? (elevation - seaLevel) / span : elevation;
                 color = Color.Lerp(palette.Lowland, palette.Highland, height);
             }
 
@@ -266,37 +323,37 @@ namespace Espace.Gameplay.Galaxy
                     return new SurfacePalette(
                         new Color(0.02f, 0.10f, 0.26f), new Color(0.10f, 0.34f, 0.55f),
                         new Color(0.28f, 0.46f, 0.36f), new Color(0.46f, 0.55f, 0.42f),
-                        new Color(0.86f, 0.92f, 0.96f), seaLevel: 0.72f, iceLatitude: 0.86f);
+                        new Color(0.86f, 0.92f, 0.96f), waterShare: 0.86f, iceLatitude: 0.86f);
 
                 case PlanetKind.Arid:
                     return new SurfacePalette(
                         new Color(0.16f, 0.12f, 0.06f), new Color(0.34f, 0.24f, 0.11f),
                         new Color(0.56f, 0.37f, 0.18f), new Color(0.75f, 0.56f, 0.32f),
-                        new Color(0.88f, 0.86f, 0.80f), seaLevel: 0.22f, iceLatitude: 0.94f);
+                        new Color(0.88f, 0.86f, 0.80f), waterShare: 0.10f, iceLatitude: 0.94f);
 
                 case PlanetKind.Ice:
                     return new SurfacePalette(
                         new Color(0.10f, 0.20f, 0.31f), new Color(0.34f, 0.53f, 0.66f),
                         new Color(0.66f, 0.77f, 0.85f), new Color(0.88f, 0.94f, 0.98f),
-                        new Color(0.95f, 0.98f, 1f), seaLevel: 0.42f, iceLatitude: 0.28f);
+                        new Color(0.95f, 0.98f, 1f), waterShare: 0.34f, iceLatitude: 0.28f);
 
                 case PlanetKind.Toxic:
                     return new SurfacePalette(
                         new Color(0.14f, 0.17f, 0.05f), new Color(0.33f, 0.40f, 0.10f),
                         new Color(0.42f, 0.48f, 0.16f), new Color(0.58f, 0.62f, 0.28f),
-                        new Color(0.72f, 0.78f, 0.60f), seaLevel: 0.40f, iceLatitude: 1f);
+                        new Color(0.72f, 0.78f, 0.60f), waterShare: 0.30f, iceLatitude: 1f);
 
                 case PlanetKind.Barren:
                     return new SurfacePalette(
                         new Color(0.14f, 0.13f, 0.13f), new Color(0.22f, 0.21f, 0.20f),
                         new Color(0.36f, 0.34f, 0.32f), new Color(0.55f, 0.53f, 0.50f),
-                        new Color(0.70f, 0.70f, 0.72f), seaLevel: 0f, iceLatitude: 1f);
+                        new Color(0.70f, 0.70f, 0.72f), waterShare: 0f, iceLatitude: 1f);
 
                 default:
                     return new SurfacePalette(
                         new Color(0.03f, 0.12f, 0.28f), new Color(0.10f, 0.32f, 0.52f),
                         new Color(0.18f, 0.42f, 0.30f), new Color(0.48f, 0.46f, 0.32f),
-                        new Color(0.90f, 0.94f, 0.98f), seaLevel: 0.52f, iceLatitude: 0.78f);
+                        new Color(0.90f, 0.94f, 0.98f), waterShare: 0.56f, iceLatitude: 0.78f);
             }
         }
     }

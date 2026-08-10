@@ -22,7 +22,7 @@ namespace Espace.Tests.EditMode
 
         private static float WaterFraction(float[] elevation, PlanetKind kind)
         {
-            float seaLevel = PlanetTextureFactory.SeaLevelOf(kind);
+            float seaLevel = PlanetTextureFactory.SeaLevelFor(elevation, PlanetTextureFactory.WaterShareOf(kind));
             int submerged = 0;
 
             for (int i = 0; i < elevation.Length; i++)
@@ -119,28 +119,55 @@ namespace Espace.Tests.EditMode
         }
 
         [Test]
-        public void SeaLevel_RanksWorldsFromWettestToDriest()
+        public void WaterShare_RanksWorldsFromWettestToDriest()
         {
-            Assert.Greater(PlanetTextureFactory.SeaLevelOf(PlanetKind.Ocean), PlanetTextureFactory.SeaLevelOf(PlanetKind.Terran));
-            Assert.Greater(PlanetTextureFactory.SeaLevelOf(PlanetKind.Terran), PlanetTextureFactory.SeaLevelOf(PlanetKind.Arid));
-            Assert.AreEqual(0f, PlanetTextureFactory.SeaLevelOf(PlanetKind.Barren), "Un monde sterile n'a pas d'eau du tout.");
+            Assert.Greater(PlanetTextureFactory.WaterShareOf(PlanetKind.Ocean), PlanetTextureFactory.WaterShareOf(PlanetKind.Terran));
+            Assert.Greater(PlanetTextureFactory.WaterShareOf(PlanetKind.Terran), PlanetTextureFactory.WaterShareOf(PlanetKind.Arid));
+            Assert.AreEqual(0f, PlanetTextureFactory.WaterShareOf(PlanetKind.Barren), "Un monde sterile n'a pas d'eau du tout.");
         }
 
         [Test]
-        public void WaterCoverage_FollowsTheKindOfWorld()
+        public void WaterCoverage_MatchesWhatEachKindAsksFor()
         {
-            // Le meme relief lu avec des niveaux de mer differents doit donner des mondes
-            // reconnaissables : un monde oceanique noye, un monde aride presque sec.
+            // Ce test est le garde-fou contre la divergence qui a fait echouer sa version
+            // precedente : elle comparait la part d'eau a des bornes en dur, calibrees sur une
+            // implementation de Perlin donnee. Un monde regle « aride » s'est retrouve couvert a
+            // 28 % d'eau sous Unity la ou la calibration hors-ligne en annoncait 10. Le niveau
+            // des mers etant desormais deduit du champ lui-meme, la part obtenue est celle
+            // demandee — quelle que soit la source de bruit.
             float[] elevation = PlanetTextureFactory.CreateElevation(99, Width, Height);
 
-            float ocean = WaterFraction(elevation, PlanetKind.Ocean);
-            float terran = WaterFraction(elevation, PlanetKind.Terran);
-            float arid = WaterFraction(elevation, PlanetKind.Arid);
+            foreach (PlanetKind kind in new[] { PlanetKind.Ocean, PlanetKind.Terran, PlanetKind.Arid, PlanetKind.Ice, PlanetKind.Toxic })
+            {
+                float requested = PlanetTextureFactory.WaterShareOf(kind);
+                float achieved = WaterFraction(elevation, kind);
 
-            Assert.Greater(ocean, terran);
-            Assert.Greater(terran, arid);
-            Assert.Greater(ocean, 0.6f, "Un monde oceanique doit etre majoritairement liquide.");
-            Assert.Less(arid, 0.25f, "Un monde aride ne doit garder que des mers residuelles.");
+                // La tolerance est celle du pas de l'histogramme (1/256), plus la marge d'un
+                // seau entier : on ne cherche pas la precision au pixel, mais l'absence de
+                // derive systematique.
+                Assert.AreEqual(requested, achieved, 0.05f, $"{kind} : {achieved:P0} d'eau pour {requested:P0} demandes.");
+            }
+        }
+
+        [Test]
+        public void WaterCoverage_KeepsTheWorldsRecognisable()
+        {
+            float[] elevation = PlanetTextureFactory.CreateElevation(99, Width, Height);
+
+            Assert.Greater(WaterFraction(elevation, PlanetKind.Ocean), WaterFraction(elevation, PlanetKind.Terran));
+            Assert.Greater(WaterFraction(elevation, PlanetKind.Terran), WaterFraction(elevation, PlanetKind.Arid));
+            Assert.AreEqual(0f, WaterFraction(elevation, PlanetKind.Barren), "Un monde sterile ne doit avoir aucune mer.");
+        }
+
+        [Test]
+        public void SeaLevel_HandlesTheExtremes()
+        {
+            float[] elevation = PlanetTextureFactory.CreateElevation(7, Width, Height);
+
+            Assert.AreEqual(0f, PlanetTextureFactory.SeaLevelFor(elevation, 0f), "Aucune eau demandee : aucune mer.");
+            Assert.AreEqual(1f, PlanetTextureFactory.SeaLevelFor(elevation, 1f), "Monde entierement noye : tout est sous le niveau.");
+            Assert.AreEqual(0f, PlanetTextureFactory.SeaLevelFor(null, 0.5f), "Un champ absent ne doit pas faire echouer le rendu.");
+            Assert.AreEqual(0f, PlanetTextureFactory.SeaLevelFor(new float[0], 0.5f));
         }
 
         [Test]
@@ -176,34 +203,5 @@ namespace Espace.Tests.EditMode
             Assert.Greater(highShare, 0.08f, $"Trop peu de sommets marques ({highShare:P0}) : le relief manque de contraste.");
         }
 
-        [Test]
-        public void SeaLevel_IsNotAKnifeEdge()
-        {
-            // Corollaire du test precedent, exprime du point de vue du reglage : deplacer le
-            // niveau des mers de un dixieme doit changer la part d'eau de facon sensible mais
-            // progressive. Si un dixieme faisait passer de 5 % a 95 %, aucun reglage de type de
-            // monde ne serait tenable.
-            float[] elevation = PlanetTextureFactory.CreateElevation(17, Width, Height);
-
-            float below = WaterFractionAt(elevation, 0.45f);
-            float above = WaterFractionAt(elevation, 0.55f);
-
-            Assert.Greater(above - below, 0.05f, "Le niveau des mers doit avoir un effet perceptible.");
-            Assert.Less(above - below, 0.55f, "Le niveau des mers ne doit pas basculer le monde entier d'un coup.");
-        }
-
-        private static float WaterFractionAt(float[] elevation, float seaLevel)
-        {
-            int submerged = 0;
-            for (int i = 0; i < elevation.Length; i++)
-            {
-                if (elevation[i] < seaLevel)
-                {
-                    submerged++;
-                }
-            }
-
-            return submerged / (float)elevation.Length;
-        }
     }
 }
