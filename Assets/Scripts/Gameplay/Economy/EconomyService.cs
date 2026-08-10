@@ -76,12 +76,14 @@ namespace Espace.Gameplay.Economy
             _taxRatesByEmpire.Clear();
             _buildingsBySystem.Clear();
             _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
+            _eventBus.Subscribe<MonthAdvancedEvent>(OnMonthAdvanced);
         }
 
         /// <inheritdoc />
         public void Shutdown()
         {
             _eventBus.Unsubscribe<DayAdvancedEvent>(OnDayAdvanced);
+            _eventBus.Unsubscribe<MonthAdvancedEvent>(OnMonthAdvanced);
             _buildingsBySystem.Clear();
         }
 
@@ -252,6 +254,44 @@ namespace Espace.Gameplay.Economy
             buildings.Add(building);
         }
 
+        /// <summary>
+        /// Fait vivre les systemes : population, richesse et stabilite evoluent d'un mois sur
+        /// l'autre (Phase 22).
+        /// <para>
+        /// <b>Mensuel, pas journalier.</b> Ces trois grandeurs bougent lentement ; les
+        /// recalculer chaque jour couterait trente fois plus pour un resultat que l'œil ne
+        /// distinguerait pas. La production, elle, reste journaliere — c'est elle que le joueur
+        /// regarde monter.
+        /// </para>
+        /// <para>
+        /// <b>Les trois calculs lisent l'etat du debut de mois</b> et non celui que le calcul
+        /// precedent vient d'ecrire : sans cela une hausse de population gonflerait la richesse
+        /// dans le meme tick, et l'ordre des lignes deviendrait une regle de jeu invisible.
+        /// </para>
+        /// </summary>
+        private void OnMonthAdvanced(MonthAdvancedEvent monthAdvancedEvent)
+        {
+            foreach (StarSystemState system in _map.Systems)
+            {
+                if (system.OwnerId == StarSystemState.UnownedOwnerId)
+                {
+                    // Un systeme sans maitre ne se developpe pas tout seul : personne n'y
+                    // investit, personne ne l'administre.
+                    continue;
+                }
+
+                int population = system.Population;
+                int wealth = system.Wealth;
+                int development = system.DevelopmentLevel;
+                float stability = system.Stability;
+                float taxRate = GetTaxRate(system.OwnerId);
+
+                system.Population = PopulationModel.Next(population, development, stability);
+                system.Wealth = WealthModel.Next(wealth, population, development, taxRate, stability);
+                system.Stability = StabilityModel.Next(stability, development, taxRate);
+            }
+        }
+
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
         {
             CompleteFinishedConstructions(dayAdvancedEvent.Date);
@@ -322,10 +362,14 @@ namespace Espace.Gameplay.Economy
         private ResourceBundle ComputeSystemProduction(StarSystemState system)
         {
             float stability = system.Stability;
-            float taxRate = GetTaxRate(system.OwnerId);
+
+            // Taux percu, et non affiche : au-dela d'un seuil, une part de l'activite echappe a
+            // l'impot (voir TaxationModel). C'est ce qui supprime la reponse evidente
+            // « curseur au maximum » qu'avait la version lineaire.
+            float effectiveTaxRate = TaxationModel.EffectiveRate(GetTaxRate(system.OwnerId), stability);
 
             var baseProduction = new ResourceBundle(
-                credits: system.Wealth * CreditsPerWealthPoint * taxRate * DepositFactor(system, ResourceType.Credits) * ResearchMultiplier(system.OwnerId, ResearchDomain.Economy),
+                credits: system.Wealth * CreditsPerWealthPoint * effectiveTaxRate * DepositFactor(system, ResourceType.Credits) * ResearchMultiplier(system.OwnerId, ResearchDomain.Economy),
                 minerals: system.Population * MineralsPerPopulationPoint * DepositFactor(system, ResourceType.Minerals) * ResearchMultiplier(system.OwnerId, ResearchDomain.Industry),
                 energy: system.Population * EnergyPerPopulationPoint * DepositFactor(system, ResourceType.Energy) * ResearchMultiplier(system.OwnerId, ResearchDomain.Energy),
                 food: system.Population * FoodPerPopulationPoint * DepositFactor(system, ResourceType.Food),

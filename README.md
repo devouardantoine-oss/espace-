@@ -852,6 +852,56 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques de l'économie vivante (Phase 22, P1 et P2)
+
+Issu d'un audit complet des mécaniques. Le constat de départ : **`Population`, `Wealth` et
+`Stability` n'avaient aucun point d'écriture en cours de partie.** Fixées à la génération, relues
+par la sauvegarde, jamais modifiées — alors qu'elles sont les entrées de la production.
+L'économie d'un empire était une **constante** qui ne bougeait que par conquête.
+
+Second constat : **`taxRate` multipliait les crédits linéairement et n'était lu nulle part
+ailleurs.** L'optimum était 100 %, toujours. Une décision dont la réponse est constante n'est pas
+une décision.
+
+| Modèle | Rôle |
+|---|---|
+| `PopulationModel` | Croissance logistique plafonnée par le développement. Décline en cas de famine ou de surpeuplement |
+| `WealthModel` | La richesse est ce que l'impôt n'a pas pris. Plafonnée par population et développement, érodée chaque mois |
+| `TaxationModel` | Évasion fiscale au-delà de 35 % : le taux **perçu** décroche du taux affiché, puis diminue |
+| `StabilityModel` | Convergence vers une cible méritée. Une révolte devient un creux dont on se relève |
+
+Ce sont quatre **fonctions pures**, sans `MonoBehaviour` ni état — même découpage que
+`OffensivePlanner`, `FleetTravel` et `WorldProfile`. `EconomyService` les appelle sur
+`MonthAdvanced` ; la production reste journalière.
+
+**Résultats de simulation** (100 ans, empire développé, hors Unity) :
+
+```
+ taux   crédits cumulés   richesse finale   stabilité
+  25 %          274 584               660        0,85
+  40 %          365 015  ← optimum     568        0,79
+  70 %          133 177               200        0,59
+ 100 %            6 245                62        0,40
+```
+
+- **L'optimum est intérieur** (40 %) et **se déplace avec la stabilité** : le joueur ne peut pas
+  apprendre un chiffre une fois pour toutes.
+- **Taxer à 100 % rapporte 2 % de l'optimum.** La stratégie dominante a disparu.
+- **Le rattrapage fonctionne** : un empire parti 5 fois plus pauvre mais bien géré finit 2 fois
+  plus riche qu'un leader qui surtaxe — sans qu'aucun bonus n'ait été donné à personne.
+
+> **En dessous de 35 %, la formule historique est inchangée** — choix délibéré : le contenu
+> existant n'a pas à être rééquilibré, et les tests de production qui utilisent le taux par
+> défaut de 25 % restent valides. Un seul ancien test a dû changer, celui qui affirmait que
+> l'impôt à 100 % maximisait le revenu.
+
+> **Un test écrit de travers, corrigé.** `Population_GrowthSlowsAsItFillsUp` comparait
+> l'accroissement **absolu** à 10 % et à 90 % de remplissage. Or celui d'une logistique est
+> symétrique autour de la moitié : les deux valeurs sont égales par construction, et le test
+> échouait sur un comportement parfaitement correct. C'est le taux **relatif** qui décroît.
+
+---
+
 ### Briques de la sélection du monde d'origine « orbite » (Phase 21.4)
 
 La chaîne est bouclée : **menu → civilisation → monde → jeu**. La planète tourne en grand à
@@ -1024,7 +1074,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (659 tests, tous packages confondus).
+Voir §5 pour le compte total (684 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1205,7 +1255,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 659 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 684 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1474,6 +1524,8 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 21.2 | Menu principal « galaxie vivante » | ✅ terminée |
 | 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ✅ terminée |
 | 21.4 | Sélection du monde d'origine « orbite » | ✅ terminée |
+| 22.1 | Démographie et richesse vivantes | ✅ terminée |
+| 22.2 | Fiscalité non linéaire et stabilité évolutive | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
