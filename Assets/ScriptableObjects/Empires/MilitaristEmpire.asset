@@ -16,3 +16,13 @@ MonoBehaviour:
   color: {r: 0.85, g: 0.2, b: 0.2, a: 1}
   personality: 3
   isPlayerControlled: 0
+  speciesLine: 'Lithoides · caste guerriere · monde a forte gravite'
+  motto: 'La pierre ne recule pas.'
+  description: 'Creatures de silicate, lentes, presque minerales, qui vivent quatre siecles et se souviennent de tout. Leur architecture est taillee dans la roche plutot que posee dessus. Leurs vaisseaux sont massifs et laids, et encaissent des coups qui detruiraient trois flottes humaines.'
+  emblem: 2
+  expansion: 0.4
+  industry: 0.8
+  technology: 0.45
+  diplomacy: 0.22
+  strengthLine: 'Defense et blindage superieurs · memoire longue des offenses'
+  weaknessLine: 'Expansion lente · economie rigide'

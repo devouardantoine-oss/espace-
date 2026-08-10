@@ -16,3 +16,13 @@ MonoBehaviour:
   color: {r: 0.35, g: 0.75, b: 0.45, a: 1}
   personality: 0
   isPlayerControlled: 0
+  speciesLine: 'Sylvoides · symbiose vegetale · monde-foret'
+  motto: 'Ce qui pousse lentement dure longtemps.'
+  description: 'Organismes photosynthetiques a croissance lente, relies par un reseau racinaire qui couvre un continent. Ils ne construisent pas de vaisseaux : ils en font pousser. Pacifistes non par morale mais par arithmetique — une guerre coute plus de siecles qu''ils n''en ont a perdre.'
+  emblem: 4
+  expansion: 0.3
+  industry: 0.45
+  technology: 0.85
+  diplomacy: 0.88
+  strengthLine: 'Recherche acceleree · stabilite interieure exemplaire'
+  weaknessLine: 'Armee reduite · reaction lente aux crises'

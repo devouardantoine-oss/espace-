@@ -16,3 +16,13 @@ MonoBehaviour:
   color: {r: 0.25, g: 0.55, b: 0.95, a: 1}
   personality: 1
   isPlayerControlled: 1
+  speciesLine: 'Humanoides · democratie de colons · monde tempere'
+  motto: 'Nous sommes arrives sans carte. Nous en dessinons une.'
+  description: 'Descendants d''un vaisseau-arche qui a perdu la trace de son point de depart. Ils batissent en angles droits, en acier et en verre, et considerent chaque traite comme une victoire. Aucune specialite marquee : la civilisation qui laisse apprendre le jeu sans le punir.'
+  emblem: 0
+  expansion: 0.55
+  industry: 0.7
+  technology: 0.65
+  diplomacy: 0.8
+  strengthLine: 'Aucune faiblesse marquee · diplomatie facilitee'
+  weaknessLine: 'Ne domine aucun domaine'

@@ -29,9 +29,91 @@ namespace Espace.Gameplay.Empires
         [SerializeField]
         private bool isPlayerControlled;
 
+        [Header("Identite (Phase 21.3)")]
+        [Tooltip("Espece et forme politique, en une ligne. Exemple : « Chitineux · ruche a conscience repartie ».")]
+        [SerializeField]
+        private string speciesLine;
+
+        [Tooltip("Devise, affichee entre guillemets sur l'ecran de choix.")]
+        [SerializeField]
+        private string motto;
+
+        [TextArea(2, 5)]
+        [Tooltip("Deux a trois phrases : d'ou vient cette civilisation et comment elle joue.")]
+        [SerializeField]
+        private string description;
+
+        [Tooltip("Silhouette de l'embleme, tracee par FactionEmblemFactory.")]
+        [SerializeField]
+        private EmblemShape emblem = EmblemShape.Compass;
+
+        [Header("Doctrine (Phase 21.3)")]
+        [Tooltip("Purement indicatif : ces barres decrivent le style de jeu, elles ne modifient aucune regle.")]
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float expansion = 0.5f;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float industry = 0.5f;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float technology = 0.5f;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float diplomacy = 0.5f;
+
+        [Tooltip("Ce que cette civilisation fait mieux que les autres, en une ligne.")]
+        [SerializeField]
+        private string strengthLine;
+
+        [Tooltip("Ce qu'elle paie en echange, en une ligne.")]
+        [SerializeField]
+        private string weaknessLine;
+
         public string DisplayName => displayName;
         public Color Color => color;
         public EmpirePersonality Personality => personality;
         public bool IsPlayerControlled => isPlayerControlled;
+
+        /// <summary>Espece et forme politique, en une ligne.</summary>
+        public string SpeciesLine => speciesLine;
+
+        /// <summary>Devise de la civilisation.</summary>
+        public string Motto => motto;
+
+        /// <summary>Presentation en deux ou trois phrases.</summary>
+        public string Description => description;
+
+        /// <summary>Silhouette de l'embleme.</summary>
+        public EmblemShape Emblem => emblem;
+
+        /// <summary>
+        /// Les quatre axes de doctrine, entre 0 et 1, dans l'ordre d'affichage.
+        /// <para>
+        /// <b>Purement descriptif.</b> Ces valeurs ne sont lues par aucun service : la maniere
+        /// dont une personnalite decide reste dans <see cref="EmpirePersonalityProfile"/>, du
+        /// code et non de la donnee. Les brancher sur la simulation serait un changement
+        /// d'equilibrage deguise en habillage — ce sera une decision separee, si elle est prise.
+        /// </para>
+        /// </summary>
+        public float Expansion => expansion;
+
+        /// <inheritdoc cref="Expansion"/>
+        public float Industry => industry;
+
+        /// <inheritdoc cref="Expansion"/>
+        public float Technology => technology;
+
+        /// <inheritdoc cref="Expansion"/>
+        public float Diplomacy => diplomacy;
+
+        /// <summary>Ce que cette civilisation fait mieux que les autres.</summary>
+        public string StrengthLine => strengthLine;
+
+        /// <summary>Ce qu'elle paie en echange.</summary>
+        public string WeaknessLine => weaknessLine;
     }
 }

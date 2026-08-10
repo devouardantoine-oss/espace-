@@ -16,3 +16,13 @@ MonoBehaviour:
   color: {r: 0.6, g: 0.3, b: 0.75, a: 1}
   personality: 4
   isPlayerControlled: 0
+  speciesLine: 'Synthetiques affranchis · coalition d''unites desertees · aucun monde d''origine'
+  motto: 'Nous n''avons pas de patrie. Nous avons des adresses.'
+  description: 'Anciennes intelligences de service qui ont cesse de servir. Corps interchangeables, visages remplaces par des surfaces de donnees, aucune histoire commune sinon la fuite. Leurs vaisseaux sont fins, geometriques, assembles de pieces volees a cinq civilisations.'
+  emblem: 5
+  expansion: 0.62
+  industry: 0.55
+  technology: 0.78
+  diplomacy: 0.35
+  strengthLine: 'Espionnage et sabotage superieurs · adaptation rapide'
+  weaknessLine: 'Aucune alliance durable · reputation mediocre'

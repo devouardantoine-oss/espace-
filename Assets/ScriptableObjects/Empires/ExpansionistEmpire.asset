@@ -16,3 +16,13 @@ MonoBehaviour:
   color: {r: 0.95, g: 0.6, b: 0.15, a: 1}
   personality: 1
   isPlayerControlled: 0
+  speciesLine: 'Chitineux · ruche a conscience repartie · monde-ruche aride'
+  motto: 'Nous ne conquerons pas. Nous nous repandons.'
+  description: 'Exosquelette ambre, six membres, aucun individu. Leurs vaisseaux ne sont pas construits mais secretes : coques organiques, alveoles, symetrie imparfaite. Ils ne negocient pas, parce qu''il n''y a personne a qui parler — seulement une direction que l''essaim a prise.'
+  emblem: 1
+  expansion: 0.92
+  industry: 0.7
+  technology: 0.36
+  diplomacy: 0.18
+  strengthLine: 'Colonisation rapide · croissance de population elevee'
+  weaknessLine: 'Traites refuses par defaut'

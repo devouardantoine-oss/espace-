@@ -852,6 +852,45 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques du choix de civilisation « prise de contrôle » (Phase 21.3)
+
+Les six empires du roster ont désormais un corps. **Aucun n'a été remplacé** : les noms et les
+couleurs existants promettaient déjà quelque chose — « Essaim de Kethra » était déjà une espèce
+insectoïde — et l'étape s'est contentée de tenir la promesse.
+
+| Espèce | Civilisation | Registre |
+|---|---|---|
+| Humanoïdes | Fédération de l'Aube | Démocratie de colons, aucune spécialité marquée |
+| Chitineux | Essaim de Kethra | Ruche à conscience répartie, expansion maximale |
+| Lithoïdes | Bastion de Drathmoor | Caste guerrière de silicate, défense supérieure |
+| Céphalopodes | Ligue Marchande d'Oskar | Consortium de familles, économie supérieure |
+| Sylvoïdes | Sanctuaire de Vharin | Symbiose végétale, recherche accélérée |
+| Synthétiques | Cartel des Confins | Unités affranchies, espionnage supérieur |
+
+| Brique | Rôle |
+|---|---|
+| `EmblemShape` + `FactionEmblemFactory` (`Espace.Gameplay.Empires`) | Six emblèmes tracés au trait, en textures blanches teintées à l'affichage |
+| `EmpireDefinition` (enrichi) | Espèce, devise, description, emblème, quatre axes de doctrine, atout, contrepartie. **Aucun champ existant retiré** |
+| `FactionPickerController` (étape faction réécrite) | Onglets, bascule de palette, emblème en filigrane, doctrine, validation |
+
+- **La palette entière bascule avec l'onglet** — fond, traits, barres, bouton, emblème. C'est ce
+  basculement, et non un portrait, qui produit la sensation de changer de civilisation. Il a
+  l'avantage décisif d'être dérivable d'une seule couleur, donc de valoir aussi pour la septième
+  faction que personne n'a encore écrite.
+- **Les emblèmes sont au trait, pas en aplats.** Un emblème en surfaces pleines demanderait un
+  graphiste pour ne pas paraître pauvre ; au trait, il appartient au registre du plan technique,
+  où la simplicité se lit comme un parti pris.
+- **Les quatre axes de doctrine sont purement descriptifs.** Aucun service ne les lit : la façon
+  dont une personnalité décide reste dans `EmpirePersonalityProfile`, du code et non de la
+  donnée. Les brancher sur la simulation serait un changement d'équilibrage déguisé en habillage.
+
+> **Un rognage évité par le calcul.** Les intitulés « ATOUT » et « CONTREPARTIE » au-dessus de
+> chaque ligne coûtaient trente unités de hauteur, et sur un écran de 286 unités la contrepartie
+> se retrouvait coupée. Un signe `+` / `−` coloré porte la même information pour douze unités de
+> large. Colonne vérifiée sur quatre formats : 143 unités nécessaires, 156 disponibles au pire cas.
+
+---
+
 ### Briques du menu principal « galaxie vivante » (Phase 21.2)
 
 Le menu montre désormais **la carte du jeu**, survolée lentement par la caméra, avec le menu en
@@ -1393,7 +1432,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 21 | Musique d'ambiance (playlist en boucle, fondus, réglage du volume) | ✅ terminée |
 | 21.1 | Socle visuel des écrans d'ouverture (palettes par faction, habillage, rendu de planète) | ✅ terminée |
 | 21.2 | Menu principal « galaxie vivante » | ✅ terminée |
-| 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ⏳ à venir |
+| 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ✅ terminée |
 | 21.4 | Sélection du monde d'origine « orbite » | ⏳ à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
