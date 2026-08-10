@@ -852,6 +852,44 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques du socle visuel des écrans d'ouverture (Phase 21.1)
+
+Refonte validée : **menu « galaxie vivante »**, **sélection de monde « orbite »**, **choix de
+civilisation « prise de contrôle »**. Cette étape ne change rien à l'écran — elle pose les
+briques dont les trois écrans dépendent.
+
+| Brique | Rôle |
+|---|---|
+| `UiEasing` (`Espace.UI`) | Amortissement exponentiel et courbes d'apparition. **Aucune animation en `Lerp` par frame** : la durée dépendrait alors de la cadence, et une transition prendrait deux fois plus de temps à 30 qu'à 60 images par seconde |
+| `FactionPalette` (`Espace.UI`) | **Une couleur en entrée, six en sortie.** C'est ce qui rend tenable « ajouter une faction sans refaire l'interface » : une nouvelle civilisation ne demande de renseigner que `EmpireDefinition.Color` |
+| `UiTextures` (`Espace.UI`) | Dégradés, cadres à équerres, halos radiaux, générés et mis en cache. Le cache n'est pas une optimisation : IMGUI redessine chaque frame, et les `Texture2D` sont des objets natifs que le ramasse-miettes ne libère pas |
+| `PlanetKind` + `PlanetTextureFactory` (`Espace.Gameplay.Galaxy`) | Surface équirectangulaire par bruit fractal : continents, océans, calottes. Six types de monde, purement visuels — **aucune règle de simulation n'en dépend** |
+| `PlanetVisual` (`Espace.Gameplay.Galaxy`) | La planète en rotation : sphère texturée, halo derrière, ombre devant. Trois appels de rendu, **aucune lumière, aucun nuanceur maison** |
+
+Trois décisions méritent d'être expliquées :
+
+- **La palette est dérivée en teinte-saturation-valeur, pas en RVB.** Assombrir une couleur en
+  multipliant ses trois canaux la désature aussi, et un bleu sombre obtenu ainsi vire au gris.
+  En TSV, la teinte de la faction survit jusque dans le fond d'écran le plus sombre — c'est
+  précisément ce qui doit donner l'impression de changer de monde.
+- **Le terminateur est une ombre peinte, pas une vraie lumière.** Éclairer la sphère exigerait
+  un matériau *Lit* et une lumière directionnelle dans une scène qui n'en contient aucune, donc
+  un rendu à la merci de la configuration du pipeline — pour un résultat identique. Ici l'ombre
+  reste fixe pendant que la planète tourne dessous, ce qui est exactement le comportement
+  voulu : c'est l'étoile qui ne bouge pas.
+- **La longitude parcourt un cercle dans le plan du bruit**, elle n'est pas une abscisse. Après
+  un tour complet l'échantillon retombe sur son point de départ : la carte reboucle sans le
+  moindre raccord, sans avoir à fondre les deux bords l'un dans l'autre.
+
+> **Deux défauts trouvés par les tests avant toute exécution dans Unity.** Le premier fondu de
+> couture, limité aux derniers pourcents de la largeur, rapprochait les deux bords sans jamais
+> les faire coïncider : la cicatrice restait. Le second, plus insidieux, n'a été vu qu'en
+> mesurant la distribution du relief — la somme d'octaves donnait une cloche si étroite que
+> **90 % de la surface tenait entre 0,4 et 0,6**. Rien ne plantait et la carte n'était pas
+> plate, mais le niveau des mers devenait un fil de rasoir (deux centièmes séparaient un monde
+> sec d'un monde noyé) et toutes les planètes se ressemblaient. `Elevation_SpreadsAcrossItsWholeRange`
+> et `SeaLevel_IsNotAKnifeEdge` verrouillent désormais les deux.
+
 ---
 
 ## 4. Tester la Phase 1
@@ -872,7 +910,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (612 tests, tous packages confondus).
+Voir §5 pour le compte total (646 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1053,7 +1091,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 612 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 646 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1318,6 +1356,10 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 20.2 | Fiche de système refondue (Concept B) : composition de flotte, colonisation explicite | ✅ terminée |
 | 20.3 | Planification d'offensive et suivi des opérations | ✅ terminée |
 | 21 | Musique d'ambiance (playlist en boucle, fondus, réglage du volume) | ✅ terminée |
+| 21.1 | Socle visuel des écrans d'ouverture (palettes par faction, habillage, rendu de planète) | ✅ terminée |
+| 21.2 | Menu principal « galaxie vivante » | ⏳ à venir |
+| 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ⏳ à venir |
+| 21.4 | Sélection du monde d'origine « orbite » | ⏳ à venir |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

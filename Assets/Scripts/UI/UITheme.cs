@@ -231,6 +231,70 @@ namespace Espace.UI
             }
         }
 
+        /// <summary>
+        /// Cadre a equerres teinte par une faction (Phase 21.1), a poser <b>par-dessus</b> un
+        /// fond deja dessine.
+        /// <para>
+        /// <b>Un style neuf a chaque appel, volontairement.</b> Contrairement aux styles
+        /// ci-dessus, celui-ci depend d'une couleur qui change d'une frame a l'autre pendant un
+        /// basculement de palette : le mettre en cache par couleur remplirait le cache d'une
+        /// entree par image de transition. La texture, elle, <em>est</em> mise en cache — c'est
+        /// elle qui coute, pas l'objet <c>GUIStyle</c>.
+        /// </para>
+        /// </summary>
+        public static GUIStyle FrameOf(Color accent)
+        {
+            var style = new GUIStyle();
+            style.normal.background = UiTextures.CornerFrame(accent);
+            style.border = new RectOffset(
+                UiTextures.FrameCorner, UiTextures.FrameCorner,
+                UiTextures.FrameCorner, UiTextures.FrameCorner);
+            return style;
+        }
+
+        /// <summary>
+        /// Fond de panneau holographique : un degrade vertical partant de la teinte de la
+        /// faction. Voir <see cref="FrameOf"/> pour l'absence de mise en cache du style.
+        /// </summary>
+        public static GUIStyle PanelOf(FactionPalette palette, float opacity = 0.92f)
+        {
+            Color top = palette.Panel;
+            top.a = Mathf.Clamp01(opacity);
+
+            Color bottom = palette.Background;
+            bottom.a = Mathf.Clamp01(opacity * 0.82f);
+
+            var style = new GUIStyle();
+            style.normal.background = UiTextures.Gradient(top, bottom);
+            style.padding = new RectOffset(12, 12, 10, 10);
+            return style;
+        }
+
+        /// <summary>
+        /// Dessine un panneau complet : fond degrade, puis equerres. Les deux appels vont
+        /// toujours ensemble ; les separer laisse tot ou tard un cadre sans fond.
+        /// </summary>
+        public static void DrawPanel(Rect rect, FactionPalette palette, float opacity = 0.92f)
+        {
+            GUI.Box(rect, GUIContent.none, PanelOf(palette, opacity));
+            GUI.Box(rect, GUIContent.none, FrameOf(palette.AccentSoft));
+        }
+
+        /// <summary>
+        /// Halo radial centre sur <paramref name="rect"/>. Pose derriere un element pour le
+        /// designer sans avoir a l'encadrer.
+        /// </summary>
+        public static void DrawGlow(Rect rect, Color color)
+        {
+            GUI.DrawTexture(rect, UiTextures.RadialGlow(color), ScaleMode.StretchToFill, alphaBlend: true);
+        }
+
+        /// <summary>Trait de separation d'une unite d'epaisseur, sur toute la largeur indiquee.</summary>
+        public static void DrawHairline(Rect rect, Color color)
+        {
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), SolidTexture(color), ScaleMode.StretchToFill, alphaBlend: true);
+        }
+
         private static readonly Dictionary<Color, Texture2D> SolidTextures = new Dictionary<Color, Texture2D>();
 
         private static GUIStyle _panelStyle;

@@ -254,5 +254,154 @@ namespace Espace.Gameplay.Galaxy
 
             return inside;
         }
+
+        /// <summary>Cote des textures de planete auxiliaires : plus fin que le disque, leurs degrades doivent rester lisses en grand.</summary>
+        private const int PlanetOverlaySize = 128;
+
+        /// <summary>Rayon de la sphere dans la texture de halo, en fraction du demi-cote. Le reste est l'epaisseur de l'atmosphere.</summary>
+        private const float AtmosphereCoreFraction = 0.68f;
+
+        private static Sprite _cachedAtmosphereSprite;
+        private static Sprite _cachedTerminatorSprite;
+
+        /// <summary>
+        /// Halo atmospherique : un anneau flou qui s'allume au bord du globe et s'eteint vers
+        /// l'exterieur (Phase 21.1). A placer derriere la sphere, legerement plus grand qu'elle.
+        /// <para>
+        /// <b>Un sprite, pas un second maillage.</b> Une coquille spherique transparente autour
+        /// de la planete demanderait d'inverser ses faces, donc un nuanceur dedie. La camera du
+        /// jeu est orthographique et fixe : un disque toujours face a l'objectif donne
+        /// exactement la meme image, pour un cout nul.
+        /// </para>
+        /// <para>
+        /// Le sprite est blanc ; c'est le <c>SpriteRenderer</c> qui le teinte, ce qui permet a
+        /// chaque type de monde d'avoir son atmosphere sans regenerer la texture.
+        /// </para>
+        /// </summary>
+        public static Sprite GetAtmosphereSprite()
+        {
+            if (_cachedAtmosphereSprite != null)
+            {
+                return _cachedAtmosphereSprite;
+            }
+
+            var texture = new Texture2D(PlanetOverlaySize, PlanetOverlaySize, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GeneratedAtmosphere",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            float center = (PlanetOverlaySize - 1) * 0.5f;
+            float outerRadius = PlanetOverlaySize * 0.5f;
+            float coreRadius = outerRadius * AtmosphereCoreFraction;
+
+            var pixels = new Color32[PlanetOverlaySize * PlanetOverlaySize];
+
+            for (int y = 0; y < PlanetOverlaySize; y++)
+            {
+                for (int x = 0; x < PlanetOverlaySize; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+
+                    // Au plus lumineux juste au-dessus de la surface, puis extinction rapide :
+                    // c'est ce gradient asymetrique qui se lit comme une atmosphere plutot que
+                    // comme un contour lumineux.
+                    float alpha;
+                    if (distance <= coreRadius)
+                    {
+                        float t = distance / coreRadius;
+                        alpha = t * t * t * 0.55f;
+                    }
+                    else
+                    {
+                        float t = Mathf.Clamp01((distance - coreRadius) / (outerRadius - coreRadius));
+                        float falloff = 1f - t;
+                        alpha = 0.55f * falloff * falloff;
+                    }
+
+                    pixels[y * PlanetOverlaySize + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _cachedAtmosphereSprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, PlanetOverlaySize, PlanetOverlaySize),
+                new Vector2(0.5f, 0.5f),
+                PixelsPerUnit);
+            _cachedAtmosphereSprite.name = "GeneratedAtmosphereSprite";
+
+            return _cachedAtmosphereSprite;
+        }
+
+        /// <summary>
+        /// Terminateur : le disque d'ombre pose <b>devant</b> la planete, transparent du cote
+        /// eclaire et opaque du cote nuit (Phase 21.1).
+        /// <para>
+        /// <b>Pourquoi une ombre peinte plutot qu'une vraie lumiere ?</b> Eclairer la sphere
+        /// demanderait un materiau <i>Lit</i> et une lumiere directionnelle dans une scene qui
+        /// n'en contient aucune — donc un nuanceur a la merci de la configuration du pipeline de
+        /// rendu, pour un resultat identique. Ici l'ombre reste fixe pendant que la planete
+        /// tourne dessous, ce qui est exactement le comportement recherche : c'est l'etoile qui
+        /// ne bouge pas, pas la surface.
+        /// </para>
+        /// <para>
+        /// Le degrade est calcule le long de l'axe X et decoupe par le disque, si bien que le
+        /// bord de l'ombre epouse la silhouette du globe au lieu de la couper au carre.
+        /// </para>
+        /// </summary>
+        public static Sprite GetTerminatorSprite()
+        {
+            if (_cachedTerminatorSprite != null)
+            {
+                return _cachedTerminatorSprite;
+            }
+
+            var texture = new Texture2D(PlanetOverlaySize, PlanetOverlaySize, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GeneratedTerminator",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            float center = (PlanetOverlaySize - 1) * 0.5f;
+            float radius = PlanetOverlaySize * 0.5f;
+            var pixels = new Color32[PlanetOverlaySize * PlanetOverlaySize];
+
+            for (int y = 0; y < PlanetOverlaySize; y++)
+            {
+                for (int x = 0; x < PlanetOverlaySize; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                    float insideDisc = Mathf.Clamp01(radius - distance);
+
+                    // 0 au bord gauche (plein jour), 1 au bord droit (pleine nuit).
+                    float acrossDisc = x / (float)(PlanetOverlaySize - 1);
+
+                    // Le jour occupe une bonne moitie du globe et la transition reste courte :
+                    // un degrade etale sur toute la largeur donnerait une planete uniformement
+                    // grisee plutot qu'un monde eclaire de cote.
+                    float night = Mathf.Clamp01((acrossDisc - 0.34f) / 0.52f);
+                    night = night * night * (3f - 2f * night);
+
+                    pixels[y * PlanetOverlaySize + x] = new Color(0f, 0f, 0f, night * 0.88f * insideDisc);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _cachedTerminatorSprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, PlanetOverlaySize, PlanetOverlaySize),
+                new Vector2(0.5f, 0.5f),
+                PixelsPerUnit);
+            _cachedTerminatorSprite.name = "GeneratedTerminatorSprite";
+
+            return _cachedTerminatorSprite;
+        }
     }
 }
