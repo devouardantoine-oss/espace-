@@ -315,6 +315,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5face00000000000000000000001008, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  galaxyConfig: {fileID: 11400000, guid: e5face00000000000000000000000171, type: 2}
+  empireDefinitions:
+  - {fileID: 11400000, guid: e5face00000000000000000000000440, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000441, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000442, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000443, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000444, type: 2}
+  - {fileID: 11400000, guid: e5face00000000000000000000000445, type: 2}
 --- !u!114 &400003
 MonoBehaviour:
   m_ObjectHideFlags: 0

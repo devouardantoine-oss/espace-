@@ -852,6 +852,41 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques du menu principal « galaxie vivante » (Phase 21.2)
+
+Le menu montre désormais **la carte du jeu**, survolée lentement par la caméra, avec le menu en
+panneau holographique sur le tiers gauche.
+
+| Brique | Rôle |
+|---|---|
+| `MenuBackdropController` (`Espace.Gameplay.Galaxy`) | Engendre la galaxie d'aperçu, pose fond stellaire, systèmes, routes et capitales, et fait dériver la caméra entre des points d'intérêt |
+| `MainMenuController` (`Espace.UI`, réécrit) | Le panneau : titre, quatre commandes, apparition en cascade, secteur observé |
+
+- **La vraie carte, pas une image d'accroche.** Le fond sort du même `GalaxyGenerator` et de la
+  même graine que la partie qui va commencer : le joueur regarde la galaxie où il jouera
+  réellement. C'est aussi la raison qui a fait retenir ce concept — tout ce qui s'affiche
+  existait déjà et était déjà testé.
+- **Aucun service, aucune simulation.** La galaxie d'aperçu est un objet jetable, exactement
+  comme celui que `FactionPickerController` régénère depuis la Phase 13. Le menu ne fait avancer
+  aucune horloge et ne pilote aucun empire.
+- **Des halos de capitale, pas des territoires.** Une galaxie qui vient d'être engendrée n'a
+  aucun propriétaire : dessiner des zones d'influence reviendrait à inventer un état de partie.
+  Les emplacements de départ, eux, sortent du même `EmpirePlacement` que la partie utilisera —
+  les six couleurs apparaissent donc sans qu'on ait rien fabriqué.
+- **La caméra est reconfigurée au runtime**, pas dans le fichier de scène : la scène `Bootstrap`
+  porte une caméra en perspective héritée de la Phase 1, et son état d'origine est restauré à la
+  destruction du décor.
+
+> **Un défaut de mise en page trouvé avant Unity.** Le panneau ancre ses commandes en bas, mais
+> sur un téléphone très dense l'échelle est bridée par la largeur et l'écran ne fait plus que
+> **286 unités de haut** : l'en-tête complet et quatre commandes n'y tenaient pas, et la première
+> commande remontait par-dessus le filet de séparation. La hauteur des boutons s'adapte
+> désormais, et sur les écrans les plus courts c'est **le sous-titre qui disparaît, jamais une
+> commande** — la règle déjà retenue pour la barre d'état en Phase 20. Vérifié par le calcul sur
+> six formats, de 16:9 à 22:9 et jusqu'à 700 ppp.
+
+---
+
 ### Briques du socle visuel des écrans d'ouverture (Phase 21.1)
 
 Refonte validée : **menu « galaxie vivante »**, **sélection de monde « orbite »**, **choix de
@@ -1357,7 +1392,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 20.3 | Planification d'offensive et suivi des opérations | ✅ terminée |
 | 21 | Musique d'ambiance (playlist en boucle, fondus, réglage du volume) | ✅ terminée |
 | 21.1 | Socle visuel des écrans d'ouverture (palettes par faction, habillage, rendu de planète) | ✅ terminée |
-| 21.2 | Menu principal « galaxie vivante » | ⏳ à venir |
+| 21.2 | Menu principal « galaxie vivante » | ✅ terminée |
 | 21.3 | Choix de civilisation « prise de contrôle » + six espèces | ⏳ à venir |
 | 21.4 | Sélection du monde d'origine « orbite » | ⏳ à venir |
 
