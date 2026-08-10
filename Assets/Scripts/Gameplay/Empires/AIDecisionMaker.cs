@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Espace.Data;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Galaxy;
+using UnityEngine;
 
 namespace Espace.Gameplay.Empires
 {
@@ -49,7 +51,14 @@ namespace Espace.Gameplay.Empires
 
             // Le taux d'imposition est un réglage d'empire, pas de système : il est réaffirmé
             // une seule fois quelle que soit la cible retenue.
-            economy.SetTaxRate(empire.Id, profile.PreferredTaxRate);
+            //
+            // Phase 22 (P7) : il découle désormais de la SITUATION, tempérée par le caractère,
+            // et non plus du seul caractère. L'ancienne version réaffirmait chaque mois la même
+            // valeur — 0,20 pour un pacifiste, 0,35 pour un militariste — qu'il soit en faillite
+            // ou opulent : une IA qui ne regarde pas ses comptes ne prend pas de décision, elle
+            // applique une constante.
+            EmpireAssessment assessment = AssessSituation(empire, map, economy);
+            economy.SetTaxRate(empire.Id, BlendTaxRate(assessment.SuggestedTaxRate(), profile.PreferredTaxRate));
 
             // Aucun repli sur un autre système n'est nécessaire, et ce n'est pas un oubli : la
             // règle de rattrapage ne peut pas faire perdre un mois. Une colonie neuve ne peut
@@ -82,6 +91,66 @@ namespace Espace.Gameplay.Empires
         /// contient aucun tirage au runtime.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// Photographie de la situation de l'empire, a partir de ce que le joueur voit lui-meme.
+        /// <para>
+        /// <b>Aucun bonus cache.</b> Tresorerie, stabilite moyenne, place restante : tout est
+        /// lisible sur l'interface. Une IA mieux informee que le joueur serait une triche, et
+        /// une triche n'apprend rien au joueur sur le jeu.
+        /// </para>
+        /// <para>
+        /// <b>Le rapport de forces militaire est laisse a 1</b> pour l'instant : l'evaluer
+        /// exigerait <c>IMilitaryService</c>, que ce module ne recoit pas. C'est une limite
+        /// assumee de cette etape — les postures Defending et Aggressive resteront donc hors
+        /// d'atteinte tant que le rapport de forces n'est pas branche, mais les postures
+        /// Consolidating et Expanding, qui portent la decision fiscale, sont deja correctes.
+        /// </para>
+        /// </summary>
+        private static EmpireAssessment AssessSituation(Empire empire, GalaxyMap map, IEconomyService economy)
+        {
+            List<StarSystemState> owned = EmpireHoldings.OwnedSystems(empire.Id, map);
+            if (owned.Count == 0)
+            {
+                return new EmpireAssessment(0f, 0f, 1f, 0f, 0);
+            }
+
+            float stabilitySum = 0f;
+            int population = 0;
+            int capacity = 0;
+
+            foreach (StarSystemState system in owned)
+            {
+                stabilitySum += system.Stability;
+                population += system.Population;
+                capacity += PopulationModel.CapacityFor(system.DevelopmentLevel);
+            }
+
+            // Depenses de reference : le cout d'administration, seule charge recurrente que ce
+            // module connaisse. L'entretien de flotte lui echappe, ce qui rend l'estimation
+            // optimiste — donc prudente dans le bon sens : l'IA se croira un peu plus riche
+            // qu'elle ne l'est, jamais l'inverse.
+            float monthlyOutgoings = Mathf.Max(1f, AdministrationModel.InfluenceUpkeep(owned.Count));
+            float runway = economy.GetTreasury(empire.Id).Credits / monthlyOutgoings;
+
+            float headroom = capacity > 0 ? 1f - population / (float)capacity : 0f;
+
+            return new EmpireAssessment(runway, stabilitySum / owned.Count, 1f, headroom, owned.Count);
+        }
+
+        /// <summary>
+        /// Melange le taux appele par la situation et celui qu'appelle le temperament.
+        /// <para>
+        /// La situation pese deux tiers : un empire en faillite serre la vis quelle que soit sa
+        /// personnalite, mais un pacifiste reste sensiblement plus doux qu'un militariste dans
+        /// la meme situation. Le caractere cesse d'etre la reponse entiere sans cesser
+        /// d'exister.
+        /// </para>
+        /// </summary>
+        private static float BlendTaxRate(float situational, float temperamental)
+        {
+            return Mathf.Clamp01(situational * 0.66f + temperamental * 0.34f);
+        }
+
         private static StarSystemState ChooseDevelopmentTarget(Empire empire, GalaxyMap map, EmpirePersonalityProfileData profile)
         {
             if (profile.DevelopsCapitalFirst)

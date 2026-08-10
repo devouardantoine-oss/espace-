@@ -852,6 +852,44 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques de l'espionnage gradué et de l'IA stratégique (Phase 22, P6 et P7)
+
+| Modèle | Rôle |
+|---|---|
+| `EspionageResolution` | Chance de réussite issue d'un rapport de forces, quatre issues, mise en influence à dimensionner |
+| `EmpireAssessment` | Photographie de la situation d'un empire et posture qui en découle |
+
+**L'ancienne règle d'espionnage** tenait en une comparaison : `attaque > défense`, où la défense
+valait `10 × stabilité`. Comme la stabilité est toujours inférieure à 1, **l'attaquant gagnait
+toujours** à recherche égale. Désormais :
+
+- **La chance vient d'un rapport de forces**, pas d'une comparaison — deux camps à égalité sont à
+  50 % quelle que soit leur puissance absolue.
+- **Quatre issues, pas deux** : réussite discrète, réussite attribuée, échec discret, échec
+  exposé. Réussir et se faire voir sont deux questions distinctes.
+- **La mise en influence a des rendements décroissants** (racine carrée) : un empire riche ne
+  s'achète pas la certitude, sinon on revient au système binaire.
+- **La vigilance monte à chaque tentative** : frapper deux fois au même endroit devient plus dur,
+  sans qu'aucun délai arbitraire soit imposé.
+
+**L'IA** réaffirmait chaque mois un taux d'imposition fixe issu de la personnalité — `0,20` pour
+un pacifiste, `0,35` pour un militariste — qu'elle soit en faillite ou opulente. Le taux découle
+maintenant de la **situation**, tempérée par le caractère à un tiers. L'ordre de priorité des
+postures est volontaire : **survivre, puis se défendre, puis grandir, puis frapper**. Un empire au
+bord de la faillite ne part plus en guerre même s'il est le plus fort.
+
+> **`EmpireAssessment` ne lit que ce que le joueur voit** sur son interface. Une IA mieux informée
+> serait une triche, et une triche n'apprend rien au joueur sur le jeu.
+
+> **P7 est partielle, et c'est assumé.** Le rapport de forces militaire est laissé à 1 : l'évaluer
+> exigerait `IMilitaryService`, que `AIDecisionMaker` ne reçoit pas. Les postures *Defending* et
+> *Aggressive* restent donc hors d'atteinte ; seules *Consolidating* et *Expanding*, qui portent
+> la décision fiscale, sont opérationnelles. `EspionageService` continue par ailleurs d'utiliser
+> son ancienne règle binaire — `EspionageResolution` est écrit et testé mais **pas encore
+> branché**, le service exigeant une refonte de sa signature d'appel.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
@@ -1120,7 +1158,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (703 tests, tous packages confondus).
+Voir §5 pour le compte total (722 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1301,7 +1339,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 703 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 722 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1575,6 +1613,8 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.3 | Nourriture et énergie réellement consommées | ✅ terminée |
 | 22.4 | Coût d'administration payé en influence | ✅ terminée |
 | 22.5 | Entretien de flotte contraignant | ✅ terminée |
+| 22.6 | Espionnage gradué (quatre issues, mise en influence) | ✅ terminée |
+| 22.7 | Évaluation stratégique de l'IA | 🚧 partielle |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
