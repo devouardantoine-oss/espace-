@@ -4,6 +4,7 @@ using Espace.Core;
 using Espace.Data;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Research;
+using UnityEngine;
 
 namespace Espace.Gameplay.Economy
 {
@@ -52,6 +53,28 @@ namespace Espace.Gameplay.Economy
         private readonly Dictionary<int, ResourceBundle> _treasuriesByEmpire = new Dictionary<int, ResourceBundle>();
         private readonly Dictionary<int, float> _taxRatesByEmpire = new Dictionary<int, float>();
 
+        /// <summary>
+        /// Bilan du dernier mois par empire. Relu chaque jour par la production : sans lui, il
+        /// faudrait recalculer les besoins de tout l'empire trente fois par mois pour un
+        /// resultat identique.
+        /// </summary>
+        private readonly Dictionary<int, EmpireMonthlyBalance> _balancesByEmpire = new Dictionary<int, EmpireMonthlyBalance>();
+
+        /// <summary>Ce qu'un empire reclame et obtient sur un mois. Structure interne : rien au-dehors n'en depend.</summary>
+        private struct EmpireMonthlyBalance
+        {
+            public int SystemCount;
+            public float FoodDemand;
+            public float EnergyDemand;
+            public float InfluenceUpkeep;
+
+            /// <summary>Part des besoins alimentaires couverte. Zero par defaut ne convient pas : un empire qui n'a pas encore vu passer un mois n'est pas affame.</summary>
+            public float FoodSatisfaction;
+
+            public float EnergySatisfaction;
+            public float AdministrativePressure;
+        }
+
         /// <inheritdoc />
         public ResourceBundle Treasury => GetTreasury(PlayerOwnerId);
 
@@ -74,6 +97,7 @@ namespace Espace.Gameplay.Economy
         {
             _treasuriesByEmpire.Clear();
             _taxRatesByEmpire.Clear();
+            _balancesByEmpire.Clear();
             _buildingsBySystem.Clear();
             _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
             _eventBus.Subscribe<MonthAdvancedEvent>(OnMonthAdvanced);
@@ -271,25 +295,117 @@ namespace Espace.Gameplay.Economy
         /// </summary>
         private void OnMonthAdvanced(MonthAdvancedEvent monthAdvancedEvent)
         {
+            // Un bilan par empire d'abord, les systemes ensuite : la nourriture, l'energie et
+            // l'influence sont mises en commun a l'echelle de l'empire, pas du systeme. C'est ce
+            // qui fait qu'un monde agricole nourrit un monde minier — la dependance emerge de la
+            // geographie au lieu d'etre une regle.
+            Dictionary<int, EmpireMonthlyBalance> balances = ComputeMonthlyBalances();
+
+            foreach (KeyValuePair<int, EmpireMonthlyBalance> entry in balances)
+            {
+                ResourceBundle treasury = GetTreasury(entry.Key);
+                EmpireMonthlyBalance balance = entry.Value;
+
+                // Ce qui est consomme est reellement preleve : un empire prevoyant traverse une
+                // mauvaise passe sur ses reserves. C'est ce qui distingue une contrainte d'une
+                // punition — elle se prepare.
+                float foodPaid = Mathf.Min(treasury.Food, balance.FoodDemand);
+                float energyPaid = Mathf.Min(treasury.Energy, balance.EnergyDemand);
+                float influencePaid = Mathf.Min(treasury.Influence, balance.InfluenceUpkeep);
+
+                _treasuriesByEmpire[entry.Key] = treasury - new ResourceBundle(
+                    energy: energyPaid, food: foodPaid, influence: influencePaid);
+
+                balance.FoodSatisfaction = SubsistenceModel.Satisfaction(foodPaid, balance.FoodDemand);
+                balance.EnergySatisfaction = SubsistenceModel.Satisfaction(energyPaid, balance.EnergyDemand);
+                balance.AdministrativePressure = AdministrationModel.Pressure(influencePaid, balance.InfluenceUpkeep);
+
+                _balancesByEmpire[entry.Key] = balance;
+                _eventBus.Publish(new TreasuryChangedEvent(entry.Key, _treasuriesByEmpire[entry.Key]));
+            }
+
+            AdvanceSystems(balances);
+        }
+
+        /// <summary>
+        /// Additionne, pour chaque empire, ce que ses systemes reclament ce mois-ci.
+        /// </summary>
+        private Dictionary<int, EmpireMonthlyBalance> ComputeMonthlyBalances()
+        {
+            var balances = new Dictionary<int, EmpireMonthlyBalance>();
+
             foreach (StarSystemState system in _map.Systems)
             {
                 if (system.OwnerId == StarSystemState.UnownedOwnerId)
+                {
+                    continue;
+                }
+
+                balances.TryGetValue(system.OwnerId, out EmpireMonthlyBalance balance);
+
+                balance.SystemCount += 1;
+                balance.FoodDemand += SubsistenceModel.FoodDemand(system.Population);
+                balance.EnergyDemand += SubsistenceModel.EnergyDemand(CompletedBuildingCount(system.Id), system.DevelopmentLevel);
+
+                balances[system.OwnerId] = balance;
+            }
+
+            var empireIds = new List<int>(balances.Keys);
+            foreach (int empireId in empireIds)
+            {
+                EmpireMonthlyBalance balance = balances[empireId];
+                balance.InfluenceUpkeep = AdministrationModel.InfluenceUpkeep(balance.SystemCount);
+                balances[empireId] = balance;
+            }
+
+            return balances;
+        }
+
+        /// <summary>Applique la croissance a chaque systeme, avec le bilan de son empire.</summary>
+        private void AdvanceSystems(Dictionary<int, EmpireMonthlyBalance> balances)
+        {
+            foreach (StarSystemState system in _map.Systems)
+            {
+                if (system.OwnerId == StarSystemState.UnownedOwnerId || !balances.TryGetValue(system.OwnerId, out EmpireMonthlyBalance balance))
                 {
                     // Un systeme sans maitre ne se developpe pas tout seul : personne n'y
                     // investit, personne ne l'administre.
                     continue;
                 }
 
+                // Les trois calculs lisent l'etat du debut de mois et non celui que le calcul
+                // precedent vient d'ecrire : sans cela une hausse de population gonflerait la
+                // richesse dans le meme tick, et l'ordre des lignes deviendrait une regle de jeu
+                // invisible.
                 int population = system.Population;
                 int wealth = system.Wealth;
                 int development = system.DevelopmentLevel;
                 float stability = system.Stability;
                 float taxRate = GetTaxRate(system.OwnerId);
 
-                system.Population = PopulationModel.Next(population, development, stability);
+                system.Population = PopulationModel.Next(population, development, stability, balance.FoodSatisfaction);
                 system.Wealth = WealthModel.Next(wealth, population, development, taxRate, stability);
-                system.Stability = StabilityModel.Next(stability, development, taxRate);
+                system.Stability = StabilityModel.Next(stability, development, taxRate, balance.AdministrativePressure);
             }
+        }
+
+        private int CompletedBuildingCount(StarSystemId systemId)
+        {
+            if (!_buildingsBySystem.TryGetValue(systemId, out List<BuildingInstance> buildings))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            foreach (BuildingInstance building in buildings)
+            {
+                if (building.Status == BuildingStatus.Completed)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
@@ -389,7 +505,11 @@ namespace Espace.Gameplay.Economy
                 }
             }
 
-            return baseProduction * stability + buildingBonus * stability;
+            // L'energie ne bride que les batiments, pas l'extraction brute : une mine
+            // fonctionne a la pelle, une usine ne fonctionne pas sans courant.
+            float energyFactor = SubsistenceModel.BuildingOutputFactor(EnergySatisfactionOf(system.OwnerId));
+
+            return baseProduction * stability + buildingBonus * stability * energyFactor;
         }
 
         /// <summary>
@@ -403,6 +523,15 @@ namespace Espace.Gameplay.Economy
         /// disponible ou si l'empire n'a rien recherche dans ce domaine — Aliment et Influence
         /// n'ont volontairement aucun domaine de recherche associe.
         /// </summary>
+        /// <summary>
+        /// Satisfaction energetique du dernier mois. Vaut 1 tant qu'aucun mois n'a ete boucle :
+        /// une partie qui commence ne doit pas demarrer en penurie.
+        /// </summary>
+        private float EnergySatisfactionOf(int empireId)
+        {
+            return _balancesByEmpire.TryGetValue(empireId, out EmpireMonthlyBalance balance) ? balance.EnergySatisfaction : 1f;
+        }
+
         private static float ResearchMultiplier(int empireId, ResearchDomain domain)
         {
             return ServiceLocator.TryGet(out IResearchService research) ? 1f + research.GetBonus(empireId, domain) : 1f;

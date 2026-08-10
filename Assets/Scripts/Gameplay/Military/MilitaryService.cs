@@ -159,12 +159,14 @@ namespace Espace.Gameplay.Military
             _nextFleetId = 1;
             _nextEncounterId = 1;
             _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
+            _eventBus.Subscribe<MonthAdvancedEvent>(OnMonthAdvancedForUpkeep);
         }
 
         /// <inheritdoc />
         public void Shutdown()
         {
             _eventBus.Unsubscribe<DayAdvancedEvent>(OnDayAdvanced);
+            _eventBus.Unsubscribe<MonthAdvancedEvent>(OnMonthAdvancedForUpkeep);
             _fleets.Clear();
             _recruitmentOrders.Clear();
             _pendingEncounters.Clear();
@@ -1101,6 +1103,21 @@ namespace Espace.Gameplay.Military
             return fleet;
         }
 
+        /// <summary>
+        /// Preleve l'entretien du jour et note ce qui n'a pas pu etre paye.
+        /// <para>
+        /// <b>L'echec n'est plus ignore</b> (Phase 22, P5). Jusqu'ici la depense echouait en
+        /// silence : une flotte impayee continuait d'exister et de se battre, si bien que le
+        /// cout etait facultatif et que la question « puis-je entretenir cette flotte ? »
+        /// n'avait pas de sens. Le manque est desormais cumule et se paie en attrition a la fin
+        /// du mois (voir <see cref="OnMonthAdvancedForUpkeep"/>).
+        /// </para>
+        /// <para>
+        /// <b>Credits et minerais</b> : une flotte consomme des pieces, pas seulement des
+        /// soldes. C'est ce qui relie la puissance militaire a la capacite industrielle — un
+        /// empire riche mais sans mines ne peut plus armer sans limite.
+        /// </para>
+        /// </summary>
         private void ChargeUpkeep()
         {
             var upkeepByEmpire = new Dictionary<int, float>();
@@ -1118,9 +1135,103 @@ namespace Espace.Gameplay.Military
 
             foreach (KeyValuePair<int, float> entry in upkeepByEmpire)
             {
-                _economy.TrySpend(entry.Key, new ResourceBundle(credits: entry.Value), out _);
+                var cost = new ResourceBundle(
+                    credits: entry.Value,
+                    minerals: FleetUpkeepModel.MineralUpkeepFor(entry.Value));
+
+                _upkeepDueThisMonth[entry.Key] = _upkeepDueThisMonth.TryGetValue(entry.Key, out float due) ? due + entry.Value : entry.Value;
+
+                if (_economy.TrySpend(entry.Key, cost, out _))
+                {
+                    _upkeepPaidThisMonth[entry.Key] = _upkeepPaidThisMonth.TryGetValue(entry.Key, out float paid) ? paid + entry.Value : entry.Value;
+                }
             }
         }
+
+        /// <summary>
+        /// Applique l'attrition due aux impayes du mois, puis repart de zero.
+        /// <para>
+        /// <b>Mensuel et progressif, jamais brutal.</b> Un empire momentanement a sec perd
+        /// quelques unites, pas sa flotte : il a le temps de vendre, de faire la paix ou de
+        /// desarmer. Une desertion instantanee transformerait une erreur de tresorerie en
+        /// defaite definitive, ce qui punirait l'inattention plutot que la mauvaise strategie.
+        /// </para>
+        /// <para>
+        /// <b>Periode de grace</b> : une sauvegarde d'avant cette phase contient des flottes
+        /// constituees sans que l'entretien ait jamais mordu. Les faire fondre au premier mois
+        /// rendrait ces parties injouables.
+        /// </para>
+        /// </summary>
+        private void OnMonthAdvancedForUpkeep(MonthAdvancedEvent monthAdvancedEvent)
+        {
+            if (_upkeepGraceMonthsLeft > 0)
+            {
+                _upkeepGraceMonthsLeft--;
+                _upkeepDueThisMonth.Clear();
+                _upkeepPaidThisMonth.Clear();
+                return;
+            }
+
+            foreach (KeyValuePair<int, float> entry in _upkeepDueThisMonth)
+            {
+                _upkeepPaidThisMonth.TryGetValue(entry.Key, out float paid);
+                float surviving = FleetUpkeepModel.SurvivingFraction(paid, entry.Value);
+
+                if (surviving >= 1f)
+                {
+                    continue;
+                }
+
+                ApplyAttrition(entry.Key, surviving);
+            }
+
+            _upkeepDueThisMonth.Clear();
+            _upkeepPaidThisMonth.Clear();
+        }
+
+        /// <summary>Reduit toutes les flottes d'un empire, et dissout celles qui ne comptent plus personne.</summary>
+        private void ApplyAttrition(int empireId, float survivingFraction)
+        {
+            int lostUnits = 0;
+
+            // Copie defensive : dissoudre une flotte mute _fleets.
+            var owned = new List<Fleet>();
+            foreach (Fleet fleet in _fleets)
+            {
+                if (fleet.OwnerId == empireId && fleet.Composition.TotalCount > 0)
+                {
+                    owned.Add(fleet);
+                }
+            }
+
+            foreach (Fleet fleet in owned)
+            {
+                int before = fleet.Composition.TotalCount;
+                UnitBundle reduced = fleet.Composition.Scale(survivingFraction);
+                lostUnits += before - reduced.TotalCount;
+
+                fleet.SetComposition(reduced);
+
+                if (reduced.TotalCount == 0)
+                {
+                    _fleets.Remove(fleet);
+                }
+            }
+
+            if (lostUnits > 0)
+            {
+                GameLog.Info($"[Militaire] Empire {empireId} : {lostUnits} unite(s) desertent, entretien impaye.");
+            }
+        }
+
+        /// <summary>Entretien du mois en cours, cumule jour apres jour, par empire.</summary>
+        private readonly Dictionary<int, float> _upkeepDueThisMonth = new Dictionary<int, float>();
+
+        /// <summary>Part de cet entretien reellement reglee.</summary>
+        private readonly Dictionary<int, float> _upkeepPaidThisMonth = new Dictionary<int, float>();
+
+        /// <summary>Mois de repit restants avant que l'attrition ne morde (voir <see cref="FleetUpkeepModel.GraceMonths"/>).</summary>
+        private int _upkeepGraceMonthsLeft = FleetUpkeepModel.GraceMonths;
 
         private float ComputeUpkeep(UnitBundle composition)
         {

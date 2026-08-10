@@ -852,6 +852,52 @@ Quatre décisions méritent d'être expliquées :
 > *Info* (pas en avertissement — un projet sans musique est un état normal) et le bloc
 > « Musique » du menu pause n'apparaît pas.
 
+### Briques des trois freins (Phase 22, P3 à P5)
+
+L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
+de production — et aucun frein. Une faction en avance ne pouvait plus être rattrapée.
+
+| Modèle | Frein posé |
+|---|---|
+| `SubsistenceModel` | La nourriture et l'énergie sont enfin **consommées**. Famine → déclin de population ; panne → production des bâtiments réduite au prorata |
+| `AdministrationModel` | Chaque système au-delà de trois coûte de l'**influence**, et le coût par système croît avec la taille |
+| `FleetUpkeepModel` | L'entretien impayé provoque une **attrition progressive**, et coûte désormais crédits *et* minerais |
+
+- **Deux contraintes de nature différente**, volontairement. La famine est lente et structurelle,
+  elle punit l'expansion sans consolidation. La panne d'énergie est immédiate et réversible, elle
+  se corrige en construisant une centrale.
+- **Les stocks comptent** : la consommation est prélevée sur le trésor, donc un empire prévoyant
+  traverse une mauvaise passe sur ses réserves. C'est ce qui distingue une contrainte d'une
+  punition — elle se prépare.
+- **Le déficit d'influence se paie en stabilité, pas en interdiction.** Rien n'est bloqué : les
+  provinces se tiennent moins bien, ce qui réduit la production, ce qui rend la flotte impayable.
+  La spirale est lente et lisible, et l'on en sort en consolidant.
+- **L'attrition est graduelle.** Un mois d'impayé coûte 12 % de la flotte, deux ans en laissent
+  moins d'un dixième. Une désertion instantanée transformerait une erreur de trésorerie en
+  défaite définitive.
+
+**Simulation du coût d'administration** (systèmes de développement 3) :
+
+```
+ systèmes   influence due   produite   solde
+       10             166        360    +194
+       20             550        720    +170
+       30           1 027      1 080     +53
+       40           1 571      1 440    −131  ← déficit
+```
+
+> **Un calibrage faux, rattrapé par la simulation.** Le premier réglage du coût par système
+> (1,6) donnait **210 d'influence de charge pour 1 440 produites** à quarante systèmes : le frein
+> ne freinait rien du tout. Aucun test ne l'aurait vu — ils vérifiaient la *forme* de la courbe,
+> qui était correcte, pas son *échelle*. Le coefficient est désormais calé sur la production
+> réelle d'influence, et l'explication du calcul vit à côté de la constante.
+
+> **Période de grâce de trois mois** sur l'attrition après le chargement d'une sauvegarde : une
+> partie d'avant cette phase contient des flottes constituées sans que l'entretien ait jamais
+> mordu, et les faire fondre au premier mois la rendrait injouable.
+
+---
+
 ### Briques de l'économie vivante (Phase 22, P1 et P2)
 
 Issu d'un audit complet des mécaniques. Le constat de départ : **`Population`, `Wealth` et
@@ -1074,7 +1120,7 @@ Nouvelle partie / Continuer / Quitter) — voir §5 pour le vérifier en détail
 « Continuer » doit rester grisé tant qu'aucune sauvegarde n'existe.
 
 **Tests unitaires** — `Window → General → Test Runner → EditMode → Run All`.
-Voir §5 pour le compte total (684 tests, tous packages confondus).
+Voir §5 pour le compte total (703 tests, tous packages confondus).
 
 **Build** — `File → Build Settings` : Android et iOS doivent être sélectionnables,
 avec **`Bootstrap` en scène 0 et `GalaxyMap` en scène 1**. Si `GalaxyMap` manque, tout
@@ -1255,7 +1301,7 @@ Dans la fenêtre Game :
   la partie doit reprendre exactement où elle en était, sur la **même** galaxie (positions et
   noms de systèmes identiques d'une session à l'autre, grâce à la graine désormais fixe).
 
-**Tests unitaires** (inclus dans le Run All du Test Runner, 684 au total) :
+**Tests unitaires** (inclus dans le Run All du Test Runner, 703 au total) :
 `GalaxyGeneratorTests`, `GalaxyMapTests`, `HyperlaneLinkTests`, `StarSystemNameGeneratorTests`
 (Phase 2) ; `GameDateTests`, `GameClockSettingsTests`, `GameClockTests` (Phase 3) ;
 `ResourceBundleTests`, `EconomyServiceTests` (Phase 4, plus des tests Phase 5/6 sur la
@@ -1526,6 +1572,9 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 21.4 | Sélection du monde d'origine « orbite » | ✅ terminée |
 | 22.1 | Démographie et richesse vivantes | ✅ terminée |
 | 22.2 | Fiscalité non linéaire et stabilité évolutive | ✅ terminée |
+| 22.3 | Nourriture et énergie réellement consommées | ✅ terminée |
+| 22.4 | Coût d'administration payé en influence | ✅ terminée |
+| 22.5 | Entretien de flotte contraignant | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
