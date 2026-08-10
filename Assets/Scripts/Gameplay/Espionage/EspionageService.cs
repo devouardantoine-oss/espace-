@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Espace.Core;
 using Espace.Data;
 using Espace.Gameplay.Diplomacy;
@@ -18,7 +19,7 @@ namespace Espace.Gameplay.Espionage
     /// d'espionnage du proposeur depasse strictement le contre-espionnage de la cible (egalite
     /// stricte incluse → echec, meme convention que <see cref="CombatResolver"/>) — pas de jet
     /// de de. Le risque vient d'ailleurs : une mission echouee est toujours decouverte
-    /// (<see cref="ApplyFailureConsequences"/>) et coute une penalite d'opinion, alors qu'une
+    /// (voir <see cref="TryAttempt"/>) et peut couter une penalite d'opinion, alors qu'une
     /// mission reussie est invisible pour la cible.
     /// </para>
     /// <para>
@@ -37,6 +38,16 @@ namespace Espace.Gameplay.Espionage
     {
         private const float BaseEspionagePower = 10f;
 
+        /// <summary>Vigilance acquise par empire cible (voir <see cref="RaiseVigilance"/>).</summary>
+        private readonly Dictionary<int, float> _vigilanceByEmpire = new Dictionary<int, float>();
+
+        /// <summary>
+        /// Tirage des issues. Propre au service plutot que partage : une operation clandestine
+        /// ne doit pas consommer la meme suite que la generation de galaxie, qui doit rester
+        /// reproductible a graine fixe.
+        /// </summary>
+        private readonly System.Random _random = new System.Random();
+
         private const float StealTechnologyCost = 150f;
         private const float SabotageCost = 100f;
         private const float InciteRevoltCost = 100f;
@@ -44,6 +55,21 @@ namespace Espace.Gameplay.Espionage
         private const float DiscoverArmiesCost = 50f;
 
         private const float FailureOpinionPenalty = 10f;
+
+        /// <summary>
+        /// Influence engagee par credit depense. C'est ce ratio qui relie l'espionnage a
+        /// l'administration : les deux puisent dans la meme reserve.
+        /// </summary>
+        private const float InfluenceStakeRatio = 0.6f;
+
+        /// <summary>Vigilance gagnee par la cible a chaque tentative, reussie ou non.</summary>
+        private const float VigilancePerAttempt = 0.5f;
+
+        /// <summary>Vigilance perdue chaque mois sans nouvelle tentative.</summary>
+        private const float VigilanceDecayPerMonth = 0.15f;
+
+        /// <summary>Plafond de vigilance : une cible sur ses gardes ne devient jamais imprenable.</summary>
+        private const float MaximumVigilance = 2f;
         private const float InfluenceOpinionGain = 15f;
         private const float RevoltStabilityLoss = 0.3f;
 
@@ -61,13 +87,17 @@ namespace Espace.Gameplay.Espionage
         /// <inheritdoc />
         public void Initialize()
         {
-            // Rien a initialiser : ce service ne detient aucun etat propre, uniquement des
-            // effets immediats sur GalaxyMap et les autres services.
+            // Le service detient desormais un etat propre — la vigilance des cibles (Phase 22,
+            // P6) — qu'il faut faire retomber avec le temps.
+            _vigilanceByEmpire.Clear();
+            _eventBus.Subscribe<MonthAdvancedEvent>(OnMonthAdvanced);
         }
 
         /// <inheritdoc />
         public void Shutdown()
         {
+            _eventBus.Unsubscribe<MonthAdvancedEvent>(OnMonthAdvanced);
+            _vigilanceByEmpire.Clear();
         }
 
         /// <inheritdoc />
@@ -228,10 +258,29 @@ namespace Espace.Gameplay.Espionage
         }
 
         /// <summary>
-        /// Verifications communes a toute mission : pas d'auto-espionnage, cout paye
-        /// d'avance (que la mission reussisse ou non — l'operation a un cout meme ratee), puis
-        /// comparaison deterministe de puissance. En cas d'echec, applique les consequences
-        /// (decouverte, penalite d'opinion) avant de retourner faux.
+        /// Verifications communes a toute mission : pas d'auto-espionnage, cout paye d'avance
+        /// (que la mission reussisse ou non — l'operation a un cout meme ratee), puis resolution
+        /// par <see cref="EspionageResolution"/>.
+        /// <para>
+        /// <b>Ce qui a change en Phase 22 (P6).</b> La regle tenait en une comparaison :
+        /// <c>puissance &gt; contre-puissance</c>, ou la contre-puissance valait
+        /// <c>10 x stabilite</c>. La stabilite etant toujours inferieure a 1, l'attaquant
+        /// <b>gagnait toujours</b> a recherche egale. Il n'y avait ni probabilite, ni risque, ni
+        /// detection distincte de l'echec.
+        /// </para>
+        /// <para>
+        /// <b>L'influence est desormais la mise.</b> Le point d'entree public n'a pas change —
+        /// aucun appelant n'est a retoucher — mais l'operation engage l'influence disponible,
+        /// plafonnee par <see cref="InfluenceStakeRatio"/>. La consequence est systemique :
+        /// l'influence paie <em>aussi</em> l'administration de l'empire (P4), donc un empire
+        /// etale n'a plus les moyens de comploter. Personne n'a eu a ecrire cette regle, elle
+        /// tombe du partage d'une meme ressource.
+        /// </para>
+        /// <para>
+        /// <b>Quatre issues.</b> Une reussite peut etre attribuee — l'effet a lieu mais la
+        /// relation en paie le prix — et un echec peut passer inapercu. Auparavant tout echec
+        /// coutait de l'opinion, ce qui rendait toute tentative diplomatiquement chere.
+        /// </para>
         /// </summary>
         private bool TryAttempt(
             int proposerId, int targetEmpireId, StarSystemState referenceSystem, float cost, EspionageMissionType type, out string error)
@@ -253,28 +302,112 @@ namespace Espace.Gameplay.Espionage
                 return false;
             }
 
-            float ownPower = GetEspionagePower(proposerId);
-            float counterPower = GetCounterEspionagePower(targetEmpireId, referenceSystem.Id);
+            float influenceCommitted = CommitInfluence(economy, proposerId, cost);
 
-            if (ownPower <= counterPower)
+            float attack = EspionageResolution.AttackPower(
+                influenceCommitted,
+                networkStrength: 1f,
+                researchBonus: ResearchBonus(proposerId, ResearchDomain.Espionage));
+
+            float defence = EspionageResolution.DefencePower(
+                referenceSystem.Stability,
+                ResearchBonus(targetEmpireId, ResearchDomain.Espionage),
+                VigilanceOf(targetEmpireId));
+
+            EspionageOutcome outcome = EspionageResolution.Resolve(
+                attack, defence, (float)_random.NextDouble(), (float)_random.NextDouble());
+
+            // La vigilance monte que l'operation reussisse ou non : la cible apprend qu'on
+            // s'interesse a elle. C'est ce qui empeche de repeter indefiniment une operation
+            // rentable, sans qu'aucun delai arbitraire soit impose.
+            RaiseVigilance(targetEmpireId);
+
+            if (EspionageResolution.WasAttributed(outcome))
             {
-                ApplyFailureConsequences(proposerId, targetEmpireId, type);
-                error = "Mission dejouee par le contre-espionnage adverse.";
-                return false;
+                ApplyAttributionPenalty(proposerId, targetEmpireId);
             }
 
-            error = null;
-            return true;
+            if (EspionageResolution.Succeeded(outcome))
+            {
+                error = null;
+                return true;
+            }
+
+            _eventBus.Publish(new MissionFailedEvent(proposerId, targetEmpireId, type));
+
+            error = outcome == EspionageOutcome.Exposed
+                ? "Mission dejouee, et nos agents ont ete identifies."
+                : "Mission dejouee, mais nos agents sont restes anonymes.";
+
+            return false;
         }
 
-        private void ApplyFailureConsequences(int proposerId, int targetEmpireId, EspionageMissionType type)
+        /// <summary>
+        /// Preleve l'influence engagee dans l'operation et renvoie ce qui a pu l'etre.
+        /// <para>
+        /// Un empire a court d'influence monte quand meme l'operation, mais faiblement : mieux
+        /// vaut une tentative desesperee qu'un refus sec, qui obligerait a expliquer au joueur
+        /// une regle de plus.
+        /// </para>
+        /// </summary>
+        private static float CommitInfluence(IEconomyService economy, int proposerId, float cost)
+        {
+            float desired = cost * InfluenceStakeRatio;
+            float available = economy.GetTreasury(proposerId).Influence;
+            float committed = Mathf.Min(desired, Mathf.Max(0f, available));
+
+            if (committed > 0f)
+            {
+                economy.TrySpend(proposerId, new ResourceBundle(influence: committed), out _);
+            }
+
+            return committed;
+        }
+
+        private float VigilanceOf(int empireId)
+        {
+            return _vigilanceByEmpire.TryGetValue(empireId, out float vigilance) ? vigilance : 0f;
+        }
+
+        private void RaiseVigilance(int empireId)
+        {
+            _vigilanceByEmpire[empireId] = Mathf.Min(MaximumVigilance, VigilanceOf(empireId) + VigilancePerAttempt);
+        }
+
+        /// <summary>
+        /// La vigilance retombe avec le temps : une cible harcelee puis laissee tranquille
+        /// redevient penetrable, sinon un empire attaque tot deviendrait definitivement
+        /// intouchable.
+        /// </summary>
+        private void OnMonthAdvanced(MonthAdvancedEvent monthAdvancedEvent)
+        {
+            if (_vigilanceByEmpire.Count == 0)
+            {
+                return;
+            }
+
+            var empireIds = new List<int>(_vigilanceByEmpire.Keys);
+            foreach (int empireId in empireIds)
+            {
+                float decayed = _vigilanceByEmpire[empireId] - VigilanceDecayPerMonth;
+                if (decayed <= 0f)
+                {
+                    _vigilanceByEmpire.Remove(empireId);
+                }
+                else
+                {
+                    _vigilanceByEmpire[empireId] = decayed;
+                }
+            }
+        }
+
+        /// <summary>Consequence diplomatique d'une operation attribuee, reussie ou non.</summary>
+        private void ApplyAttributionPenalty(int proposerId, int targetEmpireId)
         {
             if (ServiceLocator.TryGet(out IDiplomacyService diplomacy))
             {
                 diplomacy.ApplyOpinionShift(targetEmpireId, proposerId, -FailureOpinionPenalty);
             }
-
-            _eventBus.Publish(new MissionFailedEvent(proposerId, targetEmpireId, type));
         }
 
         /// <summary>Le domaine ou l'ecart de paliers completes (cible moins proposeur) est le plus grand, ou <c>null</c> si aucun domaine n'est en avance.</summary>

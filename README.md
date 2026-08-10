@@ -881,12 +881,25 @@ bord de la faillite ne part plus en guerre même s'il est le plus fort.
 > **`EmpireAssessment` ne lit que ce que le joueur voit** sur son interface. Une IA mieux informée
 > serait une triche, et une triche n'apprend rien au joueur sur le jeu.
 
-> **P7 est partielle, et c'est assumé.** Le rapport de forces militaire est laissé à 1 : l'évaluer
-> exigerait `IMilitaryService`, que `AIDecisionMaker` ne reçoit pas. Les postures *Defending* et
-> *Aggressive* restent donc hors d'atteinte ; seules *Consolidating* et *Expanding*, qui portent
-> la décision fiscale, sont opérationnelles. `EspionageService` continue par ailleurs d'utiliser
-> son ancienne règle binaire — `EspionageResolution` est écrit et testé mais **pas encore
-> branché**, le service exigeant une refonte de sa signature d'appel.
+> **`EspionageResolution` est branché dans `EspionageService`.** Le point de passage unique des
+> cinq missions (`TryAttempt`) porte toute la nouvelle résolution : **aucune des cinq méthodes
+> publiques ni l'interface n'ont changé**, donc aucun appelant n'a été retouché.
+>
+> **L'influence est la mise, sans nouveau paramètre.** L'opération engage l'influence disponible
+> à hauteur de 0,6 par crédit dépensé. La conséquence est systémique et personne n'a eu à
+> l'écrire : l'influence paie *aussi* l'administration de l'empire (P4), donc **un empire étalé
+> n'a plus les moyens de comploter**. Elle tombe du partage d'une même ressource.
+>
+> **La vigilance monte à chaque tentative** et retombe de 0,15 par mois : une cible harcelée
+> devient dure à reprendre, mais jamais définitivement intouchable.
+>
+> **Un échec ne coûte plus systématiquement de l'opinion** — seulement s'il est attribué. Une
+> réussite attribuée, elle, en coûte désormais.
+
+> **P7 reste partielle, et c'est assumé.** Le rapport de forces militaire est laissé à 1 :
+> l'évaluer exigerait `IMilitaryService`, que `AIDecisionMaker` ne reçoit pas. Les postures
+> *Defending* et *Aggressive* restent donc hors d'atteinte ; seules *Consolidating* et
+> *Expanding*, qui portent la décision fiscale, sont opérationnelles.
 
 ---
 
@@ -1613,7 +1626,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.3 | Nourriture et énergie réellement consommées | ✅ terminée |
 | 22.4 | Coût d'administration payé en influence | ✅ terminée |
 | 22.5 | Entretien de flotte contraignant | ✅ terminée |
-| 22.6 | Espionnage gradué (quatre issues, mise en influence) | ✅ terminée |
+| 22.6 | Espionnage gradué, branché dans le service | ✅ terminée |
 | 22.7 | Évaluation stratégique de l'IA | 🚧 partielle |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
