@@ -947,6 +947,27 @@ l'économie relâchant les impôts pendant que l'armée se prépare à la guerre
 > `ResearchService` conserve les points domaine par domaine, donc abandonner l'Économie pour
 > l'Armement ne perd rien — une posture qui oscillerait ferait perdre du temps, jamais du travail.
 
+#### Remise en état de la suite de tests
+
+Rétablir la compilation de l'assembly `Espace.Tests.EditMode` a permis de la faire tourner pour la
+première fois depuis le début de la Phase 22, et de découvrir **dix tests que la phase avait cassés
+en silence** :
+
+| Tests | Cause | Correction |
+|---|---|---|
+| 7 dans `EconomyServiceTests`, 1 dans `AIDecisionMakerTests` | Les helpers de trésorerie fixaient l'impôt à 1,0 et dimensionnaient la richesse en supposant une conversion intégrale. Depuis `TaxationModel` (P1), un taux nominal de 1,0 n'en rend qu'environ un tiers : les helpers accordaient trois fois moins qu'annoncé | Ils produisent désormais **autant de jours qu'il en faut**, et affirment avoir atteint le montant. Indépendants de la courbe fiscale |
+| 2 dans `EspionageServiceTests` | Depuis P6 la résolution tire au hasard ; les tests affirmaient encore l'ancienne règle déterministe | La source des tirages devient **injectable** dans `EspionageService` |
+
+> **Le pire n'était pas les échecs, mais les réussites.** Une résolution aléatoire rendait *tous*
+> les tests d'espionnage instables — plusieurs passaient par chance du tirage. Une suite verte
+> instable ne signale rien. `EspionageResolution` avait justement été écrit en fonction pure à
+> hasard injecté pour que les issues soient vérifiables ; le service annulait cette propriété un
+> cran plus haut. Le paramètre reste absent en production : **aucune règle de jeu n'a changé**.
+
+> **La leçon d'outillage.** Le défaut d'origine — une signature changée sans mettre à jour les
+> appels côté tests — a tenu deux commits parce que la vérification hors-ligne ne compilait que
+> les *sources*. Elle compile désormais aussi les *tests*, et les exécute.
+
 ---
 
 ### Briques des trois freins (Phase 22, P3 à P5)

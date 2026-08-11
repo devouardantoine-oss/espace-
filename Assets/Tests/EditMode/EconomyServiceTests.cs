@@ -256,6 +256,17 @@ namespace Espace.Tests.EditMode
             Assert.AreEqual(1f, service.TaxRate);
         }
 
+        /// <summary>
+        /// La production de Credits suit le taux <b>effectif</b>, pas le taux affiche.
+        /// <para>
+        /// <b>Ce test attendait <c>200 × 0,05 × 1,0 = 10</c></b>, c'est-a-dire la conversion
+        /// integrale du taux nominal. Depuis <see cref="TaxationModel"/> (Phase 22, P1), un taux
+        /// au-dela du seuil d'evasion n'est plus percu en entier : a 1,0 il n'en reste qu'environ
+        /// un tiers. L'attendu passe donc par <see cref="TaxationModel.EffectiveRate"/> plutot que
+        /// de recopier une constante — ainsi le test verifie le <i>branchement</i> du modele dans
+        /// le service, et un futur reglage de la courbe ne le cassera pas une seconde fois.
+        /// </para>
+        /// </summary>
         [Test]
         public void SetTaxRate_AffectsNextDayCreditsProduction()
         {
@@ -266,7 +277,35 @@ namespace Espace.Tests.EditMode
 
             _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(1)));
 
-            Assert.AreEqual(200 * 0.05f * 1f, service.Treasury.Credits, FloatTolerance);
+            float expected = 200 * 0.05f * TaxationModel.EffectiveRate(1f, system.Stability);
+            Assert.AreEqual(expected, service.Treasury.Credits, FloatTolerance);
+        }
+
+        /// <summary>
+        /// La propriete que P1 a introduite et qu'aucun test ne verifiait cote service : au-dela
+        /// du seuil, <b>serrer la vis rapporte moins</b>. C'est le frein central de la phase — si
+        /// le branchement se defaisait, l'ancienne fiscalite lineaire reviendrait sans bruit et
+        /// « taxer au maximum » redeviendrait la strategie optimale, pour le joueur comme pour l'IA.
+        /// </summary>
+        [Test]
+        public void SetTaxRate_BeyondTheEvasionThreshold_ProducesLessThanAtTheThreshold()
+        {
+            Assert.Less(CreditsAfterOneDayAt(1f), CreditsAfterOneDayAt(TaxationModel.EvasionThreshold));
+        }
+
+        /// <summary>Credits produits en un jour par un systeme de reference impose a <paramref name="nominalRate"/>.</summary>
+        private float CreditsAfterOneDayAt(float nominalRate)
+        {
+            StarSystemState system = MakeSystem();
+            var service = new EconomyService(MakeMap(system), _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+            service.SetTaxRate(nominalRate);
+
+            _eventBus.Publish(new DayAdvancedEvent(GameDate.StartOfGame.AddDays(1)));
+
+            float credits = service.Treasury.Credits;
+            service.Shutdown();
+            return credits;
         }
 
         [Test]
@@ -625,8 +664,7 @@ namespace Espace.Tests.EditMode
 
             system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
             service.SetTaxRate(empireId, 1f);
-            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
-            float granted = service.GetTreasury(empireId).Credits;
+            float granted = ProduceUntilCovered(() => service.GetTreasury(empireId).Credits, minimumAmount);
 
             system.Wealth = originalWealth;
             service.SetTaxRate(empireId, originalTax);
@@ -650,11 +688,47 @@ namespace Espace.Tests.EditMode
 
             system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
             service.SetTaxRate(1f);
-            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
-            float granted = service.Treasury.Credits;
+            float granted = ProduceUntilCovered(() => service.Treasury.Credits, minimumAmount);
 
             system.Wealth = originalWealth;
             service.SetTaxRate(originalTax);
+
+            return granted;
+        }
+
+        /// <summary>
+        /// Fait avancer les jours jusqu'a ce que <paramref name="treasury"/> couvre
+        /// <paramref name="minimumAmount"/>, et renvoie le montant atteint.
+        /// <para>
+        /// <b>Pourquoi une boucle et non un jour unique (Phase 22).</b> Les deux helpers fixaient
+        /// le taux a 1,0 et dimensionnaient la richesse en supposant que la totalite du taux
+        /// nominal se convertissait en Credits. Depuis <see cref="TaxationModel"/> (P1), ce n'est
+        /// plus vrai : au-dela du seuil d'evasion, le taux <i>effectif</i> redescend, et un taux
+        /// nominal de 1,0 n'en rend qu'environ un tiers. Les helpers accordaient donc trois fois
+        /// moins que ce qu'ils annoncaient, et sept tests verifiaient « l'empire n'a pas les
+        /// moyens » en croyant verifier « l'empire a les moyens ».
+        /// </para>
+        /// <para>
+        /// Boucler rend les helpers <b>independants de la courbe fiscale</b> : un futur reglage de
+        /// l'evasion ne les cassera pas une seconde fois. L'assertion finale garantit qu'un test
+        /// ne peut plus passer en verifiant silencieusement autre chose que ce qu'il annonce.
+        /// </para>
+        /// </summary>
+        private float ProduceUntilCovered(Func<float> treasury, float minimumAmount)
+        {
+            const int MaximumDays = 200;
+
+            int day = 0;
+            while (treasury() < minimumAmount && day < MaximumDays)
+            {
+                day++;
+                _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(day)));
+            }
+
+            float granted = treasury();
+            Assert.GreaterOrEqual(
+                granted, minimumAmount,
+                $"Le helper n'a pas pu produire {minimumAmount} Credits en {MaximumDays} jours : le test verifierait autre chose que ce qu'il annonce.");
 
             return granted;
         }

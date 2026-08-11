@@ -48,6 +48,20 @@ namespace Espace.Gameplay.Espionage
         /// </summary>
         private readonly System.Random _random = new System.Random();
 
+        /// <summary>
+        /// Source des tirages, injectable.
+        /// <para>
+        /// <b>Pourquoi ce point d'entree existe.</b> <see cref="EspionageResolution"/> a ete
+        /// ecrit en fonction pure, hasard injecte, precisement pour que les issues soient
+        /// verifiables. Le service reintroduisait ensuite un generateur interne, ce qui annulait
+        /// cette propriete un cran plus haut : les tests d'<c>EspionageService</c> ne pouvaient
+        /// plus affirmer « cette mission reussit », et ceux qui semblaient passer le devaient au
+        /// tirage du moment. Injecter la source rend le service aussi verifiable que le modele,
+        /// <b>sans changer une seule regle de jeu</b> — en production le parametre reste absent.
+        /// </para>
+        /// </summary>
+        private readonly Func<float> _roll;
+
         private const float StealTechnologyCost = 150f;
         private const float SabotageCost = 100f;
         private const float InciteRevoltCost = 100f;
@@ -78,10 +92,20 @@ namespace Espace.Gameplay.Espionage
         private readonly GalaxyMap _map;
         private readonly IEventBus _eventBus;
 
-        public EspionageService(GalaxyMap map, IEventBus eventBus)
+        /// <param name="rollSource">
+        /// Source des tirages dans [0,1[. Laisser a <c>null</c> en jeu : le service utilise alors
+        /// son propre generateur. Les tests l'injectent pour fixer l'issue d'une operation.
+        /// </param>
+        public EspionageService(GalaxyMap map, IEventBus eventBus, Func<float> rollSource = null)
         {
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
+            _roll = rollSource ?? NextRandomRoll;
+        }
+
+        private float NextRandomRoll()
+        {
+            return (float)_random.NextDouble();
         }
 
         /// <inheritdoc />
@@ -314,8 +338,7 @@ namespace Espace.Gameplay.Espionage
                 ResearchBonus(targetEmpireId, ResearchDomain.Espionage),
                 VigilanceOf(targetEmpireId));
 
-            EspionageOutcome outcome = EspionageResolution.Resolve(
-                attack, defence, (float)_random.NextDouble(), (float)_random.NextDouble());
+            EspionageOutcome outcome = EspionageResolution.Resolve(attack, defence, _roll(), _roll());
 
             // La vigilance monte que l'operation reussisse ou non : la cible apprend qu'on
             // s'interesse a elle. C'est ce qui empeche de repeter indefiniment une operation

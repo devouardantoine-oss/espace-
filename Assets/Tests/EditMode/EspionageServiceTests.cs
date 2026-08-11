@@ -136,12 +136,44 @@ namespace Espace.Tests.EditMode
             return system;
         }
 
-        private EspionageService MakeEspionage(GalaxyMap map)
+        /// <summary>
+        /// Service d'espionnage dont l'issue est <b>fixee d'avance</b>.
+        /// <para>
+        /// <b>Pourquoi les tirages sont injectes (Phase 22).</b> Depuis P6, une operation se
+        /// resout par deux tirages au hasard. Ces tests, ecrits pour la regle deterministe
+        /// d'avant, affirmaient « cette mission reussit » ; certains echouaient, et surtout
+        /// <b>ceux qui passaient le devaient au tirage du moment</b> — ce qui est pire, parce
+        /// qu'une suite verte instable ne signale rien. Fixer les tirages rend chaque test a
+        /// nouveau categorique, sans toucher a une seule regle de jeu : en production le
+        /// parametre reste absent et le service tire au sort normalement.
+        /// </para>
+        /// <para>
+        /// Les bornes viennent de <see cref="EspionageResolution"/> : la chance de reussite est
+        /// plafonnee a 0,92 et la chance d'attribution plancher a 0,05, donc un tirage de 0
+        /// declenche toujours et un tirage de 1 ne declenche jamais — quel que soit le rapport de
+        /// forces du scenario.
+        /// </para>
+        /// </summary>
+        /// <param name="rolls">
+        /// Tirages consommes dans l'ordre : reussite d'abord, attribution ensuite. Par defaut
+        /// « reussite discrete », l'issue qu'attendent la plupart de ces tests.
+        /// </param>
+        private EspionageService MakeEspionage(GalaxyMap map, params float[] rolls)
         {
-            var espionage = new EspionageService(map, _eventBus);
+            float[] scripted = rolls.Length > 0 ? rolls : SucceedsDiscreetly;
+            int index = 0;
+
+            var espionage = new EspionageService(
+                map, _eventBus, () => scripted[Math.Min(index++, scripted.Length - 1)]);
             espionage.Initialize();
             return espionage;
         }
+
+        /// <summary>Tirages produisant une reussite que personne n'attribue.</summary>
+        private static readonly float[] SucceedsDiscreetly = { 0f, 1f };
+
+        /// <summary>Tirages produisant un echec, agents identifies : le pire des cas.</summary>
+        private static readonly float[] FailsAndIsExposed = { 1f, 0f };
 
         private EconomyService RegisterEconomy(GalaxyMap map)
         {
@@ -381,9 +413,9 @@ namespace Espace.Tests.EditMode
         public void TrySabotage_Failure_AppliesOpinionPenaltyAndStillCosts()
         {
             StarSystemState home = MakeSystem(0, EmpireA);
-            StarSystemState enemy = MakeSystem(1, EmpireB, stability: 1f); // contre-espionnage = puissance de base : egalite -> echec
+            StarSystemState enemy = MakeSystem(1, EmpireB, stability: 1f);
             var map = new GalaxyMap(new[] { home, enemy }, Array.Empty<HyperlaneLink>());
-            EspionageService espionage = MakeEspionage(map);
+            EspionageService espionage = MakeEspionage(map, FailsAndIsExposed);
             EconomyService economy = RegisterEconomy(map);
             GiveCredits(economy, home, EmpireA, 1000f);
             var diplomacySpy = new SpyDiplomacyService();
