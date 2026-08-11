@@ -77,7 +77,7 @@ namespace Espace.Tests.EditMode
             ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Weapons), MakeTechnology(ResearchDomain.Economy));
             Empire militarist = MakeEmpire(EmpirePersonality.Militarist);
 
-            ResearchDecisionMaker.DecideAndAct(militarist, research);
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(ResearchDomain.Weapons, research.GetActiveDomain(EmpireId));
         }
@@ -90,7 +90,7 @@ namespace Espace.Tests.EditMode
             ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Logistics));
             Empire militarist = MakeEmpire(EmpirePersonality.Militarist);
 
-            ResearchDecisionMaker.DecideAndAct(militarist, research);
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(ResearchDomain.Logistics, research.GetActiveDomain(EmpireId));
         }
@@ -100,10 +100,10 @@ namespace Espace.Tests.EditMode
         {
             ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Weapons), MakeTechnology(ResearchDomain.Logistics));
             Empire militarist = MakeEmpire(EmpirePersonality.Militarist);
-            ResearchDecisionMaker.DecideAndAct(militarist, research);
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy());
             Assert.AreEqual(ResearchDomain.Weapons, research.GetActiveDomain(EmpireId), "Precondition.");
 
-            ResearchDecisionMaker.DecideAndAct(militarist, research);
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(ResearchDomain.Weapons, research.GetActiveDomain(EmpireId), "Le domaine actif progresse encore : pas de changement.");
         }
@@ -127,7 +127,7 @@ namespace Espace.Tests.EditMode
             Assert.IsNull(research.GetNextTechnology(EmpireId, ResearchDomain.Weapons), "Precondition : Weapons doit etre au maximum.");
 
             Empire militarist = MakeEmpire(EmpirePersonality.Militarist);
-            ResearchDecisionMaker.DecideAndAct(militarist, research);
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(ResearchDomain.Logistics, research.GetActiveDomain(EmpireId));
         }
@@ -138,7 +138,7 @@ namespace Espace.Tests.EditMode
             ResearchService research = MakeResearch(); // catalogue vide : tous les domaines sont vacuously "au maximum"
             Empire militarist = MakeEmpire(EmpirePersonality.Militarist);
 
-            Assert.DoesNotThrow(() => ResearchDecisionMaker.DecideAndAct(militarist, research));
+            Assert.DoesNotThrow(() => ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Healthy()));
             Assert.IsNull(research.GetActiveDomain(EmpireId));
         }
 
@@ -148,9 +148,73 @@ namespace Espace.Tests.EditMode
             ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Economy), MakeTechnology(ResearchDomain.Diplomacy));
             Empire mercantile = MakeEmpire(EmpirePersonality.Mercantile); // priorite : Economy, Diplomacy, ...
 
-            ResearchDecisionMaker.DecideAndAct(mercantile, research);
+            ResearchDecisionMaker.DecideAndAct(mercantile, research, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(ResearchDomain.Economy, research.GetActiveDomain(EmpireId));
         }
+        // --- Posture strategique (Phase 22, P7) -------------------------------------------
+
+        [Test]
+        public void DecideAndAct_Threatened_InterruptsAProgressingDomainForWeapons()
+        {
+            // Le defaut corrige : la recherche etait le seul module totalement sourd a la
+            // situation. Un empire menace d'invasion continuait a chercher la Diplomatie pendant
+            // vingt ans parce que sa personnalite l'avait mise en tete de liste.
+            ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Diplomacy), MakeTechnology(ResearchDomain.Weapons));
+            Empire pacifist = MakeEmpire(EmpirePersonality.Pacifist); // priorite : Diplomacy d'abord
+            ResearchDecisionMaker.DecideAndAct(pacifist, research, AssessmentFixtures.Healthy());
+            Assert.AreEqual(ResearchDomain.Diplomacy, research.GetActiveDomain(EmpireId), "Precondition.");
+
+            ResearchDecisionMaker.DecideAndAct(pacifist, research, AssessmentFixtures.Threatened());
+
+            Assert.AreEqual(ResearchDomain.Weapons, research.GetActiveDomain(EmpireId));
+        }
+
+        [Test]
+        public void DecideAndAct_ReturningToASafeSituation_GivesThePersonalityItsListBack()
+        {
+            // L'interruption ne doit pas etre definitive : la promotion est une exception
+            // justifiee par une urgence, pas une reecriture de la personnalite. Le retour n'est
+            // possible que parce que ResearchService conserve la progression domaine par
+            // domaine — abandonner Weapons ne perd rien.
+            ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Diplomacy), MakeTechnology(ResearchDomain.Weapons));
+            Empire pacifist = MakeEmpire(EmpirePersonality.Pacifist);
+            ResearchDecisionMaker.DecideAndAct(pacifist, research, AssessmentFixtures.Threatened());
+            Assert.AreEqual(ResearchDomain.Weapons, research.GetActiveDomain(EmpireId), "Precondition.");
+
+            ResearchDecisionMaker.DecideAndAct(pacifist, research, AssessmentFixtures.Healthy());
+
+            Assert.AreEqual(
+                ResearchDomain.Weapons, research.GetActiveDomain(EmpireId),
+                "Weapons progresse encore : l'ancienne regle « on ne change pas sans raison » reprend la main.");
+        }
+
+        [Test]
+        public void DecideAndAct_PromotedDomainAlreadyMaxed_FallsBackToThePersonalityOrder()
+        {
+            // Reorienter vers un domaine deja au maximum ferait perdre chaque point produit
+            // (voir ResearchService, « points perdus si le domaine actif est deja au maximum »).
+            // Catalogue sans Weapons : le domaine promu par la posture defensive n'a rien a offrir.
+            ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Diplomacy));
+            Empire pacifist = MakeEmpire(EmpirePersonality.Pacifist);
+
+            ResearchDecisionMaker.DecideAndAct(pacifist, research, AssessmentFixtures.Threatened());
+
+            Assert.AreEqual(ResearchDomain.Diplomacy, research.GetActiveDomain(EmpireId));
+        }
+
+        [Test]
+        public void DecideAndAct_Broke_TurnsToEconomyWhateverThePersonality()
+        {
+            // Consolidating se declenche sur une tresorerie exsangue, et l'Economie est le seul
+            // domaine qui agisse sur le probleme.
+            ResearchService research = MakeResearch(MakeTechnology(ResearchDomain.Weapons), MakeTechnology(ResearchDomain.Economy));
+            Empire militarist = MakeEmpire(EmpirePersonality.Militarist); // priorite : Weapons d'abord
+
+            ResearchDecisionMaker.DecideAndAct(militarist, research, AssessmentFixtures.Broke());
+
+            Assert.AreEqual(ResearchDomain.Economy, research.GetActiveDomain(EmpireId));
+        }
+
     }
 }

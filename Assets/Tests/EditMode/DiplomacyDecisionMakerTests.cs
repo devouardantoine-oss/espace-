@@ -152,7 +152,7 @@ namespace Espace.Tests.EditMode
             var map = new GalaxyMap(new[] { unowned }, Array.Empty<HyperlaneLink>());
             Empire ai = _empireRegistry.GetEmpire(AiId);
 
-            Assert.DoesNotThrow(() => DiplomacyDecisionMaker.DecideAndAct(ai, map, _military, _diplomacy));
+            Assert.DoesNotThrow(() => DiplomacyDecisionMaker.DecideAndAct(ai, map, _military, _diplomacy, AssessmentFixtures.Healthy()));
             Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count);
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
         }
@@ -168,7 +168,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.War);
             Empire pacifist = MakeEmpire(AiId, EmpirePersonality.Pacifist); // PeacePowerRatioThreshold = 1.5
 
-            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId, ProposalType.PeaceTreaty), _diplomacy.SubmittedProposals);
         }
@@ -184,7 +184,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.War);
             Empire pacifist = MakeEmpire(AiId, EmpirePersonality.Pacifist);
 
-            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count, "Largement superieur : pas de raison de demander la paix.");
         }
@@ -199,7 +199,7 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(NeighborId, 1);
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist); // AggressionThreshold = 1.1
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId), _diplomacy.DeclaredWars);
         }
@@ -214,7 +214,7 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(NeighborId, 10); // force egale : sous le seuil Militariste (1.1x)
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
             Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count, "Opinion neutre (0), sous le seuil de proposition spontanee du Militariste (60).");
@@ -230,7 +230,7 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(NeighborId, 1);
             Empire pacifist = MakeEmpire(AiId, EmpirePersonality.Pacifist); // AggressionThreshold = null
 
-            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(pacifist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
         }
@@ -244,7 +244,7 @@ namespace Espace.Tests.EditMode
             Empire mercantile = MakeEmpire(AiId, EmpirePersonality.Mercantile); // ProactivePactOpinionThreshold = 20, AggressionThreshold = null
             _diplomacy.SetOpinion(AiId, NeighborId, 50f);
 
-            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId, ProposalType.NonAggressionPact), _diplomacy.SubmittedProposals);
         }
@@ -259,7 +259,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.NonAggressionPact);
             _diplomacy.SetOpinion(AiId, NeighborId, 50f);
 
-            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId, ProposalType.Alliance), _diplomacy.SubmittedProposals);
         }
@@ -273,7 +273,7 @@ namespace Espace.Tests.EditMode
             Empire mercantile = MakeEmpire(AiId, EmpirePersonality.Mercantile);
             _diplomacy.SetOpinion(AiId, NeighborId, 5f); // sous le seuil (20)
 
-            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(mercantile, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count);
         }
@@ -295,7 +295,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.War);
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId, ProposalType.PeaceTreaty), _diplomacy.SubmittedProposals);
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count, "Une seule action par appel : la demande de paix a deja eu lieu.");
@@ -320,7 +320,7 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(NeighborId, 1);
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId), _diplomacy.DeclaredWars);
         }
@@ -342,7 +342,7 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(NeighborId, 10);
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.Contains((AiId, NeighborId), _diplomacy.DeclaredWars,
                 "12 (deux systemes) contre 10 x 1.1 = 11 : la guerre passe. 6 seul ne l'aurait pas permis.");
@@ -358,10 +358,88 @@ namespace Espace.Tests.EditMode
             _military.SetGarrison(AiId, 100);
             Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
 
-            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy);
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
             Assert.AreEqual(0, _diplomacy.SubmittedProposals.Count);
         }
+        // --- Posture strategique (Phase 22, P7) -------------------------------------------
+
+        [Test]
+        public void DecideAndAct_Consolidating_DoesNotDeclareWarDespiteOverwhelmingForce()
+        {
+            // Le defaut corrige : AggressionThreshold ne compare que des armees. Un Militariste
+            // dont la tresorerie tient un demi-mois declarait la guerre exactement comme s'il
+            // etait opulent — c'est le meme defaut que le taux d'imposition fixe, dans un autre
+            // module.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborId);
+            var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
+            _military.SetGarrison(AiId, 100);
+            _military.SetGarrison(NeighborId, 1);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Broke());
+
+            Assert.AreEqual(0, _diplomacy.DeclaredWars.Count, "On ne finance pas une guerre avec l'argent du fonctionnement.");
+        }
+
+        [Test]
+        public void DecideAndAct_Defending_DoesNotOpenASecondFront()
+        {
+            // Etre nettement plus faible qu'un voisin et declarer la guerre a un autre est
+            // exactement la decision que la posture doit empecher. Le rapport de forces global
+            // (0,4) est defavorable, alors que le rapport local face a CETTE cible ne l'est pas.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState weak = MakeSystem(1, new Vector2(1f, 0f), NeighborId);
+            var map = new GalaxyMap(new[] { home, weak }, new[] { new HyperlaneLink(home.Id, weak.Id) });
+            _military.SetGarrison(AiId, 100);
+            _military.SetGarrison(NeighborId, 1);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Threatened());
+
+            Assert.AreEqual(0, _diplomacy.DeclaredWars.Count);
+        }
+
+        [Test]
+        public void DecideAndAct_Consolidating_SuesForPeaceEvenInAWarItIsWinning()
+        {
+            // Le seuil de lassitude de la personnalite compare des armees ; il ne voit pas une
+            // tresorerie vide. Le Militariste ne cede normalement qu'ecrase
+            // (PeacePowerRatioThreshold = 0,4) : ici il ecrase, et demande la paix quand meme.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborId);
+            var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
+            _military.SetGarrison(AiId, 100);
+            _military.SetGarrison(NeighborId, 1);
+            _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.War);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Broke());
+
+            Assert.Contains((AiId, NeighborId, ProposalType.PeaceTreaty), _diplomacy.SubmittedProposals);
+        }
+
+        [Test]
+        public void DecideAndAct_Healthy_KeepsTheOldPeaceThreshold()
+        {
+            // La contrepartie du test precedent : hors consolidation, rien ne change. Un
+            // Militariste qui gagne ne demande pas la paix, exactement comme avant la Phase 22.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiId);
+            StarSystemState enemy = MakeSystem(1, new Vector2(1f, 0f), NeighborId);
+            var map = new GalaxyMap(new[] { home, enemy }, new[] { new HyperlaneLink(home.Id, enemy.Id) });
+            _military.SetGarrison(AiId, 100);
+            _military.SetGarrison(NeighborId, 1);
+            _diplomacy.SetStatus(AiId, NeighborId, DiplomaticStatus.War);
+            Empire militarist = MakeEmpire(AiId, EmpirePersonality.Militarist);
+
+            DiplomacyDecisionMaker.DecideAndAct(militarist, map, _military, _diplomacy, AssessmentFixtures.Healthy());
+
+            Assert.IsFalse(
+                _diplomacy.SubmittedProposals.Contains((AiId, NeighborId, ProposalType.PeaceTreaty)),
+                "Un empire sain qui gagne sa guerre n'a aucune raison d'en sortir.");
+        }
+
     }
 }

@@ -40,6 +40,30 @@ namespace Espace.Gameplay.Military
     /// definitivement de s'etendre des que les voisins immediats de sa capitale etaient pris,
     /// et ses colonies n'avaient jamais la moindre garnison.
     /// </para>
+    /// <para>
+    /// <b>Ce que la situation change (Phase 22, P7).</b> Ce module recrutait jusqu'ici jusqu'a
+    /// la cible de personnalite sans jamais regarder les comptes de l'empire : un Militariste
+    /// ruine continuait a viser huit unites, et l'entretien impaye faisait fondre sa garnison
+    /// par attrition (P5) aussi vite qu'il la reconstituait. Trois inflexions, lues dans la meme
+    /// photographie que les quatre autres modules :
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b><c>Consolidating</c> : aucune depense militaire du tout</b> — ni
+    /// recrutement, ni colonisation, ni offensive (<see cref="EmpireAssessment.ShouldCutMilitarySpending"/>,
+    /// jusqu'ici ecrite mais appelee nulle part). C'est la contrepartie assumee de la regle
+    /// « chaque avantage a un cout » : un empire en faillite ne peut pas avoir d'armee, et c'est
+    /// exactement la contrainte que subit le joueur.</description></item>
+    /// <item><description><b><c>Defending</c> : les colonies passent a la cible pleine.</b> Le
+    /// <see cref="ColonyGarrisonDivisor"/> cesse de s'appliquer — quand un voisin est nettement
+    /// plus fort, une frontiere n'est plus une garnison de tenue. Aucun nombre nouveau n'a ete
+    /// invente pour cela : c'est une regle existante qu'on suspend, pas un bonus qu'on ajoute.</description></item>
+    /// <item><description><b><c>Defending</c> : ni colonisation, ni offensive.</b> Les deux
+    /// detachent une flotte prise sur une garnison, ce qui affaiblit precisement la frontiere
+    /// menacee. On se prepare, on ne s'eparpille pas.</description></item>
+    /// </list>
+    /// <para>
+    /// <b><c>Expanding</c> et <c>Aggressive</c> conservent exactement l'ancien comportement.</b>
+    /// </para>
     /// </summary>
     public static class MilitaryDecisionMaker
     {
@@ -58,12 +82,29 @@ namespace Espace.Gameplay.Military
         /// </summary>
         private const int ColonyGarrisonDivisor = 2;
 
-        public static void DecideAndAct(Empire empire, GalaxyMap map, IEconomyService economy, IMilitaryService military, IDiplomacyService diplomacy)
+        public static void DecideAndAct(
+            Empire empire, GalaxyMap map, IEconomyService economy, IMilitaryService military,
+            IDiplomacyService diplomacy, EmpireAssessment assessment)
         {
+            if (assessment.ShouldCutMilitarySpending())
+            {
+                // Un empire en faillite ou en proie a l'agitation n'entretient pas d'armee. Ne
+                // rien faire du mois est ici la bonne decision, pas un echec : l'attrition de
+                // l'entretien impaye (P5) reduira la garnison, et c'est le prix a payer.
+                return;
+            }
+
             EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
 
-            if (TryRecruit(empire, map, economy, military, diplomacy, profile))
+            if (TryRecruit(empire, map, economy, military, diplomacy, profile, assessment))
             {
+                return;
+            }
+
+            if (assessment.Posture == StrategicPosture.Defending)
+            {
+                // Coloniser comme attaquer detache une flotte prise sur une garnison — donc
+                // affaiblit la frontiere que la posture cherche justement a tenir.
                 return;
             }
 
@@ -118,7 +159,7 @@ namespace Espace.Gameplay.Military
         /// </summary>
         private static bool TryRecruit(
             Empire empire, GalaxyMap map, IEconomyService economy, IMilitaryService military,
-            IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
+            IDiplomacyService diplomacy, EmpirePersonalityProfileData profile, EmpireAssessment assessment)
         {
             // Un seul parcours pour tout l'empire : l'exigence de colonisation la plus basse
             // atteignable depuis chaque systeme possede.
@@ -137,7 +178,7 @@ namespace Espace.Gameplay.Military
 
                 colonizationNeedByOrigin.TryGetValue(system.Id, out int need);
 
-                int effectiveTarget = TargetGarrisonFor(empire, system, map, profile);
+                int effectiveTarget = TargetGarrisonFor(empire, system, map, profile, assessment);
                 if (need > 0)
                 {
                     effectiveTarget = Math.Max(effectiveTarget, MinimumGarrisonToKeep + need);
@@ -183,11 +224,23 @@ namespace Espace.Gameplay.Military
         /// Cible de garnison de <paramref name="system"/> : la cible pleine de la personnalite
         /// sur la capitale, sa moitie (au moins <see cref="MinimumGarrisonToKeep"/>) ailleurs.
         /// Voir <see cref="ColonyGarrisonDivisor"/> pour la raison.
+        /// <para>
+        /// <b>En posture defensive, le diviseur ne s'applique plus</b> (Phase 22, P7) : quand un
+        /// voisin est nettement plus fort, une frontiere cesse d'etre une garnison de tenue. Ce
+        /// n'est pas un bonus ajoute a l'IA — c'est une economie existante qu'elle suspend, et
+        /// elle en paie le plein prix en entretien mensuel (P5), exactement comme le joueur.
+        /// </para>
         /// </summary>
-        private static int TargetGarrisonFor(Empire empire, StarSystemState system, GalaxyMap map, EmpirePersonalityProfileData profile)
+        private static int TargetGarrisonFor(
+            Empire empire, StarSystemState system, GalaxyMap map, EmpirePersonalityProfileData profile, EmpireAssessment assessment)
         {
             StarSystemState capital = EmpireHoldings.Capital(empire.Id, map);
             if (capital != null && capital.Id == system.Id)
+            {
+                return profile.TargetGarrisonSize;
+            }
+
+            if (assessment.Posture == StrategicPosture.Defending)
             {
                 return profile.TargetGarrisonSize;
             }

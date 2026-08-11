@@ -203,7 +203,7 @@ namespace Espace.Tests.EditMode
             MilitaryService military = MakeMilitary(map, economy, infantry);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            Assert.DoesNotThrow(() => MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy));
+            Assert.DoesNotThrow(() => MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy()));
             Assert.AreEqual(UnitBundle.Zero, military.GetGarrison(unowned.Id, AiEmpireId));
         }
 
@@ -220,7 +220,7 @@ namespace Espace.Tests.EditMode
             GiveResources(economy, AiEmpireId, 1000f);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId); // TargetGarrisonSize = 8
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(new UnitBundle(infantry: 1), military.GetGarrison(home.Id, AiEmpireId));
@@ -238,7 +238,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, home, infantry, 2); // Pacifist : TargetGarrisonSize = 2, deja atteinte
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(new UnitBundle(infantry: 2), military.GetGarrison(home.Id, NeighborEmpireId), "Ne doit pas depasser sa cible.");
@@ -256,7 +256,7 @@ namespace Espace.Tests.EditMode
             GiveResources(economy, AiEmpireId, 1000f);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId); // PrefersStrongestUnit = true
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(specialForces.RecruitmentDays)));
 
             Assert.AreEqual(new UnitBundle(specialForces: 1), military.GetGarrison(home.Id, AiEmpireId));
@@ -274,7 +274,7 @@ namespace Espace.Tests.EditMode
             GiveResources(economy, NeighborEmpireId, 1000f);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId); // PrefersStrongestUnit = false
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(new UnitBundle(infantry: 1), military.GetGarrison(home.Id, NeighborEmpireId));
@@ -296,7 +296,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, home, infantry, 5);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             // Les 3 Infanterie requises ont ete detachees et envoyees : la garnison d'origine diminue
             // immediatement, mais la colonisation elle-meme n'a pas encore eu lieu (le trajet prend au moins un jour).
@@ -325,7 +325,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, home, infantry, 2);
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId, "Pas assez d'Infanterie pour tenter la colonisation.");
             Assert.AreEqual(new UnitBundle(infantry: 2), military.GetGarrison(home.Id, NeighborEmpireId), "Aucune unite detachee.");
@@ -346,7 +346,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, home, infantry, 2); // deja a la cible de personnalite
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(
@@ -371,7 +371,7 @@ namespace Espace.Tests.EditMode
             military.RestoreGarrison(home.Id, NeighborEmpireId, new UnitBundle(infantry: 3));
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
 
             Assert.AreEqual(NeighborEmpireId, cheap.OwnerId, "L'IA doit viser le voisin le moins exigeant.");
@@ -396,7 +396,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(
@@ -422,7 +422,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, enemy, infantry, 1); // adversaire quasi sans defense
             Empire pacifist = _empireRegistry.GetEmpire(NeighborEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(pacifist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(AiEmpireId, enemy.OwnerId, "Le Pacifiste ne doit jamais attaquer.");
             Assert.AreEqual(new UnitBundle(infantry: 50), military.GetGarrison(home.Id, NeighborEmpireId), "Garnison intacte : aucune flotte detachee.");
@@ -448,7 +448,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.IsTrue(military.TryGetStationedFleet(home.Id, AiEmpireId, out Fleet remainingGarrison));
             Assert.Less(remainingGarrison.Composition.TotalCount, 20, "Une partie de la garnison doit avoir ete detachee pour attaquer.");
@@ -477,7 +477,7 @@ namespace Espace.Tests.EditMode
             _diplomacy.SetStatus(AiEmpireId, NeighborEmpireId, DiplomaticStatus.War);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.IsTrue(military.TryGetStationedFleet(home.Id, AiEmpireId, out Fleet remainingGarrison));
             Assert.AreEqual(
@@ -508,7 +508,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, enemy, infantry, 1);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(NeighborEmpireId, enemy.OwnerId);
             Assert.AreEqual(new UnitBundle(infantry: 20), military.GetGarrison(home.Id, AiEmpireId), "Aucune attaque sans guerre declaree : garnison intacte.");
@@ -533,7 +533,7 @@ namespace Espace.Tests.EditMode
             RecruitAndComplete(military, home, infantry, 1);
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(StarSystemState.UnownedOwnerId, unowned.OwnerId, "Pas de colonisation ce tour : le recrutement a eu lieu.");
             Assert.AreEqual(NeighborEmpireId, enemy.OwnerId, "Pas d'attaque ce tour non plus.");
@@ -557,7 +557,7 @@ namespace Espace.Tests.EditMode
             military.RestoreGarrison(capital.Id, AiEmpireId, new UnitBundle(infantry: 8));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
 
             Assert.AreEqual(1, military.GetGarrison(colony.Id, AiEmpireId).TotalCount, "La colonie vide doit etre renforcee en priorite.");
@@ -584,7 +584,7 @@ namespace Espace.Tests.EditMode
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             IReadOnlyList<Fleet> inTransit = military.GetFleetsInTransit();
             Assert.AreEqual(1, inTransit.Count, "Une flotte de colonisation doit etre partie.");
@@ -611,7 +611,7 @@ namespace Espace.Tests.EditMode
             military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 10));
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             for (int day = 0; day < 10; day++)
             {
                 _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(day + 1)));
@@ -650,16 +650,121 @@ namespace Espace.Tests.EditMode
             Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
 
             // Deux colonisations consecutives saturent le plafond de base (2 flottes).
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
             Assert.AreEqual(2, military.GetFleetsInTransit().Count, "Le plafond de base doit etre atteint.");
 
             int fleetsBefore = military.GetFleetsForEmpire(AiEmpireId).Count;
-            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy);
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(
                 fleetsBefore, military.GetFleetsForEmpire(AiEmpireId).Count,
                 "Plafond atteint : aucune flotte supplementaire ne doit etre detachee, meme immobile.");
         }
+        // --- Posture strategique (Phase 22, P7) -------------------------------------------
+
+        [Test]
+        public void DecideAndAct_Consolidating_SpendsNothingAtAll()
+        {
+            // Le defaut corrige : ce module recrutait jusqu'a la cible de personnalite sans
+            // jamais regarder les comptes. Un Militariste ruine visait toujours huit unites, et
+            // l'attrition de l'entretien impaye (P5) les lui reprenait aussitot.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            var map = new GalaxyMap(new[] { home }, Array.Empty<HyperlaneLink>());
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveResources(economy, AiEmpireId, 1000f);
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Broke());
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(
+                UnitBundle.Zero, military.GetGarrison(home.Id, AiEmpireId),
+                "Un empire en faillite ne peut pas avoir d'armee — meme contrainte que le joueur.");
+        }
+
+        [Test]
+        public void DecideAndAct_Defending_StillRecruits()
+        {
+            // La contrepartie de l'interdiction ci-dessus : etre menace ne doit surtout pas
+            // paralyser, sinon la posture defensive serait pire que l'ancien comportement.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            var map = new GalaxyMap(new[] { home }, Array.Empty<HyperlaneLink>());
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveResources(economy, AiEmpireId, 1000f);
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Threatened());
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(new UnitBundle(infantry: 1), military.GetGarrison(home.Id, AiEmpireId));
+        }
+
+        [Test]
+        public void DecideAndAct_Defending_RaisesColonyGarrisonsToTheFullTarget()
+        {
+            // En posture defensive, le ColonyGarrisonDivisor est suspendu : une frontiere cesse
+            // d'etre une garnison de tenue. Le Pacifiste vise 2, donc sa colonie visait 2 aussi
+            // (plancher MinimumGarrisonToKeep) — on prend le Militariste, qui vise 8 en capitale
+            // et 4 en colonie, pour que l'ecart soit observable.
+            StarSystemState capital = MakeSystem(0, Vector2.zero, AiEmpireId, developmentLevel: 5);
+            StarSystemState colony = MakeSystem(1, new Vector2(10f, 0f), AiEmpireId, developmentLevel: 0);
+            var map = new GalaxyMap(new[] { capital, colony }, Array.Empty<HyperlaneLink>());
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveResources(economy, AiEmpireId, 5000f);
+            // Capitale a sa cible pleine (8) : le seul deficit possible est celui de la colonie.
+            military.RestoreGarrison(capital.Id, AiEmpireId, new UnitBundle(infantry: 8));
+            military.RestoreGarrison(colony.Id, AiEmpireId, new UnitBundle(infantry: 4));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            // Situation saine : la colonie est a sa cible reduite (8 / 2 = 4), rien a faire.
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Healthy());
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+            Assert.AreEqual(
+                new UnitBundle(infantry: 4), military.GetGarrison(colony.Id, AiEmpireId),
+                "Precondition : hors menace, la colonie est deja a sa cible reduite.");
+
+            // Menace : la cible de la colonie passe a 8, le deficit reapparait.
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Threatened());
+            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(infantry.RecruitmentDays)));
+
+            Assert.AreEqual(
+                new UnitBundle(infantry: 5), military.GetGarrison(colony.Id, AiEmpireId),
+                "Sous la menace, la colonie vise la cible pleine et se renforce.");
+        }
+
+        [Test]
+        public void DecideAndAct_Defending_DoesNotSendItsGarrisonAwayToColonize()
+        {
+            // Coloniser detache une flotte prise sur une garnison, donc affaiblit precisement la
+            // frontiere que la posture cherche a tenir.
+            StarSystemState home = MakeSystem(0, Vector2.zero, AiEmpireId);
+            StarSystemState free = MakeSystem(1, new Vector2(10f, 0f), StarSystemState.UnownedOwnerId);
+            var map = new GalaxyMap(
+                new[] { home, free },
+                new[] { new HyperlaneLink(home.Id, free.Id) });
+            EconomyService economy = MakeEconomy(map);
+            UnitTypeDefinition infantry = MakeUnitType(UnitType.Infantry, speed: 0.01f);
+            MilitaryService military = MakeMilitary(map, economy, infantry);
+            GiveResources(economy, AiEmpireId, 3000f);
+            // Tres au-dessus de toute cible, y compris la cible pleine sous menace : le
+            // recrutement ne peut pas etre la raison de l'inaction.
+            military.RestoreGarrison(home.Id, AiEmpireId, new UnitBundle(infantry: 20));
+            Empire militarist = _empireRegistry.GetEmpire(AiEmpireId);
+
+            MilitaryDecisionMaker.DecideAndAct(militarist, map, economy, military, _diplomacy, AssessmentFixtures.Threatened());
+
+            Assert.AreEqual(0, military.GetFleetsInTransit().Count, "Menace : aucune flotte ne doit quitter le territoire.");
+            Assert.AreEqual(
+                new UnitBundle(infantry: 20), military.GetGarrison(home.Id, AiEmpireId),
+                "La garnison doit rester intacte.");
+        }
+
     }
 }

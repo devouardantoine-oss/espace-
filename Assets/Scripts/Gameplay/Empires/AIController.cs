@@ -86,11 +86,17 @@ namespace Espace.Gameplay.Empires
                     continue;
                 }
 
-                AIDecisionMaker.DecideAndAct(empire, _map, _economy, _military);
-                ResearchDecisionMaker.DecideAndAct(empire, _research);
-                EspionageDecisionMaker.DecideAndAct(empire, _empireRegistry, _map, _espionage);
-                DiplomacyDecisionMaker.DecideAndAct(empire, _map, _military, _diplomacy);
-                MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military, _diplomacy);
+                // Une seule photographie, partagee par les cinq modules. Si chacun recalculait
+                // la sienne, deux d'entre eux pourraient lire des valeurs differentes le meme
+                // mois — l'economie relachant les impots pendant que l'armee se prepare a la
+                // guerre.
+                EmpireAssessment assessment = EmpireAssessmentFactory.Assess(empire, _map, _economy, _military);
+
+                AIDecisionMaker.DecideAndAct(empire, _map, _economy, assessment);
+                ResearchDecisionMaker.DecideAndAct(empire, _research, assessment);
+                EspionageDecisionMaker.DecideAndAct(empire, _empireRegistry, _map, _espionage, assessment);
+                DiplomacyDecisionMaker.DecideAndAct(empire, _map, _military, _diplomacy, assessment);
+                MilitaryDecisionMaker.DecideAndAct(empire, _map, _economy, _military, _diplomacy, assessment);
             }
         }
 

@@ -85,18 +85,43 @@ namespace Espace.Tests.EditMode
 
         /// <summary>
         /// Fait produire au tresor de <paramref name="empireId"/> au moins
-        /// <paramref name="minimumAmount"/> de Credits, par un jour de production a richesse
+        /// <paramref name="minimumAmount"/> de Credits, par des jours de production a richesse
         /// et impot gonfles — meme technique que dans <c>EconomyServiceTests</c>.
+        /// <para>
+        /// <b>Produit autant de jours qu'il en faut, au lieu d'un seul (Phase 22).</b> L'ancienne
+        /// version fixait le taux a 1,0 et dimensionnait la richesse en supposant que la totalite
+        /// du taux nominal se convertissait en Credits. Depuis <see cref="TaxationModel"/> (P1),
+        /// ce n'est plus vrai : au-dela du seuil d'evasion, le taux <i>effectif</i> redescend, et
+        /// un taux nominal de 1,0 n'en rend qu'environ un tiers. Le helper accordait donc trois
+        /// fois moins que ce qu'il annoncait, et les tests qui s'appuyaient dessus verifiaient
+        /// « l'IA n'a pas les moyens » en croyant verifier « l'IA a les moyens ».
+        /// </para>
+        /// <para>
+        /// Boucler jusqu'au montage voulu rend le helper <b>independant de la courbe fiscale</b> :
+        /// un futur reglage de l'evasion ne le cassera pas une seconde fois.
+        /// </para>
         /// </summary>
         private float GiveCredits(EconomyService service, StarSystemState system, int empireId, float minimumAmount)
         {
+            const int MaximumDays = 200;
+
             int originalWealth = system.Wealth;
             float originalTax = service.GetTaxRate(empireId);
 
             system.Wealth = Mathf.CeilToInt(minimumAmount / 0.05f) + 1;
             service.SetTaxRate(empireId, 1f);
-            _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(1)));
+
+            int day = 0;
+            while (service.GetTreasury(empireId).Credits < minimumAmount && day < MaximumDays)
+            {
+                day++;
+                _eventBus.Publish(new DayAdvancedEvent(_clock.CurrentDate.AddDays(day)));
+            }
+
             float granted = service.GetTreasury(empireId).Credits;
+            Assert.GreaterOrEqual(
+                granted, minimumAmount,
+                $"Le helper n'a pas pu produire {minimumAmount} Credits en {MaximumDays} jours : le test verifierait autre chose que ce qu'il annonce.");
 
             system.Wealth = originalWealth;
             service.SetTaxRate(empireId, originalTax);
@@ -104,12 +129,23 @@ namespace Espace.Tests.EditMode
             return granted;
         }
 
-        [TestCase(EmpirePersonality.Pacifist, 0.20f)]
-        [TestCase(EmpirePersonality.Expansionist, 0.20f)]
-        [TestCase(EmpirePersonality.Mercantile, 0.35f)]
-        [TestCase(EmpirePersonality.Militarist, 0.30f)]
-        [TestCase(EmpirePersonality.Opportunist, 0.25f)]
-        public void DecideAndAct_AppliesPersonalityPreferredTaxRate(EmpirePersonality personality, float expectedRate)
+        /// <summary>
+        /// Taux applique par chaque personnalite dans une situation saine.
+        /// <para>
+        /// <b>Ce test verifiait auparavant que le taux <i>etait</i> celui de la personnalite</b>
+        /// (0,20 pour un Pacifiste, 0,35 pour un Mercantile...). Depuis la Phase 22 (P7), la
+        /// personnalite ne fixe plus le taux : elle <b>decale</b> un taux issu de la situation
+        /// (voir <c>AIDecisionMaker.BlendTaxRate</c>, 66 % situation / 34 % temperament). Les
+        /// valeurs attendues ci-dessous sont ce melange sous la posture <c>Expanding</c>, dont le
+        /// taux suggere est 0,22.
+        /// </para>
+        /// </summary>
+        [TestCase(EmpirePersonality.Pacifist, 0.2132f)]
+        [TestCase(EmpirePersonality.Expansionist, 0.2132f)]
+        [TestCase(EmpirePersonality.Mercantile, 0.2642f)]
+        [TestCase(EmpirePersonality.Militarist, 0.2472f)]
+        [TestCase(EmpirePersonality.Opportunist, 0.2302f)]
+        public void DecideAndAct_BlendsThePersonalityIntoTheSituationalTaxRate(EmpirePersonality personality, float expectedRate)
         {
             StarSystemState system = MakeOwnedSystem(AiEmpireId);
             GalaxyMap map = MakeMap(system);
@@ -117,9 +153,44 @@ namespace Espace.Tests.EditMode
             service.Initialize();
             Empire empire = MakeEmpire(personality);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(expectedRate, service.GetTaxRate(AiEmpireId), FloatTolerance);
+        }
+
+        [Test]
+        public void DecideAndAct_PersonalityStillOrdersTheTaxRates()
+        {
+            // La propriete qui compte, au-dela des valeurs exactes : le temperament doit rester
+            // observable. Si le melange l'ecrasait, les cinq personnalites deviendraient
+            // indiscernables a l'ecran et le decalage n'aurait plus de raison d'exister.
+            Assert.Greater(TaxRateOf(EmpirePersonality.Mercantile), TaxRateOf(EmpirePersonality.Militarist));
+            Assert.Greater(TaxRateOf(EmpirePersonality.Militarist), TaxRateOf(EmpirePersonality.Opportunist));
+            Assert.Greater(TaxRateOf(EmpirePersonality.Opportunist), TaxRateOf(EmpirePersonality.Pacifist));
+        }
+
+        [Test]
+        public void DecideAndAct_BrokeEmpireTaxesHarderThanAHealthyOne_WhateverItsTemperament()
+        {
+            // Le vrai apport de P7 : c'est la situation qui commande. Un Pacifiste a sec doit
+            // serrer la vis plus qu'un Mercantile prospere, alors que l'ancien systeme donnait
+            // l'inverse en toutes circonstances.
+            Assert.Greater(
+                TaxRateOf(EmpirePersonality.Pacifist, AssessmentFixtures.Broke()),
+                TaxRateOf(EmpirePersonality.Mercantile, AssessmentFixtures.Healthy()));
+        }
+
+        /// <summary>Taux d'imposition retenu par <paramref name="personality"/> dans une situation donnee.</summary>
+        private float TaxRateOf(EmpirePersonality personality, EmpireAssessment? assessment = null)
+        {
+            StarSystemState system = MakeOwnedSystem(AiEmpireId);
+            GalaxyMap map = MakeMap(system);
+            var service = new EconomyService(map, _clock, _eventBus, Array.Empty<BuildingType>());
+            service.Initialize();
+
+            AIDecisionMaker.DecideAndAct(MakeEmpire(personality), map, service, assessment ?? AssessmentFixtures.Healthy());
+
+            return service.GetTaxRate(AiEmpireId);
         }
 
         [Test]
@@ -131,7 +202,7 @@ namespace Espace.Tests.EditMode
             service.Initialize();
             Empire empire = MakeEmpire(EmpirePersonality.Militarist);
 
-            Assert.DoesNotThrow(() => AIDecisionMaker.DecideAndAct(empire, map, service));
+            Assert.DoesNotThrow(() => AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy()));
             Assert.AreEqual(3, unowned.DevelopmentLevel, "Aucun systeme possede : rien ne doit changer.");
         }
 
@@ -148,7 +219,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, system, AiEmpireId, 1000f);
             Empire empire = MakeEmpire(EmpirePersonality.Mercantile);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             var buildings = service.GetBuildings(system.Id);
             Assert.AreEqual(1, buildings.Count);
@@ -167,7 +238,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, system, AiEmpireId, 1000f);
             Empire empire = MakeEmpire(EmpirePersonality.Militarist);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             var buildings = service.GetBuildings(system.Id);
             Assert.AreEqual(1, buildings.Count);
@@ -186,7 +257,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, system, AiEmpireId, 1000f);
             Empire empire = MakeEmpire(EmpirePersonality.Opportunist);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             var buildings = service.GetBuildings(system.Id);
             Assert.AreEqual(1, buildings.Count);
@@ -205,10 +276,10 @@ namespace Espace.Tests.EditMode
             Empire empire = MakeEmpire(EmpirePersonality.Mercantile); // priorite : Credits, Energie, ...
 
             GiveCredits(service, system, AiEmpireId, 1000f);
-            AIDecisionMaker.DecideAndAct(empire, map, service); // construit Credits (priorite 1)
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy()); // construit Credits (priorite 1)
 
             GiveCredits(service, system, AiEmpireId, 1000f);
-            AIDecisionMaker.DecideAndAct(empire, map, service); // Credits deja construit -> Energie
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy()); // Credits deja construit -> Energie
 
             var buildings = service.GetBuildings(system.Id);
             Assert.AreEqual(2, buildings.Count);
@@ -228,7 +299,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, system, AiEmpireId, 1000f);
             Empire empire = MakeEmpire(EmpirePersonality.Mercantile); // priorite : Credits (inaccessible), puis Energie
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             var buildings = service.GetBuildings(system.Id);
             Assert.AreEqual(1, buildings.Count);
@@ -247,7 +318,7 @@ namespace Espace.Tests.EditMode
             float cost = service.GetInvestmentCost(system.Id);
             GiveCredits(service, system, AiEmpireId, cost * 1.1f + 10f);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(2, system.DevelopmentLevel);
         }
@@ -265,7 +336,7 @@ namespace Espace.Tests.EditMode
             // Finance exactement le cout mais pas la marge de prudence exigee (x1.5).
             GiveCredits(service, system, AiEmpireId, cost * 1.05f);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(1, system.DevelopmentLevel);
         }
@@ -279,7 +350,7 @@ namespace Espace.Tests.EditMode
             service.Initialize();
             Empire empire = MakeEmpire(EmpirePersonality.Militarist);
 
-            Assert.DoesNotThrow(() => AIDecisionMaker.DecideAndAct(empire, map, service));
+            Assert.DoesNotThrow(() => AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy()));
             Assert.AreEqual(0, system.DevelopmentLevel);
             Assert.AreEqual(0, service.GetBuildings(system.Id).Count);
         }
@@ -296,7 +367,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, system, AiEmpireId, 5000f);
             Empire empire = MakeEmpire(EmpirePersonality.Pacifist); // priorite : Food en premier
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(1, service.GetBuildings(system.Id).Count);
             Assert.AreEqual(3, system.DevelopmentLevel, "Un seul type d'action par appel : la construction a eu lieu, pas l'investissement.");
@@ -326,7 +397,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, capital, AiEmpireId, 100000f);
             Empire empire = MakeEmpire(EmpirePersonality.Expansionist);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(1, colony.DevelopmentLevel, "La colonie en retard doit rattraper : c'est aussi le moins cher.");
             Assert.AreEqual(3, capital.DevelopmentLevel, "Une seule action par appel.");
@@ -345,7 +416,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, capital, AiEmpireId, 100000f);
             Empire empire = MakeEmpire(EmpirePersonality.Militarist);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(4, capital.DevelopmentLevel, "Le Militariste concentre son effort sur son bastion.");
             Assert.AreEqual(0, colony.DevelopmentLevel);
@@ -367,7 +438,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, capital, AiEmpireId, 100000f);
             Empire empire = MakeEmpire(EmpirePersonality.Pacifist); // priorite Food, rattrapage
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(1, colony.DevelopmentLevel, "Le mois n'est jamais perdu : la colonie est developpee.");
             Assert.AreEqual(0, service.GetBuildings(capital.Id).Count, "Une seule action par appel.");
@@ -386,7 +457,7 @@ namespace Espace.Tests.EditMode
             GiveCredits(service, first, AiEmpireId, 100000f);
             Empire empire = MakeEmpire(EmpirePersonality.Expansionist);
 
-            AIDecisionMaker.DecideAndAct(empire, map, service);
+            AIDecisionMaker.DecideAndAct(empire, map, service, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(3, first.DevelopmentLevel);
             Assert.AreEqual(2, second.DevelopmentLevel);

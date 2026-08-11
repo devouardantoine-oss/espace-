@@ -1,5 +1,7 @@
+using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Espionage;
+using Espace.Gameplay.Research;
 using NUnit.Framework;
 
 namespace Espace.Tests.EditMode
@@ -237,6 +239,89 @@ namespace Espace.Tests.EditMode
             Assert.AreEqual(0f, assessment.MilitaryRatio);
             Assert.AreEqual(1f, assessment.GrowthHeadroom);
             Assert.AreEqual(0, assessment.SystemCount);
+        }
+
+        // --- P7 (suite) · Arbitrages des quatre autres preneurs de decision -----
+
+        [Test]
+        public void Fixtures_ProduceThePostureTheyClaim()
+        {
+            // Ce test protege les quatre-vingts autres. Les fixtures nomment une situation par
+            // cinq nombres ; si un seuil de DerivePosture bougeait, « empire sain » deviendrait
+            // silencieusement « empire menace » et tous les tests continueraient a passer en
+            // verifiant autre chose que ce que leur nom annonce.
+            Assert.AreEqual(StrategicPosture.Expanding, AssessmentFixtures.Healthy().Posture);
+            Assert.AreEqual(StrategicPosture.Consolidating, AssessmentFixtures.Broke().Posture);
+            Assert.AreEqual(StrategicPosture.Defending, AssessmentFixtures.Threatened().Posture);
+            Assert.AreEqual(StrategicPosture.Aggressive, AssessmentFixtures.Dominant().Posture);
+        }
+
+        [Test]
+        public void ResearchPromotion_AnswersTheIndicatorThatTriggeredThePosture()
+        {
+            Assert.AreEqual(ResearchDomain.Economy, ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Consolidating));
+            Assert.AreEqual(ResearchDomain.Weapons, ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Defending));
+            Assert.AreEqual(ResearchDomain.Logistics, ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Aggressive));
+        }
+
+        [Test]
+        public void ResearchPromotion_LeavesTheCommonCaseToThePersonality()
+        {
+            // La promotion doit rester une exception justifiee par une urgence. Si Expanding
+            // promouvait un domaine, l'ordre de recherche des cinq personnalites cesserait
+            // d'avoir le moindre effet observable.
+            Assert.IsNull(ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Expanding));
+        }
+
+        [Test]
+        public void ResearchPromotion_DistinguishesDefendingFromAttacking()
+        {
+            Assert.AreNotEqual(
+                ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Defending),
+                ResearchDecisionMaker.DomainCalledForBy(StrategicPosture.Aggressive),
+                "Se defendre et attaquer ne doivent pas appeler la meme recherche, sinon la distinction ne se lit nulle part.");
+        }
+
+        [Test]
+        public void EspionageMission_FollowsTheNeed_NotOnlyTheTaste()
+        {
+            Assert.AreEqual(EspionageMissionType.DiscoverArmies, EspionageDecisionMaker.MissionCalledForBy(StrategicPosture.Defending));
+            Assert.AreEqual(EspionageMissionType.IncitesRevolt, EspionageDecisionMaker.MissionCalledForBy(StrategicPosture.Aggressive));
+            Assert.IsNull(EspionageDecisionMaker.MissionCalledForBy(StrategicPosture.Expanding));
+        }
+
+        [Test]
+        public void WarDeclaration_IsForbiddenWhileSurvivingOrOutgunned()
+        {
+            // Le defaut corrige : AggressionThreshold ne compare que des armees. Un Militariste
+            // en faillite declarait donc la guerre exactement comme s'il etait opulent.
+            Assert.IsFalse(DiplomacyDecisionMaker.MayDeclareWar(StrategicPosture.Consolidating));
+            Assert.IsFalse(DiplomacyDecisionMaker.MayDeclareWar(StrategicPosture.Defending));
+        }
+
+        [Test]
+        public void WarDeclaration_RemainsPossibleWhenTheSituationAllowsIt()
+        {
+            // Le changement retire des guerres absurdes ; il ne doit pas supprimer la guerre.
+            Assert.IsTrue(DiplomacyDecisionMaker.MayDeclareWar(StrategicPosture.Expanding));
+            Assert.IsTrue(DiplomacyDecisionMaker.MayDeclareWar(StrategicPosture.Aggressive));
+        }
+
+        [Test]
+        public void EveryPosture_IsCoveredByEveryArbitration()
+        {
+            // Un enum etendu plus tard ne doit pas laisser une posture tomber dans un `default`
+            // silencieux dans l'un des trois modules et pas dans les autres.
+            foreach (StrategicPosture posture in new[]
+            {
+                StrategicPosture.Consolidating, StrategicPosture.Expanding,
+                StrategicPosture.Defending, StrategicPosture.Aggressive
+            })
+            {
+                Assert.DoesNotThrow(() => ResearchDecisionMaker.DomainCalledForBy(posture));
+                Assert.DoesNotThrow(() => EspionageDecisionMaker.MissionCalledForBy(posture));
+                Assert.DoesNotThrow(() => DiplomacyDecisionMaker.MayDeclareWar(posture));
+            }
         }
     }
 }

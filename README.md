@@ -911,6 +911,42 @@ bord de la faillite ne part plus en guerre même s'il est le plus fort.
 > appellent la même décision, et diviser par une puissance quasi nulle ne produirait que des
 > nombres absurdes.
 
+#### Une seule photographie pour les cinq preneurs de décision (P8)
+
+`EmpireAssessment` annonçait une photographie « calculée une fois par mois et partagée par tous
+ses preneurs de décision ». Elle ne l'était pas : le calcul vivait au fond d'`AIDecisionMaker`,
+donc **seul le module économique en bénéficiait**. Recherche, espionnage, diplomatie et armée
+décidaient chacun dans leur coin, sans savoir si l'empire était au bord de la faillite.
+
+`EmpireAssessmentFactory.Assess` sort le calcul, `AIController` l'appelle **une fois par empire et
+par mois** et passe la structure aux cinq modules. Ce n'est pas qu'une économie de CPU : si chacun
+recalculait de son côté, deux modules pourraient lire des valeurs différentes le même mois —
+l'économie relâchant les impôts pendant que l'armée se prépare à la guerre.
+
+| Module | Ce que la posture change | Ce qui ne change pas |
+|---|---|---|
+| Économie | *(inchangé depuis P7)* le taux d'imposition découle de la situation | La personnalité la décale d'un tiers |
+| Recherche | Une urgence promeut un domaine devant la liste de personnalité : `Consolidating` → Économie, `Defending` → Armement, `Aggressive` → Logistique | `Expanding` (le cas courant) laisse décider la personnalité seule |
+| Espionnage | `Consolidating` → aucune opération ; posture militaire → voisins uniquement ; `Defending` → Découvrir les armées, `Aggressive` → Inciter à la révolte | Une personnalité pacifiste n'espionne jamais, quelle que soit la posture |
+| Diplomatie | Pas de déclaration de guerre en `Consolidating` ni `Defending` ; en `Consolidating`, sortie de toutes les guerres, y compris gagnées | `Expanding` et `Aggressive` conservent exactement l'ancien comportement, seuils compris |
+| Armée | `Consolidating` → aucune dépense ; `Defending` → cible pleine sur les colonies, ni colonisation ni offensive | `Expanding` et `Aggressive` conservent exactement l'ancien comportement |
+
+> **Aucun bonus n'a été ajouté à l'IA.** Chaque inflexion est soit une règle existante qu'elle
+> suspend (le `ColonyGarrisonDivisor` en posture défensive — et elle en paie alors le plein prix
+> en entretien mensuel), soit une action qu'elle s'interdit. Une IA qui tient sa frontière le fait
+> avec le même budget et les mêmes coûts que le joueur.
+>
+> **Deux associations méritent leur raison plutôt qu'un tableau.** `Aggressive` → *Inciter à la
+> révolte* : la révolte fait chuter la stabilité du système visé, et le contre-espionnage se
+> calcule **à partir de cette stabilité** — affaiblir une cible la rend mécaniquement plus
+> pénétrable ensuite, sans qu'aucun bonus n'ait été ajouté pour l'obtenir. `Defending` →
+> *Armement* pendant que `Aggressive` → *Logistique* : les deux postures militaires ne doivent pas
+> chercher la même chose, sinon la distinction entre se défendre et attaquer ne se lit nulle part.
+>
+> **L'interruption de recherche est gratuite**, et c'est ce qui la rend acceptable :
+> `ResearchService` conserve les points domaine par domaine, donc abandonner l'Économie pour
+> l'Armement ne perd rien — une posture qui oscillerait ferait perdre du temps, jamais du travail.
+
 ---
 
 ### Briques des trois freins (Phase 22, P3 à P5)
@@ -1638,6 +1674,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.5 | Entretien de flotte contraignant | ✅ terminée |
 | 22.6 | Espionnage gradué, branché dans le service | ✅ terminée |
 | 22.7 | Évaluation stratégique de l'IA | ✅ terminée |
+| 22.8 | Les cinq preneurs de décision partagent la même évaluation | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

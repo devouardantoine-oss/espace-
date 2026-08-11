@@ -45,6 +45,27 @@ namespace Espace.Gameplay.Diplomacy
     /// <see cref="Espace.Gameplay.Military.FleetRouting"/>. Declarer la guerre a qui l'on borde
     /// garantit une guerre reellement exploitable, sans verification d'itineraire.
     /// </para>
+    /// <para>
+    /// <b>Ce que la situation change (Phase 22, P7).</b> Le rapport de forces local ne suffit
+    /// pas a decider d'une guerre : jusqu'ici un Militariste au bord de la faillite declarait
+    /// la guerre a un voisin un peu plus faible, exactement comme s'il etait opulent, parce que
+    /// <c>AggressionThreshold</c> ne compare que des puissances militaires. Deux garde-fous,
+    /// tous deux lus dans la meme photographie que les quatre autres modules :
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>On ne declare pas la guerre en posture <c>Consolidating</c> ou
+    /// <c>Defending</c></b> (voir <see cref="MayDeclareWar"/>). Ce ne sont pas deux interdits
+    /// separes : c'est la meme regle que celle deja appliquee aux impots et a l'armee — survivre
+    /// avant de frapper.</description></item>
+    /// <item><description><b>Un empire en consolidation sort de toutes ses guerres</b>, y
+    /// compris celles qu'il gagne. Le seuil de lassitude de la personnalite compare des armees ;
+    /// il ne voit pas une tresorerie vide, et une guerre gagnee coute quand meme.</description></item>
+    /// </list>
+    /// <para>
+    /// <b>Les postures <c>Expanding</c> et <c>Aggressive</c> conservent exactement l'ancien
+    /// comportement</b>, seuil de personnalite compris. Le changement retire des guerres
+    /// absurdes, il n'en ajoute aucune et ne modifie aucun nombre existant.
+    /// </para>
     /// </summary>
     public static class DiplomacyDecisionMaker
     {
@@ -56,7 +77,8 @@ namespace Espace.Gameplay.Diplomacy
         /// </summary>
         private const float AllianceOpinionBonus = 25f;
 
-        public static void DecideAndAct(Empire empire, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy)
+        public static void DecideAndAct(
+            Empire empire, GalaxyMap map, IMilitaryService military, IDiplomacyService diplomacy, EmpireAssessment assessment)
         {
             List<int> neighborEmpires = EmpireHoldings.NeighboringEmpires(empire.Id, map);
             if (neighborEmpires.Count == 0)
@@ -67,12 +89,18 @@ namespace Espace.Gameplay.Diplomacy
             EmpirePersonalityProfileData profile = EmpirePersonalityProfile.Get(empire.Personality);
             float ownPower = EmpireHoldings.TotalPower(empire.Id, map, military);
 
-            if (TryProposePeace(empire, neighborEmpires, ownPower, map, military, diplomacy, profile))
+            // Un empire en consolidation cherche a sortir de toutes ses guerres, y compris
+            // celles qu'il gagne : le seuil de lassitude de la personnalite compare des armees,
+            // il ne voit pas une tresorerie vide.
+            bool suesForPeaceUnconditionally = assessment.Posture == StrategicPosture.Consolidating;
+
+            if (TryProposePeace(empire, neighborEmpires, ownPower, map, military, diplomacy, profile, suesForPeaceUnconditionally))
             {
                 return;
             }
 
-            if (profile.AggressionThreshold != null
+            if (MayDeclareWar(assessment.Posture)
+                && profile.AggressionThreshold != null
                 && TryDeclareWar(empire, neighborEmpires, ownPower, map, military, diplomacy, profile))
             {
                 return;
@@ -81,10 +109,29 @@ namespace Espace.Gameplay.Diplomacy
             TryProposePact(empire, neighborEmpires, diplomacy, profile);
         }
 
-        /// <summary>Propose la paix au premier empire limitrophe en guerre dont la puissance relegue la sienne sous le seuil de lassitude de la personnalite.</summary>
+        /// <summary>
+        /// Vrai si la situation autorise a ouvrir un nouveau front.
+        /// <para>
+        /// <c>Consolidating</c> signifie tresorerie exsangue ou provinces agitees, et
+        /// <c>Defending</c> signifie qu'un voisin est deja nettement plus fort : dans les deux
+        /// cas, declarer une guerre de plus est le contraire de ce que la situation appelle.
+        /// Meme ordre de priorite que partout ailleurs — survivre, se defendre, grandir, frapper.
+        /// </para>
+        /// </summary>
+        public static bool MayDeclareWar(StrategicPosture posture)
+        {
+            return posture == StrategicPosture.Expanding || posture == StrategicPosture.Aggressive;
+        }
+
+        /// <summary>
+        /// Propose la paix au premier empire limitrophe en guerre dont la puissance relegue la
+        /// sienne sous le seuil de lassitude de la personnalite — ou a n'importe lequel si
+        /// <paramref name="unconditionally"/> est vrai.
+        /// </summary>
         private static bool TryProposePeace(
             Empire empire, List<int> neighborEmpires, float ownPower, GalaxyMap map,
-            IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile)
+            IMilitaryService military, IDiplomacyService diplomacy, EmpirePersonalityProfileData profile,
+            bool unconditionally)
         {
             foreach (int otherId in neighborEmpires)
             {
@@ -93,10 +140,13 @@ namespace Espace.Gameplay.Diplomacy
                     continue;
                 }
 
-                float enemyPower = EmpireHoldings.TotalPower(otherId, map, military);
-                if (enemyPower > 0f && ownPower / enemyPower >= profile.PeacePowerRatioThreshold)
+                if (!unconditionally)
                 {
-                    continue;
+                    float enemyPower = EmpireHoldings.TotalPower(otherId, map, military);
+                    if (enemyPower > 0f && ownPower / enemyPower >= profile.PeacePowerRatioThreshold)
+                    {
+                        continue;
+                    }
                 }
 
                 if (diplomacy.TrySubmitProposal(empire.Id, otherId, ProposalType.PeaceTreaty, default, default, null, null, out _))

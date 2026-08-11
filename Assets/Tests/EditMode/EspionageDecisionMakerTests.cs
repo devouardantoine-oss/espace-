@@ -99,7 +99,7 @@ namespace Espace.Tests.EditMode
             var espionage = new SpyEspionageService();
             EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Pacifist), MakeEmpire(NeighborId, EmpirePersonality.Militarist));
 
-            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage);
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, espionage.Attempts.Count);
         }
@@ -115,7 +115,7 @@ namespace Espace.Tests.EditMode
             espionage.SetCounterPower(NeighborId, 100f); // tres largement superieur au seuil du Militariste (1.2x)
             EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
 
-            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage);
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(0, espionage.Attempts.Count);
         }
@@ -131,7 +131,7 @@ namespace Espace.Tests.EditMode
             espionage.SetCounterPower(NeighborId, 10f); // Militariste : DiscoverArmies, seuil 1.2x
             EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
 
-            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage);
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy());
 
             Assert.AreEqual(1, espionage.Attempts.Count);
             Assert.AreEqual((AiId, NeighborId, EspionageMissionType.DiscoverArmies), espionage.Attempts[0]);
@@ -148,7 +148,7 @@ namespace Espace.Tests.EditMode
             espionage.SetCounterPower(NeighborId, 10f);
             EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Opportunist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
 
-            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage);
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy());
 
             Assert.AreEqual((AiId, NeighborId, EspionageMissionType.InfluenceGovernment), espionage.Attempts[0]);
         }
@@ -169,7 +169,7 @@ namespace Espace.Tests.EditMode
                 MakeEmpire(NeighborId, EmpirePersonality.Pacifist),
                 MakeEmpire(FarEmpireId, EmpirePersonality.Pacifist));
 
-            Assert.DoesNotThrow(() => EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage));
+            Assert.DoesNotThrow(() => EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy()));
 
             Assert.AreEqual(1, espionage.Attempts.Count);
             Assert.AreEqual(FarEmpireId, espionage.Attempts[0].TargetId);
@@ -183,8 +183,106 @@ namespace Espace.Tests.EditMode
             var espionage = new SpyEspionageService();
             EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist));
 
-            Assert.DoesNotThrow(() => EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage));
+            Assert.DoesNotThrow(() => EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy()));
             Assert.AreEqual(0, espionage.Attempts.Count);
         }
+        // --- Posture strategique (Phase 22, P7) -------------------------------------------
+
+        [Test]
+        public void DecideAndAct_Consolidating_MountsNoOperationAtAll()
+        {
+            // Depuis P6, une operation engage de l'influence — la meme reserve qui paie
+            // l'administration de l'empire (P4). Comploter quand on ne tient deja pas ses
+            // comptes revient a financer une aventure avec l'argent du fonctionnement.
+            var home = MakeSystem(AiId, Vector2.zero);
+            var neighbor = MakeSystem(NeighborId, new Vector2(1f, 0f));
+            var map = new GalaxyMap(new[] { home, neighbor }, Array.Empty<HyperlaneLink>());
+            var espionage = new SpyEspionageService();
+            espionage.SetPower(AiId, 1000f);
+            espionage.SetCounterPower(NeighborId, 1f); // largement au-dessus de tout seuil
+            EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
+
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Broke());
+
+            Assert.AreEqual(0, espionage.Attempts.Count);
+        }
+
+        [Test]
+        public void DecideAndAct_Aggressive_SwapsThePersonalityMissionForTheOneThatSoftensTheTarget()
+        {
+            // Le Militariste prefere DiscoverArmies. En posture offensive, ce n'est plus
+            // l'information qui manque : la revolte fait chuter la stabilite du systeme vise, et
+            // GetCounterEspionagePower se calcule a partir de cette stabilite — l'effet compose
+            // sans qu'aucun bonus n'ait ete ajoute.
+            var home = MakeSystem(AiId, Vector2.zero);
+            var neighbor = MakeSystem(NeighborId, new Vector2(1f, 0f));
+            var map = new GalaxyMap(new[] { home, neighbor }, new[] { new HyperlaneLink(home.Id, neighbor.Id) });
+            var espionage = new SpyEspionageService();
+            espionage.SetPower(AiId, 100f);
+            espionage.SetCounterPower(NeighborId, 10f);
+            EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
+
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Dominant());
+
+            Assert.AreEqual(1, espionage.Attempts.Count);
+            Assert.AreEqual((AiId, NeighborId, EspionageMissionType.IncitesRevolt), espionage.Attempts[0]);
+        }
+
+        [Test]
+        public void DecideAndAct_MilitaryPosture_IgnoresEmpiresItDoesNotBorder()
+        {
+            // Renseigner ou affaiblir un empire qu'aucune frontiere ne rend joignable ne sert a
+            // rien : les flottes n'iront jamais. Ici aucune hyperroute n'existe, donc aucun
+            // voisin — et l'operation, pourtant tres favorable, n'a pas lieu.
+            var home = MakeSystem(AiId, Vector2.zero);
+            var distant = MakeSystem(NeighborId, new Vector2(1f, 0f));
+            var map = new GalaxyMap(new[] { home, distant }, Array.Empty<HyperlaneLink>());
+            var espionage = new SpyEspionageService();
+            espionage.SetPower(AiId, 1000f);
+            espionage.SetCounterPower(NeighborId, 1f);
+            EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
+
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Threatened());
+
+            Assert.AreEqual(0, espionage.Attempts.Count);
+        }
+
+        [Test]
+        public void DecideAndAct_PeacefulPosture_StillReachesDistantEmpires()
+        {
+            // La contrepartie du test precedent : l'espionnage n'implique aucun trajet physique,
+            // donc hors posture militaire la portee reste illimitee. Meme carte sans hyperroute,
+            // meme rapport de forces — seule la posture change.
+            var home = MakeSystem(AiId, Vector2.zero);
+            var distant = MakeSystem(NeighborId, new Vector2(1f, 0f));
+            var map = new GalaxyMap(new[] { home, distant }, Array.Empty<HyperlaneLink>());
+            var espionage = new SpyEspionageService();
+            espionage.SetPower(AiId, 1000f);
+            espionage.SetCounterPower(NeighborId, 1f);
+            EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Militarist), MakeEmpire(NeighborId, EmpirePersonality.Pacifist));
+
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Healthy());
+
+            Assert.AreEqual(1, espionage.Attempts.Count);
+        }
+
+        [Test]
+        public void DecideAndAct_PacifistNeverSpies_EvenUnderAnUrgentPosture()
+        {
+            // La personnalite garde le dernier mot sur le principe meme d'espionner : la posture
+            // choisit la mission, elle n'autorise jamais un empire a en monter une.
+            var home = MakeSystem(AiId, Vector2.zero);
+            var neighbor = MakeSystem(NeighborId, new Vector2(1f, 0f));
+            var map = new GalaxyMap(new[] { home, neighbor }, new[] { new HyperlaneLink(home.Id, neighbor.Id) });
+            var espionage = new SpyEspionageService();
+            espionage.SetPower(AiId, 1000f);
+            espionage.SetCounterPower(NeighborId, 1f);
+            EmpireRegistry registry = MakeRegistry(MakeEmpire(PlayerId, EmpirePersonality.Expansionist), MakeEmpire(AiId, EmpirePersonality.Pacifist), MakeEmpire(NeighborId, EmpirePersonality.Militarist));
+
+            EspionageDecisionMaker.DecideAndAct(registry.GetEmpire(AiId), registry, map, espionage, AssessmentFixtures.Dominant());
+
+            Assert.AreEqual(0, espionage.Attempts.Count);
+        }
+
     }
 }
