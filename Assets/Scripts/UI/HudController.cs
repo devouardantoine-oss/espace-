@@ -1,5 +1,6 @@
 using Espace.Core;
 using Espace.Data;
+using Espace.Gameplay.Chronicle;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
@@ -58,6 +59,7 @@ namespace Espace.UI
 
         private IGameClock _gameClock;
         private IEconomyService _economy;
+        private IChronicleService _chronicle;
         private IEventBus _eventBus;
         private EmpireRegistry _empireRegistry;
         private GalaxyMap _map;
@@ -302,6 +304,8 @@ namespace Espace.UI
                 x = DrawSpeedControls(new Rect(x, rect.y + 2, HudLayout.SpeedGroupWidth(), rect.height - 4)) + HudLayout.Gap;
             }
 
+            x = DrawAlertBadge(new Rect(x, rect.y + 2, HudLayout.AlertBadgeWidth, rect.height - 4));
+
             if (_managementWindow != null)
             {
                 if (GUI.Button(new Rect(x, rect.y + 2, HudLayout.ManagementButtonWidth, rect.height - 4), "Gestion", UITheme.Button))
@@ -316,6 +320,47 @@ namespace Espace.UI
             {
                 _pauseMenu.ToggleVisible();
             }
+        }
+
+        /// <summary>
+        /// Compteur d'alertes (Phase 24, étape 1).
+        /// <para>
+        /// Il n'affiche que les avis <b>importants ou critiques</b> non lus : un compteur qui
+        /// monterait à chaque départ de flotte afficherait un grand nombre en permanence et
+        /// cesserait d'être une information.
+        /// </para>
+        /// <para>
+        /// L'appui ouvre la fenêtre de gestion sur le journal et remet le compteur à zéro. Le
+        /// bouton est toujours dessiné, même à zéro : voir <see cref="HudLayout.AlertBadgeWidth"/>
+        /// pour la raison.
+        /// </para>
+        /// </summary>
+        /// <returns>L'abscisse où reprendre le tracé.</returns>
+        private float DrawAlertBadge(Rect rect)
+        {
+            if (_chronicle == null)
+            {
+                ServiceLocator.TryGet(out _chronicle);
+            }
+
+            int unread = _chronicle?.Log.UnreadCount ?? 0;
+            bool critical = _chronicle != null && _chronicle.Log.HasUnreadCritical;
+
+            string label = unread > 0 ? $"⚑{unread}" : "⚑";
+            GUIStyle style = unread > 0 ? UITheme.ActiveTabButton : UITheme.Button;
+
+            if (critical)
+            {
+                UITheme.DrawGlow(rect, EmpireStateBand.HealthColor(0f, 1f, 2f));
+            }
+
+            if (GUI.Button(rect, label, style) && _managementWindow != null)
+            {
+                _managementWindow.OpenJournal();
+                _chronicle?.Log.MarkAllRead();
+            }
+
+            return rect.x + HudLayout.AlertBadgeWidth + HudLayout.Gap;
         }
 
         /// <summary>Pause et quatre vitesses, en libellés courts.</summary>

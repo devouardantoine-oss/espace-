@@ -44,8 +44,26 @@ namespace Espace.UI
         public const int ManagementButtonWidth = 70;
         public const int MenuButtonWidth = 52;
 
-        /// <summary>Largeur du bloc crédits de l'angle gauche.</summary>
-        public const int CreditsWidth = 84;
+        /// <summary>
+        /// Largeur du compteur d'alertes.
+        /// <para>
+        /// <b>Toujours reservee, meme sans alerte a afficher.</b> Une largeur variable ferait
+        /// glisser les boutons voisins a chaque nouvel avis — et deplacer une cible sous le doigt
+        /// du joueur est la pire chose qu'une interface puisse faire. Trente-deux unites perdues
+        /// valent mieux qu'un bandeau qui bouge.
+        /// </para>
+        /// </summary>
+        public const int AlertBadgeWidth = 32;
+
+        /// <summary>
+        /// Largeur du bloc crédits de l'angle gauche.
+        /// <para>
+        /// Ramenée de 84 à 76 quand le compteur d'alertes est arrivé (Phase 24) : le compteur est
+        /// une commande, il ne peut pas être sacrifié, donc c'est l'information qui se resserre.
+        /// Le contenu tient sans peine — « CREDITS » et un montant abrégé.
+        /// </para>
+        /// </summary>
+        public const int CreditsWidth = 76;
 
         /// <summary>Pause plus quatre vitesses.</summary>
         public const int SpeedButtonCount = 5;
@@ -81,7 +99,7 @@ namespace Espace.UI
         {
             float speeds = hasClock ? SpeedGroupWidth() : 0f;
             float date = hasClock && withDate ? DateWidth + Gap : 0f;
-            float windows = ManagementButtonWidth + Gap + MenuButtonWidth;
+            float windows = AlertBadgeWidth + Gap + ManagementButtonWidth + Gap + MenuButtonWidth;
 
             return date + speeds + Gap + windows + 2 * Gap;
         }

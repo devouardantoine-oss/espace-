@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Espace.Core;
 using Espace.Data;
+using Espace.Gameplay.Chronicle;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
@@ -23,6 +24,7 @@ namespace Espace.UI
         Diplomatie,
         Recherche,
         Espionnage,
+        Journal,
         Sauvegarde
     }
 
@@ -61,21 +63,18 @@ namespace Espace.UI
         private static readonly ResearchDomain[] AllDomains = (ResearchDomain[])Enum.GetValues(typeof(ResearchDomain));
 
         /// <summary>
-        /// Derniers denouements d'operation, du plus recent au plus ancien (Phase 20).
+        /// Journal de la partie (Phase 24, etape 1).
         /// <para>
-        /// <b>Memorises ici plutot que dans un service :</b> une bataille se resout en un
-        /// instant — il n'existe aucun etat « en combat » a interroger apres coup. Sans cette
-        /// trace, une offensive lancee puis resolue pendant que le joueur regardait ailleurs ne
-        /// laisserait aucune trace consultable. Le journal est volontairement court et non
-        /// sauvegarde : c'est un fil d'actualite, pas un historique.
+        /// <b>Remplace les rapports d'operation de la Phase 20.</b> Cette fenetre tenait sa
+        /// propre liste de six lignes et s'abonnait elle-meme au bus d'evenements pour la
+        /// remplir — un contournement acceptable tant qu'il n'existait rien d'autre. Le journal
+        /// est desormais un service, et l'interface se contente de le lire.
         /// </para>
         /// </summary>
-        private readonly List<string> _operationReports = new List<string>();
+        private IChronicleService _chronicle;
 
-        /// <summary>Au-dela, les rapports les plus anciens sont oublies.</summary>
-        private const int MaxOperationReports = 6;
-
-        private IEventBus _operationEventBus;
+        /// <summary>Rapports recents affiches dans l'onglet Operations, qui reste un tableau de bord.</summary>
+        private const int OperationReportCount = 6;
 
         private bool _visible;
         private ManagementTab _activeTab = ManagementTab.Empires;
@@ -142,63 +141,67 @@ namespace Espace.UI
             if (_espionage == null) ServiceLocator.TryGet(out _espionage);
             if (_save == null) ServiceLocator.TryGet(out _save);
             if (_military == null) ServiceLocator.TryGet(out _military);
+            if (_chronicle == null) ServiceLocator.TryGet(out _chronicle);
         }
 
-        private void OnEnable()
+        /// <summary>Ouvre la fenetre directement sur le journal. Appele par le compteur d'alertes.</summary>
+        public void OpenJournal()
         {
-            if (ServiceLocator.TryGet(out _operationEventBus))
-            {
-                _operationEventBus.Subscribe<BattleResolvedEvent>(OnBattleResolved);
-                _operationEventBus.Subscribe<SystemColonizedEvent>(OnSystemColonized);
-            }
+            _visible = true;
+            _activeTab = ManagementTab.Journal;
+            _contentScroll = Vector2.zero;
         }
 
-        private void OnDisable()
+        /// <summary>
+        /// Le journal de la partie (Phase 24, etape 1) : ce qui s'est passe, du plus recent au
+        /// plus ancien.
+        /// <para>
+        /// <b>Le niveau se lit a la marge</b>, pas dans le texte : un avis critique porte un
+        /// reperage colore, les autres non. Ecrire « CRITIQUE » devant chaque ligne mangerait de
+        /// la largeur et rendrait le fil plus difficile a parcourir, pas plus clair.
+        /// </para>
+        /// <para>
+        /// L'ouverture de cet onglet remet le compteur d'alertes a zero : ce que le joueur a
+        /// sous les yeux est, par definition, lu.
+        /// </para>
+        /// </summary>
+        private void DrawJournalTab()
         {
-            if (_operationEventBus == null)
+            GUILayout.Label("Journal", UITheme.Title);
+
+            if (_chronicle == null)
             {
+                GUILayout.Label("Journal indisponible.", UITheme.MutedLabel);
                 return;
             }
 
-            _operationEventBus.Unsubscribe<BattleResolvedEvent>(OnBattleResolved);
-            _operationEventBus.Unsubscribe<SystemColonizedEvent>(OnSystemColonized);
-            _operationEventBus = null;
-        }
+            _chronicle.Log.MarkAllRead();
 
-        private void OnBattleResolved(BattleResolvedEvent battle)
-        {
-            if (battle.AttackerEmpireId != EconomyService.PlayerOwnerId
-                && battle.DefenderEmpireId != EconomyService.PlayerOwnerId)
+            IReadOnlyList<GameNotice> notices = _chronicle.Log.Notices;
+
+            if (notices.Count == 0)
             {
-                // Les batailles entre tiers ne sont pas des operations du joueur : les lister
-                // reviendrait a lui offrir un renseignement qu'il n'a pas paye.
+                GUILayout.Label("Rien ne s'est encore produit.", UITheme.MutedLabel);
                 return;
             }
 
-            bool attacking = battle.AttackerEmpireId == EconomyService.PlayerOwnerId;
-            string verdict = battle.AttackerWon
-                ? attacking ? "victoire" : "systeme perdu"
-                : attacking ? "offensive repoussee" : "assaut repousse";
-
-            PushReport($"{LocationLabel(battle.SystemId)} — {verdict} (pertes {(attacking ? battle.AttackerLosses : battle.DefenderLosses)})");
-        }
-
-        private void OnSystemColonized(SystemColonizedEvent colonized)
-        {
-            if (colonized.EmpireId != EconomyService.PlayerOwnerId)
+            foreach (GameNotice notice in notices)
             {
-                return;
-            }
+                GUILayout.BeginHorizontal();
 
-            PushReport($"{LocationLabel(colonized.SystemId)} — colonise ({colonized.InfantryLost} Infanterie perdue)");
-        }
+                GUILayout.Label(notice.Date.ToString(), UITheme.MutedLabel, GUILayout.Width(92));
+                GUILayout.Label(
+                    notice.Text,
+                    notice.Tier == NoticeTier.Information ? UITheme.MutedLabel : UITheme.Label);
 
-        private void PushReport(string report)
-        {
-            _operationReports.Insert(0, report);
-            if (_operationReports.Count > MaxOperationReports)
-            {
-                _operationReports.RemoveAt(_operationReports.Count - 1);
+                GUILayout.FlexibleSpace();
+
+                if (notice.Tier == NoticeTier.Critical)
+                {
+                    GUILayout.Label("!", UITheme.Value, GUILayout.Width(14));
+                }
+
+                GUILayout.EndHorizontal();
             }
         }
 
@@ -246,15 +249,17 @@ namespace Espace.UI
             GUILayout.Space(10);
             GUILayout.Label("Rapports recents", UITheme.Title);
 
-            if (_operationReports.Count == 0)
+            List<GameNotice> recent = _chronicle?.Log.MostRecent(OperationReportCount, NoticeTier.Important);
+
+            if (recent == null || recent.Count == 0)
             {
                 GUILayout.Label("Aucun denouement depuis l'ouverture de la partie.", UITheme.MutedLabel);
                 return;
             }
 
-            foreach (string report in _operationReports)
+            foreach (GameNotice notice in recent)
             {
-                GUILayout.Label(report, UITheme.Label);
+                GUILayout.Label($"{notice.Date}  —  {notice.Text}", UITheme.Label);
             }
         }
 
@@ -323,6 +328,9 @@ namespace Espace.UI
                     break;
                 case ManagementTab.Espionnage:
                     DrawEspionnageTab();
+                    break;
+                case ManagementTab.Journal:
+                    DrawJournalTab();
                     break;
                 case ManagementTab.Sauvegarde:
                     DrawSauvegardeTab();

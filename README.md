@@ -1067,6 +1067,49 @@ monde) : `OnGUI` déborde en silence, rien ne plante, un bouton sort simplement 
 
 ---
 
+### Le journal et les alertes (Phase 24, étape 1)
+
+| Brique | Rôle |
+|---|---|
+| `NoticeRules` | Fonction pure : quel niveau d'attention pour quel type d'avis, et **ce qui n'a pas le droit d'en réclamer** |
+| `NoticeLog` | Le journal lui-même : 60 avis, compteur de non-lus, filtrage par niveau |
+| `ChronicleService` | Traduit 14 types d'événements en lignes de journal |
+
+Le jeu publiait **31 types d'événements et n'en affichait aucun**. Une bataille se résolvait, une
+construction s'achevait, une proposition arrivait : rien ne le disait, et le joueur qui regardait
+ailleurs ne l'apprenait jamais. Il ne pouvait ni vérifier ce qu'il avait manqué, ni raconter sa
+partie.
+
+> **La règle qui fait tenir le système.** Un avis n'a le droit de réclamer l'attention que s'il a
+> une **destination** — un endroit où l'appui mène et où l'on peut agir. Sinon il redescend au
+> journal. Ce n'est pas un principe décoratif : c'est ce test, et non le jugement au cas par cas,
+> qui empêche la liste de gonfler à chaque fonctionnalité ajoutée. **Il est vérifié par un test**
+> qui parcourt tous les types d'avis.
+>
+> **Trois avis critiques au maximum**, également vérifié par un test. Au-delà, plus rien n'est
+> critique.
+>
+> **Le journal ne rapporte que ce que le joueur peut savoir.** Une bataille entre deux adversaires
+> à l'autre bout de la galaxie n'y figure pas : l'y faire apparaître contredirait la règle qui
+> masque déjà la garnison d'un système adverse. Seule exception, les changements de statut
+> diplomatique — une déclaration de guerre est publique par nature.
+>
+> **Une perte est critique, un gain ne l'est pas.** Perdre une bataille appelle une réaction ;
+> en gagner une se constate plus tard sans rien coûter. L'asymétrie est testée.
+
+**Il remplace les rapports d'opération de la Phase 20.** Cette fenêtre tenait sa propre liste de
+six lignes et s'abonnait elle-même au bus d'événements — un contournement acceptable tant qu'il
+n'existait rien d'autre. L'onglet Opérations lit désormais le journal.
+
+**Le compteur d'alertes** occupe une largeur **toujours réservée** dans le bandeau, même à zéro :
+une largeur variable ferait glisser les boutons voisins à chaque nouvel avis, et déplacer une
+cible sous le doigt du joueur est la pire chose qu'une interface puisse faire. Ces 32 unités ont
+été prises sur le bloc Crédits, ramené de 84 à 76 — le compteur est une commande, il ne peut pas
+être sacrifié, donc c'est l'information qui se resserre. **C'est le test de disposition à 420
+unités qui a imposé cet arbitrage**, pas une estimation.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
@@ -1795,6 +1838,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.8 | Les cinq preneurs de décision partagent la même évaluation | ✅ terminée |
 | 23.a | Carte diégétique : la planète porte son propre état | ✅ terminée |
 | 23.b | Liseré d'état : la barre supérieure fond de 44 à 33 unités | ✅ terminée |
+| 24.1 | Le fil : les 31 événements deviennent un journal, et un compteur d'alertes | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

@@ -44,6 +44,9 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Marqueurs indexes par systeme, conserves pour <see cref="SystemGlyphController"/> (Phase 23).</summary>
         private readonly Dictionary<StarSystemId, StarSystemMarker> _markers = new Dictionary<StarSystemId, StarSystemMarker>();
 
+        /// <summary>Journal de la partie (Phase 24). Arrete en meme temps que la scene.</summary>
+        private Espace.Gameplay.Chronicle.ChronicleService _chronicle;
+
         private void Awake()
         {
             if (config == null)
@@ -63,6 +66,8 @@ namespace Espace.Gameplay.Galaxy
             {
                 ServiceLocator.Register(_map);
             }
+
+            BuildChronicle(_map);
 
             GalaxyBackgroundFactory.Build(gameObject, parameters);
 
@@ -113,6 +118,13 @@ namespace Espace.Gameplay.Galaxy
         /// </summary>
         private void OnDestroy()
         {
+            if (_chronicle != null)
+            {
+                _chronicle.Shutdown();
+                ServiceLocator.Unregister<Espace.Gameplay.Chronicle.IChronicleService>();
+                _chronicle = null;
+            }
+
             if (_map != null)
             {
                 ServiceLocator.Unregister<GalaxyMap>();
@@ -150,6 +162,36 @@ namespace Espace.Gameplay.Galaxy
             }
 
             return worldPositions;
+        }
+
+        /// <summary>
+        /// Demarre le journal de la partie (Phase 24, etape 1).
+        /// <para>
+        /// <b>Cree ici, et tot :</b> le service doit etre abonne au bus <i>avant</i> que les
+        /// autres services de la scene ne commencent a publier. Ceux-ci s'enregistrent dans leur
+        /// propre <c>Start</c>, donc l'<c>Awake</c> de cet orchestrateur les precede tous.
+        /// </para>
+        /// <para>
+        /// Comme <c>FleetMapController</c>, il est instancie par code plutot que par une
+        /// reference serialisee : aucune ligne de YAML a ajouter a la scene, donc aucun risque
+        /// de scene mal cablee.
+        /// </para>
+        /// </summary>
+        private void BuildChronicle(GalaxyMap map)
+        {
+            if (!ServiceLocator.TryGet(out IEventBus eventBus))
+            {
+                GameLog.Error("[GalaxyMapController] IEventBus indisponible : le journal ne demarre pas.");
+                return;
+            }
+
+            _chronicle = new Espace.Gameplay.Chronicle.ChronicleService(eventBus, map);
+            _chronicle.Initialize();
+
+            if (!ServiceLocator.IsRegistered<Espace.Gameplay.Chronicle.IChronicleService>())
+            {
+                ServiceLocator.Register<Espace.Gameplay.Chronicle.IChronicleService>(_chronicle);
+            }
         }
 
         /// <summary>
