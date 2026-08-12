@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Espace.Core;
+using Espace.Data;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
@@ -52,6 +53,9 @@ namespace Espace.UI
         private const int WindowWidth = 660;
         private const int WindowHeight = 460;
         private const int TabStripWidth = 130;
+
+        /// <summary>Pas du reglage fiscal, repris de la barre superieure d'ou il vient (Phase 23).</summary>
+        private const float TaxStep = 0.1f;
 
         private static readonly ManagementTab[] AllTabs = (ManagementTab[])Enum.GetValues(typeof(ManagementTab));
         private static readonly ResearchDomain[] AllDomains = (ResearchDomain[])Enum.GetValues(typeof(ResearchDomain));
@@ -330,6 +334,8 @@ namespace Espace.UI
 
         private void DrawEmpiresTab()
         {
+            DrawPlayerEconomy();
+
             GUILayout.Label("Empires", UITheme.Title);
 
             if (_empireRegistry == null)
@@ -346,6 +352,57 @@ namespace Espace.UI
 
                 GUILayout.Label($"{empire.Name}  —  {role}  —  {systemCount} systeme(s)  —  {HudFormatter.FormatResource(credits)} Cr", UITheme.Label);
             }
+        }
+
+        /// <summary>
+        /// Tresor complet et taux d'imposition du joueur (Phase 23, tranche B).
+        /// <para>
+        /// <b>Ces deux blocs vivaient dans la barre superieure</b> et lui coutaient a eux seuls
+        /// plus de 200 unites de large, en permanence, pour une information qu'on ne consulte pas
+        /// en continu. Le lisere d'etat repond desormais a la seule question qui se pose sans
+        /// s'arreter — « suis-je solvable ? » — et les chiffres exacts, comme le reglage fiscal,
+        /// ont leur place ici, la ou l'on vient deja pour decider.
+        /// </para>
+        /// <para>
+        /// C'est ce deplacement qui rend la reduction de la barre possible <b>sans perdre une
+        /// seule fonction</b> : rien n'a ete supprime, tout a ete range.
+        /// </para>
+        /// </summary>
+        private void DrawPlayerEconomy()
+        {
+            if (_economy == null)
+            {
+                return;
+            }
+
+            GUILayout.Label("Tresor", UITheme.Title);
+
+            ResourceBundle treasury = _economy.GetTreasury(EconomyService.PlayerOwnerId);
+            GUILayout.Label(
+                $"Credits {HudFormatter.FormatResource(treasury.Credits)}   "
+                + $"Minerai {HudFormatter.FormatResource(treasury.Minerals)}   "
+                + $"Energie {HudFormatter.FormatResource(treasury.Energy)}   "
+                + $"Alliage {HudFormatter.FormatResource(treasury.Food)}   "
+                + $"Influence {HudFormatter.FormatResource(treasury.Influence)}",
+                UITheme.Label);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Imposition {HudFormatter.FormatPercent(_economy.TaxRate)}", UITheme.Label, GUILayout.Width(140));
+
+            if (GUILayout.Button("-", UITheme.Button, GUILayout.Width(34)))
+            {
+                _economy.SetTaxRate(_economy.TaxRate - TaxStep);
+            }
+
+            if (GUILayout.Button("+", UITheme.Button, GUILayout.Width(34)))
+            {
+                _economy.SetTaxRate(_economy.TaxRate + TaxStep);
+            }
+
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
         }
 
         private int CountOwnedSystems(int empireId)

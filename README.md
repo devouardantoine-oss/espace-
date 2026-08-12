@@ -1020,6 +1020,53 @@ garnison — donc un panneau n'a plus besoin de les répéter et redevient une l
 
 ---
 
+### Le liseré d'état remplace la barre supérieure (Phase 23, tranche B)
+
+| Brique | Rôle |
+|---|---|
+| `EmpireStateBand` | Fonction pure : quatre segments, leur remplissage et leur teinte |
+| `HudLayout` | Fonction pure : où tiennent les deux grappes, et ce qui cède si elles ne tiennent pas |
+| `HudController` | Dessine ce que les deux précédentes ont décidé |
+
+La barre pleine largeur occupait **44 unités sur les 286 garanties**, en permanence, et bloquait
+tous les appuis sur cette bande — impossible de sélectionner un système situé en haut de la
+carte. Elle affichait cinq ressources, un taux d'imposition et une date exacte : des nombres
+qu'on ne lit pas en continu.
+
+| | Avant | Après |
+|---|---|---|
+| Hauteur occupée | 44 u (15,4 %) | **33 u (11,5 %)** |
+| Largeur bloquée | 700 u — toute la bande | **456 u en deux angles**, 236 u d'ouverture vers la carte |
+| Information permanente | 5 ressources, impôt, date | 4 barres sans chiffre, + les Crédits |
+
+> **Les quatre segments sont les quatre indicateurs d'`EmpireAssessment`.** Pas un choix
+> esthétique : depuis la Phase 22, c'est exactement sur ces quatre-là que chaque IA décide de sa
+> posture. Le joueur regarde donc le même tableau de bord que ses adversaires, avec les mêmes
+> seuils — et il apprend à lire leurs revirements en apprenant à lire le sien.
+>
+> **Les teintes sont celles du halo des planètes** (`SystemGlyph`, tranche A) : un liseré qui vire
+> à l'ambre annonce des halos qui virent à l'ambre. La carte et le liseré disent le même fait.
+>
+> **La recherche n'alerte jamais.** Une recherche lente est un choix ou une conséquence, pas une
+> urgence. Réserver la pulsation aux trois autres segments est ce qui lui garde son sens : un
+> liseré où tout clignote n'attire l'attention sur rien.
+>
+> **Aucune fonction n'a disparu.** Le trésor complet et le réglage fiscal ont rejoint l'onglet
+> Empires de la fenêtre de gestion — là où l'on vient déjà pour décider. C'est ce déplacement,
+> et non une suppression, qui rend la réduction possible.
+>
+> **Le liseré ne bloque pas le toucher.** Il ne porte aucun bouton, donc il n'est pas déclaré
+> occupé : un appui le traverse et atteint la carte.
+
+**La leçon de la tranche A, appliquée tout de suite.** La géométrie du glyphe avait divergé entre
+le code et son visualiseur. Ici les largeurs vivent dans `HudLayout`, fonction pure, et sont
+vérifiées sur **sept formats d'écran de 420 à 1600 unités** — y compris sous 700, qui n'est le
+minimum *garanti* que sur un écran dense, pas un plancher absolu. Trois débordements d'interface
+avaient déjà échappé aux tests dans ce projet (panneau du menu, colonne de doctrine, dossier de
+monde) : `OnGUI` déborde en silence, rien ne plante, un bouton sort simplement de l'écran.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
@@ -1747,6 +1794,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.7 | Évaluation stratégique de l'IA | ✅ terminée |
 | 22.8 | Les cinq preneurs de décision partagent la même évaluation | ✅ terminée |
 | 23.a | Carte diégétique : la planète porte son propre état | ✅ terminée |
+| 23.b | Liseré d'état : la barre supérieure fond de 44 à 33 unités | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
