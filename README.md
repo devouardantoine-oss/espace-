@@ -970,6 +970,56 @@ en silence** :
 
 ---
 
+### La carte porte l'état des systèmes (Phase 23, tranche A)
+
+| Brique | Rôle |
+|---|---|
+| `SystemGlyph` | Fonction pure : quel encodage visuel pour quel état, et **ce qui a le droit d'être vu** |
+| `StarSystemMarker.ApplyGlyph` | Applicateur : anneaux, halo, pastilles. Ne décide de rien |
+| `SystemGlyphController` | Un seul abonnement à l'horloge pour les cent marqueurs |
+
+Lire l'état d'un système demandait d'ouvrir un panneau qui recouvrait la carte : le jeu avait
+deux modes, **regarder** ou **gérer**, et comparer deux systèmes était impossible. La planète
+porte désormais ses propres relevés — anneaux de développement, halo de stabilité, pastilles de
+garnison — donc un panneau n'a plus besoin de les répéter et redevient une liste d'actions.
+
+> **La règle de confidentialité, qui vient du gameplay et non de l'esthétique.** Le
+> **développement** se voit de partout : c'est de l'infrastructure visible en orbite, et la carte
+> le montrait déjà par la teinte du marqueur depuis la Phase 2. La **stabilité** et la
+> **garnison** ne se voient **que sur ses propres systèmes** : les afficher chez l'adversaire
+> donnerait gratuitement ce que l'espionnage doit faire mériter, et contredirait l'assistant
+> d'offensive qui annonce « garnison inconnue ».
+>
+> **Le halo se renforce quand la stabilité baisse.** Un système sain reste discret, un système en
+> difficulté s'impose. C'est ce qui permet de repérer les planètes qui demandent quelque chose
+> sans lire de liste — l'inverse d'un rendu qui souligne uniformément tout ce qu'il connaît.
+>
+> **Le seuil de bascule vers l'ambre est `EmpireAssessment.CriticalStability`**, celui-là même
+> qui fait passer un empire IA en consolidation. Le joueur et la machine lisent la même limite, et
+> aucun nombre n'a été inventé pour ce rendu.
+>
+> **Rafraîchi chaque jour de jeu plutôt que sur une liste d'événements.** Développement,
+> stabilité et garnison changent par des chemins différents — investissement, mois écoulé,
+> recrutement, bataille, sabotage. Énumérer ces déclencheurs, c'est s'engager à n'en jamais
+> oublier un ; un oubli ne planterait pas, il laisserait la carte mentir en silence. Tout
+> recalculer chaque jour coûte cent lectures d'entiers et rend l'affichage vrai par construction.
+
+**Deux défauts de géométrie trouvés avant Unity, par rendu ASCII :**
+
+- Les cinq anneaux **fusionnaient en une bande unique** — `GetRingSprite` trace un trait de 40 %
+  du rayon. D'où `GetThinRingSprite` (8 %), et un écart calibré pour que les anneaux restent
+  *dénombrables*.
+- Les pastilles de garnison **tombaient sur les anneaux**. Elles sont passées en orbite basse,
+  entre le corps et le premier anneau.
+
+> **La vraie leçon était ailleurs.** Le rendu ASCII qui servait à vérifier la géométrie détenait
+> sa *propre copie* des constantes : les deux ont divergé et j'ai validé une disposition qui
+> n'était pas celle du jeu. La géométrie vit maintenant dans `SystemGlyph`, source unique, et les
+> règles de non-chevauchement sont écrites en tests — un déplacement d'anneau qui écraserait les
+> pastilles échoue désormais avant d'atteindre l'éditeur.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
@@ -1696,6 +1746,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 22.6 | Espionnage gradué, branché dans le service | ✅ terminée |
 | 22.7 | Évaluation stratégique de l'IA | ✅ terminée |
 | 22.8 | Les cinq preneurs de décision partagent la même évaluation | ✅ terminée |
+| 23.a | Carte diégétique : la planète porte son propre état | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent

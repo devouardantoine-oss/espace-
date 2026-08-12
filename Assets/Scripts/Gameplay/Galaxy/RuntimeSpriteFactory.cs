@@ -26,8 +26,15 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Rayon interieur de l'anneau, en fraction du rayon exterieur (voir <see cref="GetRingSprite"/>).</summary>
         private const float RingInnerRadiusFraction = 0.6f;
 
+        /// <summary>
+        /// Rayon interieur de l'anneau fin (voir <see cref="GetThinRingSprite"/>) : un trait de
+        /// 8 % du rayon, contre 40 % pour l'anneau decoratif.
+        /// </summary>
+        private const float ThinRingInnerRadiusFraction = 0.92f;
+
         private static Sprite _cachedCircleSprite;
         private static Sprite _cachedRingSprite;
+        private static Sprite _cachedThinRingSprite;
 
         /// <summary>
         /// Sprite d'un disque plein avec anti-aliasing simple sur le contour, centre sur son pivot.
@@ -129,6 +136,66 @@ namespace Espace.Gameplay.Galaxy
             _cachedRingSprite.name = "GeneratedRingSprite";
 
             return _cachedRingSprite;
+        }
+
+        /// <summary>
+        /// Sprite d'un anneau <b>fin</b> : un simple trait circulaire.
+        /// <para>
+        /// <b>Pourquoi un second sprite d'anneau (Phase 23).</b> Les anneaux de developpement
+        /// s'empilent jusqu'a cinq autour d'un meme systeme, et le joueur doit pouvoir les
+        /// <em>compter</em> d'un coup d'oeil. Avec le trait de <see cref="GetRingSprite"/>, epais
+        /// de 40 % du rayon, cinq anneaux concentriques fusionnent en une bande unique et
+        /// l'information disparait. Un trait de 8 % les garde distincts.
+        /// </para>
+        /// <para>
+        /// L'anneau decoratif de la Phase 12 conserve son trait epais : il est seul autour de son
+        /// systeme, et son epaisseur fait justement sa presence.
+        /// </para>
+        /// </summary>
+        public static Sprite GetThinRingSprite()
+        {
+            if (_cachedThinRingSprite != null)
+            {
+                return _cachedThinRingSprite;
+            }
+
+            var texture = new Texture2D(TextureSize, TextureSize, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GeneratedThinRing",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            float center = (TextureSize - 1) * 0.5f;
+            float outerRadius = TextureSize * 0.5f;
+            float innerRadius = outerRadius * ThinRingInnerRadiusFraction;
+            var pixels = new Color32[TextureSize * TextureSize];
+
+            for (int y = 0; y < TextureSize; y++)
+            {
+                for (int x = 0; x < TextureSize; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+
+                    float outerAlpha = Mathf.Clamp01(outerRadius - distance);
+                    float innerAlpha = Mathf.Clamp01(distance - innerRadius);
+                    float alpha = Mathf.Min(outerAlpha, innerAlpha);
+
+                    pixels[y * TextureSize + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _cachedThinRingSprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, TextureSize, TextureSize),
+                new Vector2(0.5f, 0.5f),
+                PixelsPerUnit);
+            _cachedThinRingSprite.name = "GeneratedThinRingSprite";
+
+            return _cachedThinRingSprite;
         }
 
         /// <summary>

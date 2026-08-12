@@ -41,6 +41,9 @@ namespace Espace.Gameplay.Galaxy
 
         private GalaxyMap _map;
 
+        /// <summary>Marqueurs indexes par systeme, conserves pour <see cref="SystemGlyphController"/> (Phase 23).</summary>
+        private readonly Dictionary<StarSystemId, StarSystemMarker> _markers = new Dictionary<StarSystemId, StarSystemMarker>();
+
         private void Awake()
         {
             if (config == null)
@@ -72,6 +75,7 @@ namespace Espace.Gameplay.Galaxy
             BuildFactionLabels(_map, territoryCells, cameraController);
 
             BuildSystemLabels(_map, worldPositions, cameraController);
+            BuildSystemGlyphs(_map);
             BuildFleetMap(_map);
         }
 
@@ -116,7 +120,11 @@ namespace Espace.Gameplay.Galaxy
             }
         }
 
-        /// <summary>Instancie un marqueur par systeme et retourne leurs positions monde, indexees par identifiant.</summary>
+        /// <summary>
+        /// Instancie un marqueur par systeme et retourne leurs positions monde, indexees par
+        /// identifiant. Les marqueurs eux-memes sont conserves dans <see cref="_markers"/> pour
+        /// que <see cref="SystemGlyphController"/> puisse les tenir a jour (Phase 23).
+        /// </summary>
         private Dictionary<StarSystemId, Vector3> BuildMarkers(GalaxyMap map, int seed)
         {
             var systemsRoot = new GameObject("Systems").transform;
@@ -137,9 +145,27 @@ namespace Espace.Gameplay.Galaxy
                 var marker = markerObject.AddComponent<StarSystemMarker>();
                 StarSystemVisualProfile profile = StarSystemVisualProfile.Compute(system, seed);
                 marker.Initialize(system, circleSprite, profile);
+
+                _markers[system.Id] = marker;
             }
 
             return worldPositions;
+        }
+
+        /// <summary>
+        /// Branche l'encodage diegetique de l'etat des systemes (Phase 23, tranche A).
+        /// <para>
+        /// Cree par code comme tout le reste de cette scene : aucune reference serialisee a
+        /// ajouter au YAML, donc aucun risque de scene mal cablee.
+        /// </para>
+        /// </summary>
+        private void BuildSystemGlyphs(GalaxyMap map)
+        {
+            var glyphsObject = new GameObject("SystemGlyphs");
+            glyphsObject.transform.SetParent(transform, worldPositionStays: false);
+
+            var glyphs = glyphsObject.AddComponent<SystemGlyphController>();
+            glyphs.Initialize(map, _markers);
         }
 
         /// <summary>Cree le maillage combine des routes hyperspatiales, en un seul draw call.</summary>

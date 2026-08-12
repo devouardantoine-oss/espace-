@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Espace.Gameplay.Galaxy
@@ -44,9 +45,36 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Vitesse de rotation de l'anneau, en degres/seconde — purement cosmetique.</summary>
         private const float RingRotationSpeed = 6f;
 
+        // La geometrie (echelles des anneaux, du halo, orbite des pastilles) vit dans
+        // SystemGlyph, source unique verifiee par des tests d'invariants. Ce composant ne fait
+        // que l'appliquer.
+
+        /// <summary>Opacite des anneaux de developpement : lisibles, jamais dominants.</summary>
+        private const float DevelopmentRingOpacity = 0.62f;
+
+        /// <summary>Teinte des anneaux de developpement — laiton, distincte de l'anneau decoratif blanc.</summary>
+        private static readonly Color DevelopmentRingColor = new Color(0.78f, 0.58f, 0.29f);
+
+        /// <summary>Teinte des pastilles de garnison.</summary>
+        private static readonly Color GarrisonPipColor = new Color(0.44f, 0.66f, 0.72f);
+
+        /// <summary>Teinte de la derniere pastille quand la garnison depasse le plafond affichable.</summary>
+        private static readonly Color GarrisonOverflowColor = new Color(0.94f, 0.86f, 0.62f);
+
         private SpriteRenderer _spriteRenderer;
         private CircleCollider2D _collider;
         private Transform _ringTransform;
+
+        /// <summary>Anneaux de developpement, crees a la demande et conserves (voir <see cref="ApplyGlyph"/>).</summary>
+        private readonly List<SpriteRenderer> _developmentRings = new List<SpriteRenderer>(SystemGlyph.MaximumDevelopmentRings);
+
+        /// <summary>Pastilles de garnison, creees a la demande et conservees.</summary>
+        private readonly List<SpriteRenderer> _garrisonPips = new List<SpriteRenderer>(SystemGlyph.MaximumGarrisonPips);
+
+        private SpriteRenderer _halo;
+
+        /// <summary>Rayon effectif du marqueur, base des echelles relatives ci-dessus.</summary>
+        private float _radius = MarkerRadius;
 
         /// <summary>Identifiant du systeme represente. Valide uniquement apres <see cref="Initialize"/>.</summary>
         public StarSystemId Id { get; private set; }
@@ -72,8 +100,8 @@ namespace Espace.Gameplay.Galaxy
             _collider.radius = MarkerRadius;
             _collider.isTrigger = true;
 
-            float radius = MarkerRadius * profile.SizeFactor;
-            transform.localScale = Vector3.one * (radius * 2f);
+            _radius = MarkerRadius * profile.SizeFactor;
+            transform.localScale = Vector3.one * (_radius * 2f);
 
             if (profile.HasRing)
             {
@@ -92,6 +120,165 @@ namespace Espace.Gameplay.Galaxy
             {
                 _ringTransform.Rotate(0f, 0f, RingRotationSpeed * Time.deltaTime);
             }
+        }
+
+        /// <summary>
+        /// Applique l'etat vivant du systeme : anneaux de developpement, halo de stabilite,
+        /// pastilles de garnison (Phase 23, tranche A).
+        /// <para>
+        /// <b>Ce composant reste un applicateur.</b> Il ne decide de rien et ne lit aucun
+        /// service : <see cref="SystemGlyph"/> a deja tranche ce qui est visible et ce qui ne
+        /// l'est pas, <see cref="SystemGlyphController"/> fournit les valeurs. C'est la meme
+        /// separation que pour <see cref="StarSystemVisualProfile"/> depuis la Phase 12.
+        /// </para>
+        /// <para>
+        /// <b>Les objets sont crees a la demande puis conserves</b>, jamais detruits : un systeme
+        /// qui gagne un niveau ne recree pas ses anneaux precedents, et un systeme dont la
+        /// garnison retombe se contente de masquer des pastilles. Detruire et recreer a chaque
+        /// mois produirait des centaines d'allocations sur une carte de cent systemes.
+        /// </para>
+        /// <para>
+        /// <b>Anneaux de developpement contre anneau decoratif.</b> Le marqueur peut deja porter
+        /// un anneau issu de <see cref="StarSystemVisualProfile"/> depuis la Phase 12 — il reste,
+        /// et les deux ne se confondent pas : le decoratif est une ellipse blanche inclinee qui
+        /// tourne, les anneaux de developpement sont des cercles laiton concentriques et fixes.
+        /// </para>
+        /// </summary>
+        public void ApplyGlyph(SystemGlyph glyph)
+        {
+            ApplyDevelopmentRings(glyph.DevelopmentRings);
+            ApplyHalo(glyph);
+            ApplyGarrisonPips(glyph);
+        }
+
+        private void ApplyDevelopmentRings(int count)
+        {
+            for (int i = _developmentRings.Count; i < count; i++)
+            {
+                _developmentRings.Add(BuildDevelopmentRing(i));
+            }
+
+            for (int i = 0; i < _developmentRings.Count; i++)
+            {
+                _developmentRings[i].enabled = i < count;
+            }
+        }
+
+        private SpriteRenderer BuildDevelopmentRing(int index)
+        {
+            var ringObject = new GameObject($"DevelopmentRing{index}");
+            ringObject.transform.SetParent(transform, worldPositionStays: false);
+            ringObject.transform.localPosition = new Vector3(0f, 0f, 0.02f);
+
+            float scale = SystemGlyph.FirstDevelopmentRingScale + index * SystemGlyph.DevelopmentRingSpacing;
+            ringObject.transform.localScale = new Vector3(scale, scale, 1f);
+
+            var renderer = ringObject.AddComponent<SpriteRenderer>();
+            renderer.sprite = RuntimeSpriteFactory.GetThinRingSprite();
+            renderer.color = new Color(
+                DevelopmentRingColor.r, DevelopmentRingColor.g, DevelopmentRingColor.b, DevelopmentRingOpacity);
+
+            return renderer;
+        }
+
+        /// <summary>
+        /// Halo de stabilite, place <b>derriere</b> tout le reste. Il n'existe que sur les
+        /// systemes possedes : voir la regle de confidentialite dans <see cref="SystemGlyph"/>.
+        /// </summary>
+        private void ApplyHalo(SystemGlyph glyph)
+        {
+            if (!glyph.RevealsInternalState || glyph.HaloOpacity <= 0f)
+            {
+                if (_halo != null)
+                {
+                    _halo.enabled = false;
+                }
+
+                return;
+            }
+
+            if (_halo == null)
+            {
+                var haloObject = new GameObject("StabilityHalo");
+                haloObject.transform.SetParent(transform, worldPositionStays: false);
+                haloObject.transform.localPosition = new Vector3(0f, 0f, 0.03f);
+                haloObject.transform.localScale = new Vector3(SystemGlyph.HaloScale, SystemGlyph.HaloScale, 1f);
+
+                _halo = haloObject.AddComponent<SpriteRenderer>();
+                _halo.sprite = RuntimeSpriteFactory.GetAtmosphereSprite();
+            }
+
+            _halo.enabled = true;
+            _halo.color = new Color(glyph.HaloColor.r, glyph.HaloColor.g, glyph.HaloColor.b, glyph.HaloOpacity);
+        }
+
+        /// <summary>
+        /// Pastilles de garnison, disposees en eventail sous le systeme — jamais au-dessus, ou
+        /// elles se confondraient avec les lunes decoratives de la Phase 12.
+        /// </summary>
+        private void ApplyGarrisonPips(SystemGlyph glyph)
+        {
+            int count = glyph.RevealsInternalState ? glyph.GarrisonPips : 0;
+
+            for (int i = _garrisonPips.Count; i < count; i++)
+            {
+                _garrisonPips.Add(BuildGarrisonPip(i));
+            }
+
+            for (int i = 0; i < _garrisonPips.Count; i++)
+            {
+                bool visible = i < count;
+                _garrisonPips[i].enabled = visible;
+
+                if (!visible)
+                {
+                    continue;
+                }
+
+                bool isOverflowMarker = glyph.GarrisonExceedsPips && i == count - 1;
+                _garrisonPips[i].color = isOverflowMarker ? GarrisonOverflowColor : GarrisonPipColor;
+            }
+
+            LayOutGarrisonPips(count);
+        }
+
+        /// <summary>
+        /// Repartit les pastilles visibles sur un arc centre vers le bas, recalcule a chaque
+        /// changement : trois pastilles doivent rester centrees, pas occuper les trois premieres
+        /// places d'un eventail de cinq.
+        /// </summary>
+        private void LayOutGarrisonPips(int count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            const float downwards = -90f;
+            float step = count > 1 ? SystemGlyph.GarrisonPipArc / (count - 1) : 0f;
+            float start = downwards - (count > 1 ? SystemGlyph.GarrisonPipArc * 0.5f : 0f);
+
+            for (int i = 0; i < count; i++)
+            {
+                float radians = (start + step * i) * Mathf.Deg2Rad;
+                _garrisonPips[i].transform.localPosition = new Vector3(
+                    Mathf.Cos(radians) * SystemGlyph.GarrisonPipOrbit,
+                    Mathf.Sin(radians) * SystemGlyph.GarrisonPipOrbit,
+                    -0.02f);
+            }
+        }
+
+        private SpriteRenderer BuildGarrisonPip(int index)
+        {
+            var pipObject = new GameObject($"GarrisonPip{index}");
+            pipObject.transform.SetParent(transform, worldPositionStays: false);
+            pipObject.transform.localScale = Vector3.one * SystemGlyph.GarrisonPipScale;
+
+            var renderer = pipObject.AddComponent<SpriteRenderer>();
+            renderer.sprite = RuntimeSpriteFactory.GetCircleSprite();
+            renderer.color = GarrisonPipColor;
+
+            return renderer;
         }
 
         /// <summary>
