@@ -41,7 +41,13 @@ namespace Espace.UI
         /// <summary>Largeur d'un bouton de vitesse.</summary>
         public const int SpeedButtonWidth = 26;
 
-        public const int ManagementButtonWidth = 70;
+        /// <summary>
+        /// Largeur du bouton « Menu ».
+        /// <para>
+        /// Le bouton « Gestion » a disparu en Phase 24 : le rail de gestion est permanent, donc
+        /// il n'y avait plus rien à ouvrir. Ses 74 unités sont rendues à la carte.
+        /// </para>
+        /// </summary>
         public const int MenuButtonWidth = 52;
 
         /// <summary>
@@ -99,7 +105,7 @@ namespace Espace.UI
         {
             float speeds = hasClock ? SpeedGroupWidth() : 0f;
             float date = hasClock && withDate ? DateWidth + Gap : 0f;
-            float windows = AlertBadgeWidth + Gap + ManagementButtonWidth + Gap + MenuButtonWidth;
+            float windows = AlertBadgeWidth + Gap + MenuButtonWidth;
 
             return date + speeds + Gap + windows + 2 * Gap;
         }

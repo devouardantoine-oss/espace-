@@ -275,6 +275,11 @@ namespace Espace.UI
         /// <summary>
         /// Angle droit : date, contrôle du temps, et les deux fenêtres.
         /// <para>
+        /// <b>Plus de bouton « Gestion » depuis la Phase 24 :</b> le rail de gestion est
+        /// permanent contre le bord gauche, donc un bouton qui l'ouvrirait n'aurait rien à
+        /// ouvrir. Les 74 unités récupérées reviennent à la carte.
+        /// </para>
+        /// <para>
         /// <b>Les cinq boutons de vitesse sont conservés en accès direct</b> plutôt que remplacés
         /// par un cycle plus compact : changer de vitesse est le geste le plus fréquent d'un jeu
         /// de stratégie, et le faire en trois appuis au lieu d'un serait une régression que les
@@ -305,16 +310,6 @@ namespace Espace.UI
             }
 
             x = DrawAlertBadge(new Rect(x, rect.y + 2, HudLayout.AlertBadgeWidth, rect.height - 4));
-
-            if (_managementWindow != null)
-            {
-                if (GUI.Button(new Rect(x, rect.y + 2, HudLayout.ManagementButtonWidth, rect.height - 4), "Gestion", UITheme.Button))
-                {
-                    _managementWindow.ToggleVisible();
-                }
-
-                x += HudLayout.ManagementButtonWidth + HudLayout.Gap;
-            }
 
             if (_pauseMenu != null && GUI.Button(new Rect(x, rect.y + 2, HudLayout.MenuButtonWidth, rect.height - 4), "Menu", UITheme.Button))
             {

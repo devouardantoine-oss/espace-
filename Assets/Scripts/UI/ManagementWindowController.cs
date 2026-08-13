@@ -10,7 +10,6 @@ using Espace.Gameplay.Espionage;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.Research;
-using Espace.Gameplay.Save;
 using UnityEngine;
 
 namespace Espace.UI
@@ -18,44 +17,42 @@ namespace Espace.UI
     /// <summary>Un onglet de la fenetre de gestion (voir <see cref="ManagementWindowController"/>).</summary>
     public enum ManagementTab
     {
-        Empires,
+        Empire,
         Flottes,
-        Operations,
         Diplomatie,
         Recherche,
         Espionnage,
-        Journal,
-        Sauvegarde
+        Journal
     }
 
     /// <summary>
-    /// Fenetre unique a onglets, ouverte/fermee par le bouton « Gestion » de <see cref="HudController"/> :
-    /// regroupe les cinq ecrans qui ne portent pas sur un systeme particulier (contrairement a
-    /// <see cref="SystemInfoPanelController"/>) — empires, diplomatie, recherche, espionnage,
-    /// sauvegarde.
+    /// Le rail de gestion : six entrees permanentes contre le bord gauche, et un panneau qui se
+    /// pose a cote (Phase 24, etape 2).
     /// <para>
-    /// <b>Remplace cinq panneaux de diagnostic distincts (Phases 5, 7, 8, 9, 10) :</b>
-    /// <c>EmpireDebugPanel</c>, <c>DiplomacyDebugPanel</c>, <c>ResearchDebugPanel</c>,
-    /// <c>EspionageDebugPanel</c>, <c>SaveDebugPanel</c>. Chacun s'affichait auparavant dans
-    /// son propre encart flottant, tous simultanement a l'ecran ; les regrouper en onglets
-    /// libere l'espace pour la carte et rend chaque ecran plus lisible (plus de contrainte de
-    /// hauteur empilee sur les autres). Le contenu de chaque onglet est la logique exacte des
-    /// panneaux d'origine, seulement redessinee avec <see cref="UITheme"/> dans une zone
-    /// partagee plutot que sa propre <c>GUI.Box</c>.
+    /// <b>Ce qui est remplace.</b> Une fenetre modale de 660 × 460, centree — donc <b>coupee</b>
+    /// sur un ecran de 286 unites de haut, et recouvrant la carte entierement. Le jeu avait deux
+    /// modes : regarder, ou gerer. Comparer deux systemes etait impossible, suivre une flotte en
+    /// vol pendant qu'on en commande une autre aussi.
     /// </para>
     /// <para>
-    /// Pas d'onglet « Economie » distinct : le tresor et les impots du joueur sont deja
-    /// visibles en permanence dans <see cref="HudController"/>, et les actions economiques
-    /// (construire, investir) portent toujours sur un systeme precis, donc vivent dans
-    /// <see cref="SystemInfoPanelController"/> — un onglet dedie n'aurait rien montre de plus.
+    /// <b>Le rail est la navigation, pas une fenetre :</b> il est toujours affiche, toujours a la
+    /// meme place, et le bouton « Gestion » du bandeau a disparu avec lui. Seul le panneau
+    /// s'ouvre et se ferme — en appuyant sur l'entree deja ouverte, ou sur la croix.
+    /// </para>
+    /// <para>
+    /// <b>Six entrees et non huit.</b> « Operations » est repliee dans Flottes : les deux
+    /// montraient des flottes, rien n'indiquait laquelle ouvrir, et une flotte en campagne
+    /// figurait dans les deux. « Sauvegarde » rejoint le menu pause, qui portait deja les memes
+    /// boutons — sauvegarder n'est pas une decision de jeu, c'est une operation sur la partie.
+    /// </para>
+    /// <para>
+    /// Pas d'entree « Economie » : le tresor complet et le reglage fiscal vivent dans Empire
+    /// depuis la Phase 23, et les actions economiques portent toujours sur un systeme precis,
+    /// donc vivent dans <see cref="SystemInfoPanelController"/>.
     /// </para>
     /// </summary>
     public sealed class ManagementWindowController : MonoBehaviour
     {
-        private const int WindowWidth = 660;
-        private const int WindowHeight = 460;
-        private const int TabStripWidth = 130;
-
         /// <summary>Pas du reglage fiscal, repris de la barre superieure d'ou il vient (Phase 23).</summary>
         private const float TaxStep = 0.1f;
 
@@ -73,11 +70,17 @@ namespace Espace.UI
         /// </summary>
         private IChronicleService _chronicle;
 
-        /// <summary>Rapports recents affiches dans l'onglet Operations, qui reste un tableau de bord.</summary>
+        /// <summary>Denouements recents rappeles en bas de l'entree Flottes.</summary>
         private const int OperationReportCount = 6;
 
-        private bool _visible;
-        private ManagementTab _activeTab = ManagementTab.Empires;
+        /// <summary>
+        /// Entree ouverte, ou <c>null</c> si seul le rail est visible.
+        /// <para>
+        /// Le rail, lui, est <b>toujours</b> affiche : c'est la navigation, pas une fenetre.
+        /// </para>
+        /// </summary>
+        private ManagementTab? _openTab;
+
         private Vector2 _contentScroll;
 
         private EmpireRegistry _empireRegistry;
@@ -86,49 +89,109 @@ namespace Espace.UI
         private IDiplomacyService _diplomacy;
         private IResearchService _research;
         private IEspionageService _espionage;
-        private ISaveService _save;
         private IMilitaryService _military;
 
-        private string _lastSaveResult = string.Empty;
         private readonly Dictionary<int, UnitBundle> _lastDiscoveredArmies = new Dictionary<int, UnitBundle>();
-
-        /// <summary>Ouvre ou ferme la fenetre. Appele par <see cref="HudController"/>.</summary>
-        public void ToggleVisible() => _visible = !_visible;
 
         private void OnGUI()
         {
             UITheme.BeginScaledLayout();
             try
             {
-                if (!_visible)
-                {
-                    return;
-                }
-
                 ResolveServices();
 
-                var rect = new Rect((UITheme.ScreenWidth - WindowWidth) / 2f, (UITheme.ScreenHeight - WindowHeight) / 2f, WindowWidth, WindowHeight);
-                UiScreenRegions.Occupy(rect, UITheme.Scale);
-                GUI.Box(rect, string.Empty, UITheme.Panel);
+                ManagementLayout layout = ManagementLayout.For(UITheme.ScreenWidth, UITheme.ScreenHeight);
 
-                GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, WindowWidth - 16, WindowHeight - 12));
-                GUILayout.BeginHorizontal();
+                DrawRail(layout);
 
-                DrawTabStrip();
-
-                GUILayout.BeginVertical();
-                _contentScroll = GUILayout.BeginScrollView(_contentScroll);
-                DrawActiveTabContent();
-                GUILayout.EndScrollView();
-                GUILayout.EndVertical();
-
-                GUILayout.EndHorizontal();
-                GUILayout.EndArea();
+                if (_openTab.HasValue)
+                {
+                    DrawPanel(layout, _openTab.Value);
+                }
             }
             finally
             {
                 UITheme.EndScaledLayout();
             }
+        }
+
+        /// <summary>
+        /// Le rail : six entrees, toujours visibles, toujours a la meme place.
+        /// <para>
+        /// <b>C'est ce qui permet a la memoire musculaire de s'installer</b> : le panneau change,
+        /// jamais le rail. Appuyer sur l'entree deja ouverte referme — un seul geste pour ouvrir
+        /// et fermer.
+        /// </para>
+        /// </summary>
+        private void DrawRail(ManagementLayout layout)
+        {
+            GUI.Box(layout.Rail, GUIContent.none, UITheme.Panel);
+            UiScreenRegions.Occupy(layout.Rail, UITheme.Scale);
+
+            for (int i = 0; i < AllTabs.Length; i++)
+            {
+                ManagementTab tab = AllTabs[i];
+                var itemRect = new Rect(
+                    layout.Rail.x, layout.Rail.y + i * ManagementLayout.RailItemHeight,
+                    layout.Rail.width, ManagementLayout.RailItemHeight);
+
+                if (itemRect.yMax > layout.Rail.yMax)
+                {
+                    break;
+                }
+
+                bool open = _openTab.HasValue && _openTab.Value == tab;
+                GUIStyle style = open ? UITheme.ActiveTabButton : UITheme.TabButton;
+
+                if (GUI.Button(itemRect, RailLabel(tab), style))
+                {
+                    _openTab = open ? (ManagementTab?)null : tab;
+                    _contentScroll = Vector2.zero;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Libelle d'une entree, avec le compteur d'avis non lus sur le Journal.
+        /// <para>
+        /// Le compteur apparait a deux endroits — ici et dans le bandeau — volontairement : deux
+        /// chemins vers le meme endroit, et aucun element orphelin.
+        /// </para>
+        /// </summary>
+        private string RailLabel(ManagementTab tab)
+        {
+            if (tab != ManagementTab.Journal)
+            {
+                return tab.ToString();
+            }
+
+            int unread = _chronicle?.Log.UnreadCount ?? 0;
+            return unread > 0 ? $"Journal  {unread}" : "Journal";
+        }
+
+        /// <summary>
+        /// Le panneau, pose <b>a cote</b> du rail et jamais par-dessus la carte entiere : il
+        /// reste toujours de la galaxie manipulable a droite (voir <see cref="ManagementLayout"/>).
+        /// </summary>
+        private void DrawPanel(ManagementLayout layout, ManagementTab tab)
+        {
+            GUI.Box(layout.Panel, GUIContent.none, UITheme.Panel);
+            UiScreenRegions.Occupy(layout.Panel, UITheme.Scale);
+
+            var closeRect = new Rect(layout.Panel.xMax - 26, layout.Panel.y + 5, 20, 18);
+            if (GUI.Button(closeRect, "\u00D7", UITheme.Button))
+            {
+                _openTab = null;
+                return;
+            }
+
+            GUILayout.BeginArea(new Rect(layout.Panel.x + 8, layout.Panel.y + 6, layout.Panel.width - 38, layout.Panel.height - 12));
+            _contentScroll = GUILayout.BeginScrollView(_contentScroll);
+
+            DrawTabContent(tab);
+
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
         }
 
         private void ResolveServices()
@@ -139,7 +202,6 @@ namespace Espace.UI
             if (_diplomacy == null) ServiceLocator.TryGet(out _diplomacy);
             if (_research == null) ServiceLocator.TryGet(out _research);
             if (_espionage == null) ServiceLocator.TryGet(out _espionage);
-            if (_save == null) ServiceLocator.TryGet(out _save);
             if (_military == null) ServiceLocator.TryGet(out _military);
             if (_chronicle == null) ServiceLocator.TryGet(out _chronicle);
         }
@@ -147,8 +209,7 @@ namespace Espace.UI
         /// <summary>Ouvre la fenetre directement sur le journal. Appele par le compteur d'alertes.</summary>
         public void OpenJournal()
         {
-            _visible = true;
-            _activeTab = ManagementTab.Journal;
+            _openTab = ManagementTab.Journal;
             _contentScroll = Vector2.zero;
         }
 
@@ -205,120 +266,16 @@ namespace Espace.UI
             }
         }
 
-        /// <summary>
-        /// Suivi des operations en cours (Phase 20) : uniquement ce qui bouge, avec son etat.
-        /// L'onglet Flottes reste l'inventaire complet ; celui-ci est le tableau de bord.
-        /// </summary>
-        private void DrawOperationsTab()
+        /// <summary>Aiguille vers le contenu de l'entree ouverte.</summary>
+        private void DrawTabContent(ManagementTab tab)
         {
-            GUILayout.Label("Operations", UITheme.Title);
-
-            if (_military == null || _map == null)
+            switch (tab)
             {
-                GUILayout.Label("Service militaire indisponible.", UITheme.MutedLabel);
-                return;
-            }
-
-            var campaigning = new List<Fleet>();
-            foreach (Fleet fleet in _military.GetFleetsForEmpire(EconomyService.PlayerOwnerId))
-            {
-                if (fleet.Status != FleetStatus.Stationed)
-                {
-                    campaigning.Add(fleet);
-                }
-            }
-
-            GUILayout.Label(
-                _military.CanDeployAnotherFleet(EconomyService.PlayerOwnerId)
-                    ? $"{campaigning.Count} flotte(s) en campagne — une place reste libre"
-                    : $"{campaigning.Count} flotte(s) en campagne — plafond atteint, recherchez la Logistique",
-                UITheme.MutedLabel);
-
-            GUILayout.Space(6);
-
-            if (campaigning.Count == 0)
-            {
-                GUILayout.Label("Aucune operation en cours.", UITheme.MutedLabel);
-            }
-
-            foreach (Fleet fleet in campaigning)
-            {
-                DrawOperationRow(fleet);
-            }
-
-            GUILayout.Space(10);
-            GUILayout.Label("Rapports recents", UITheme.Title);
-
-            List<GameNotice> recent = _chronicle?.Log.MostRecent(OperationReportCount, NoticeTier.Important);
-
-            if (recent == null || recent.Count == 0)
-            {
-                GUILayout.Label("Aucun denouement depuis l'ouverture de la partie.", UITheme.MutedLabel);
-                return;
-            }
-
-            foreach (GameNotice notice in recent)
-            {
-                GUILayout.Label($"{notice.Date}  —  {notice.Text}", UITheme.Label);
-            }
-        }
-
-        private void DrawOperationRow(Fleet fleet)
-        {
-            string destination = fleet.DestinationSystemId.HasValue
-                ? LocationLabel(fleet.DestinationSystemId.Value)
-                : "destination inconnue";
-
-            string state = fleet.Status == FleetStatus.AwaitingEncounter
-                ? "RENCONTRE"
-                : "EN ROUTE";
-
-            int remainingHops = fleet.Route != null ? fleet.Route.Count - 1 - fleet.RouteIndex : 0;
-
-            GUILayout.Label($"[{state}]  {fleet.Name}  ->  {destination}", UITheme.Label);
-            GUILayout.Label(
-                $"{fleet.Composition.TotalCount} unites · {remainingHops} saut(s) restant(s)"
-                + (fleet.ArrivalDate.HasValue ? $" · etape le {fleet.ArrivalDate.Value}" : string.Empty)
-                + (fleet.IsRetreating ? " · repli" : string.Empty),
-                UITheme.MutedLabel);
-            GUILayout.Space(4);
-        }
-
-        private void DrawTabStrip()
-        {
-            GUILayout.BeginVertical(GUILayout.Width(TabStripWidth));
-
-            foreach (ManagementTab tab in AllTabs)
-            {
-                GUIStyle style = tab == _activeTab ? UITheme.ActiveTabButton : UITheme.TabButton;
-                if (GUILayout.Button(tab.ToString(), style, GUILayout.Height(32)))
-                {
-                    _activeTab = tab;
-                    _contentScroll = Vector2.zero;
-                }
-            }
-
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Fermer", UITheme.Button, GUILayout.Height(28)))
-            {
-                _visible = false;
-            }
-
-            GUILayout.EndVertical();
-        }
-
-        private void DrawActiveTabContent()
-        {
-            switch (_activeTab)
-            {
-                case ManagementTab.Empires:
+                case ManagementTab.Empire:
                     DrawEmpiresTab();
                     break;
                 case ManagementTab.Flottes:
                     DrawFlottesTab();
-                    break;
-                case ManagementTab.Operations:
-                    DrawOperationsTab();
                     break;
                 case ManagementTab.Diplomatie:
                     DrawDiplomatieTab();
@@ -332,13 +289,8 @@ namespace Espace.UI
                 case ManagementTab.Journal:
                     DrawJournalTab();
                     break;
-                case ManagementTab.Sauvegarde:
-                    DrawSauvegardeTab();
-                    break;
             }
         }
-
-        // --- Empires ---------------------------------------------------------------------
 
         private void DrawEmpiresTab()
         {
@@ -451,9 +403,53 @@ namespace Espace.UI
                 return;
             }
 
+            int campaigning = 0;
+            foreach (Fleet fleet in fleets)
+            {
+                if (fleet.Status != FleetStatus.Stationed)
+                {
+                    campaigning++;
+                }
+            }
+
+            GUILayout.Label(
+                _military.CanDeployAnotherFleet(EconomyService.PlayerOwnerId)
+                    ? $"{campaigning} en campagne — une place reste libre"
+                    : $"{campaigning} en campagne — plafond atteint, recherchez la Logistique",
+                UITheme.MutedLabel);
+
+            GUILayout.Space(6);
+
             foreach (Fleet fleet in fleets)
             {
                 DrawFleetRow(fleet);
+            }
+
+            DrawRecentOutcomes();
+        }
+
+        /// <summary>
+        /// Denouements recents, repris de l'ancien onglet Operations (Phase 20).
+        /// <para>
+        /// Ils vivent desormais sous la liste des flottes plutot que dans une entree distincte :
+        /// « qu'est-il arrive a mes flottes » et « ou sont mes flottes » sont la meme question,
+        /// et les separer obligeait le joueur a choisir laquelle poser.
+        /// </para>
+        /// </summary>
+        private void DrawRecentOutcomes()
+        {
+            List<GameNotice> recent = _chronicle?.Log.MostRecent(OperationReportCount, NoticeTier.Important);
+            if (recent == null || recent.Count == 0)
+            {
+                return;
+            }
+
+            GUILayout.Space(10);
+            GUILayout.Label("Denouements recents", UITheme.Title);
+
+            foreach (GameNotice notice in recent)
+            {
+                GUILayout.Label($"{notice.Date}  —  {notice.Text}", UITheme.Label);
             }
         }
 
@@ -741,39 +737,6 @@ namespace Espace.UI
             if (error != null)
             {
                 GameLog.Warning($"[Espionage] {error}");
-            }
-        }
-
-        // --- Sauvegarde -----------------------------------------------------------------
-
-        private void DrawSauvegardeTab()
-        {
-            GUILayout.Label("Sauvegarde", UITheme.Title);
-
-            if (_save == null)
-            {
-                GUILayout.Label("Service de sauvegarde indisponible.", UITheme.MutedLabel);
-                return;
-            }
-
-            GUILayout.Label(_save.SaveFileExists ? "Sauvegarde : presente" : "Sauvegarde : aucune", UITheme.Label);
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Sauvegarder maintenant", UITheme.Button))
-            {
-                _save.SaveNow();
-                _lastSaveResult = "Sauvegarde ecrite.";
-            }
-
-            if (GUILayout.Button("Recharger", UITheme.Button))
-            {
-                _lastSaveResult = _save.TryLoadAndApply(out string error) ? "Sauvegarde rechargee." : $"Echec : {error}";
-            }
-            GUILayout.EndHorizontal();
-
-            if (!string.IsNullOrEmpty(_lastSaveResult))
-            {
-                GUILayout.Label(_lastSaveResult, UITheme.MutedLabel);
             }
         }
     }

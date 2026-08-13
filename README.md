@@ -1110,6 +1110,42 @@ unités qui a imposé cet arbitrage**, pas une estimation.
 
 ---
 
+### Le rail de gestion (Phase 24, étape 2)
+
+| Brique | Rôle |
+|---|---|
+| `ManagementLayout` | Fonction pure : où tiennent le rail et son panneau, et ce qui cède en premier |
+| `ManagementWindowController` | Dessine le rail permanent et le panneau qui se pose à côté |
+
+La fenêtre de gestion faisait **660 × 460, centrée**. Elle est plus haute que les 286 unités
+garanties — donc **coupée** sur téléphone dense — et recouvrait la carte entièrement. Le jeu avait
+deux modes : regarder, ou gérer. Comparer deux systèmes était impossible ; suivre une flotte en vol
+pendant qu'on en commande une autre aussi.
+
+| | Avant | Après |
+|---|---|---|
+| Forme | Fenêtre modale centrée | Rail permanent + panneau latéral |
+| Encombrement | 660 × 460 (coupée) | 108 × 180 + 322 × 241 |
+| Carte visible pendant la gestion | **aucune** | **au moins 90 unités**, vérifié par test |
+| Entrées | 8 onglets | 6 |
+
+> **Le rail est la navigation, pas une fenêtre.** Il ne bouge jamais, ne se ferme jamais, et garde
+> le même ordre — c'est ce qui permet à la mémoire musculaire de s'installer. Seul le panneau
+> s'ouvre et se ferme, en appuyant sur l'entrée déjà ouverte ou sur la croix. **Le bouton
+> « Gestion » du bandeau a disparu avec lui** : ses 74 unités sont rendues à la carte.
+>
+> **Le panneau cède avant la carte.** Sur un écran étroit il se resserre jusqu'à 180 unités pour
+> préserver 90 unités de galaxie visible — parce qu'un panneau un peu serré reste utilisable,
+> alors qu'une carte entièrement couverte annule tout l'intérêt du concept. C'est un test qui le
+> garantit, sur sept formats de 420 à 1600 unités.
+
+**Deux entrées supprimées, aucune fonction perdue.** *Opérations* est repliée dans Flottes : les
+deux montraient des flottes, rien n'indiquait laquelle ouvrir, et une flotte en campagne figurait
+dans les deux. *Sauvegarde* rejoint le menu pause, **qui portait déjà les mêmes boutons** —
+sauvegarder n'est pas une décision de jeu, c'est une opération sur la partie.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus
@@ -1839,6 +1875,7 @@ plus court que le fondu, la playlist vide et la frame de durée nulle.
 | 23.a | Carte diégétique : la planète porte son propre état | ✅ terminée |
 | 23.b | Liseré d'état : la barre supérieure fond de 44 à 33 unités | ✅ terminée |
 | 24.1 | Le fil : les 31 événements deviennent un journal, et un compteur d'alertes | ✅ terminée |
+| 24.2 | Le rail de gestion remplace la fenêtre modale | ✅ terminée |
 
 Chaque phase est développée, testée et validée avant de passer à la suivante. Un seul système
 complexe à la fois (consigne du brief), toujours en vigueur : les Phases 12 à 18 remplacent
