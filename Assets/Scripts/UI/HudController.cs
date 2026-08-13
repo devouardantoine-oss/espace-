@@ -80,6 +80,9 @@ namespace Espace.UI
         /// </summary>
         private StateSegment[] _band;
 
+        /// <summary>Vrai quand la liste des vitesses est depliee.</summary>
+        private bool _speedListOpen;
+
         private void Awake()
         {
             _managementWindow = GetComponent<ManagementWindowController>();
@@ -306,7 +309,8 @@ namespace Espace.UI
 
             if (_gameClock != null)
             {
-                x = DrawSpeedControls(new Rect(x, rect.y + 2, HudLayout.SpeedGroupWidth(), rect.height - 4)) + HudLayout.Gap;
+                DrawSpeedSelector(new Rect(x, rect.y + 2, HudLayout.SpeedSelectorWidth, rect.height - 4));
+                x += HudLayout.SpeedSelectorWidth + HudLayout.Gap;
             }
 
             x = DrawAlertBadge(new Rect(x, rect.y + 2, HudLayout.AlertBadgeWidth, rect.height - 4));
@@ -358,35 +362,87 @@ namespace Espace.UI
             return rect.x + HudLayout.AlertBadgeWidth + HudLayout.Gap;
         }
 
-        /// <summary>Pause et quatre vitesses, en libellés courts.</summary>
-        private float DrawSpeedControls(Rect rect)
+        /// <summary>
+        /// Sélecteur de vitesse : un bouton qui montre la vitesse en cours, et déplie les cinq
+        /// choix quand on l'ouvre.
+        /// <para>
+        /// <b>Il remplace cinq boutons alignés</b> qui occupaient 146 unités en permanence pour
+        /// une commande qu'on utilise par à-coups. Le sélecteur en demande 54 et les cinq choix
+        /// restent atteignables en deux appuis — un compromis que les 92 unités rendues à la
+        /// carte paient largement.
+        /// </para>
+        /// <para>
+        /// <b>La liste dépliée est déclarée occupée</b>, sinon un appui destiné à choisir une
+        /// vitesse traverserait jusqu'à la carte et désélectionnerait le système en cours.
+        /// </para>
+        /// </summary>
+        private void DrawSpeedSelector(Rect rect)
         {
-            float x = rect.x;
+            if (GUI.Button(rect, CurrentSpeedLabel() + " \u25BE", _speedListOpen ? UITheme.ActiveTabButton : UITheme.Button))
+            {
+                _speedListOpen = !_speedListOpen;
+            }
 
-            if (GUI.Button(new Rect(x, rect.y, HudLayout.SpeedButtonWidth, rect.height), _gameClock.IsPaused ? "▶" : "II", UITheme.Button))
+            if (!_speedListOpen)
+            {
+                return;
+            }
+
+            var listRect = new Rect(
+                rect.x, rect.yMax + 2f,
+                rect.width, HudLayout.SpeedOptionCount * HudLayout.SpeedOptionHeight);
+
+            GUI.Box(listRect, GUIContent.none, UITheme.Panel);
+            UiScreenRegions.Occupy(listRect, UITheme.Scale);
+
+            DrawSpeedOption(listRect, 0, "Pause", null);
+            DrawSpeedOption(listRect, 1, "\u00D71", GameSpeed.Normal);
+            DrawSpeedOption(listRect, 2, "\u00D72", GameSpeed.Fast);
+            DrawSpeedOption(listRect, 3, "\u00D73", GameSpeed.Faster);
+            DrawSpeedOption(listRect, 4, "\u00D74", GameSpeed.Fastest);
+        }
+
+        /// <summary>Libellé compact de l'état actuel de l'horloge.</summary>
+        private string CurrentSpeedLabel()
+        {
+            return _gameClock.IsPaused ? "II" : $"\u00D7{_gameClock.CurrentMultiplier:0.#}";
+        }
+
+        /// <summary>
+        /// Une ligne de la liste. <paramref name="speed"/> à <c>null</c> désigne la pause, qui
+        /// n'est pas une vitesse mais un état — d'où le paramètre nullable plutôt qu'une
+        /// sixième valeur dans <c>GameSpeed</c>.
+        /// </summary>
+        private void DrawSpeedOption(Rect listRect, int index, string label, GameSpeed? speed)
+        {
+            var optionRect = new Rect(
+                listRect.x, listRect.y + index * HudLayout.SpeedOptionHeight,
+                listRect.width, HudLayout.SpeedOptionHeight);
+
+            bool active = speed.HasValue
+                ? !_gameClock.IsPaused && _gameClock.CurrentSpeed == speed.Value
+                : _gameClock.IsPaused;
+
+            if (!GUI.Button(optionRect, label, active ? UITheme.ActiveTabButton : UITheme.TabButton))
+            {
+                return;
+            }
+
+            if (speed.HasValue)
+            {
+                if (_gameClock.IsPaused)
+                {
+                    _gameClock.TogglePause();
+                }
+
+                _gameClock.SetSpeed(speed.Value);
+            }
+            else if (!_gameClock.IsPaused)
             {
                 _gameClock.TogglePause();
             }
 
-            x += HudLayout.SpeedButtonWidth + HudLayout.Gap;
-            x = DrawSpeedButton(x, rect, "x1", GameSpeed.Normal);
-            x = DrawSpeedButton(x, rect, "x2", GameSpeed.Fast);
-            x = DrawSpeedButton(x, rect, "x3", GameSpeed.Faster);
-            x = DrawSpeedButton(x, rect, "x4", GameSpeed.Fastest);
-
-            return x - HudLayout.Gap;
-        }
-
-        /// <summary>La vitesse active est mise en évidence : sans cela, rien ne dit laquelle est en cours.</summary>
-        private float DrawSpeedButton(float x, Rect rect, string label, GameSpeed speed)
-        {
-            bool active = !_gameClock.IsPaused && _gameClock.CurrentSpeed == speed;
-            if (GUI.Button(new Rect(x, rect.y, HudLayout.SpeedButtonWidth, rect.height), label, active ? UITheme.ActiveTabButton : UITheme.Button))
-            {
-                _gameClock.SetSpeed(speed);
-            }
-
-            return x + HudLayout.SpeedButtonWidth + HudLayout.Gap;
+            _speedListOpen = false;
         }
     }
 }

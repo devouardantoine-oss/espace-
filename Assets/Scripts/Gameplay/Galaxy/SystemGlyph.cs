@@ -34,8 +34,26 @@ namespace Espace.Gameplay.Galaxy
     /// </summary>
     public readonly struct SystemGlyph
     {
-        /// <summary>Nombre maximal d'anneaux, egal au developpement maximal d'un systeme.</summary>
-        public const int MaximumDevelopmentRings = 5;
+        /// <summary>
+        /// Developpement a partir duquel un systeme porte son anneau.
+        /// <para>
+        /// <b>Un seul anneau, et seulement au maximum.</b> La premiere version en dessinait un
+        /// par niveau, de zero a cinq. Vu dans l'editeur sur une carte de cent systemes, le
+        /// resultat etait illisible : a distance de vue d'ensemble, trois a cinq cercles
+        /// concentriques se rejoignent en pate lumineux et plus personne ne les compte. Les tests
+        /// garantissaient qu'ils ne se chevauchaient pas <i>sur un systeme isole</i> — ils ne
+        /// pouvaient rien dire de cent systemes vus de loin.
+        /// </para>
+        /// <para>
+        /// L'anneau unique dit desormais une seule chose, mais il la dit clairement : <b>ce monde
+        /// est developpe au maximum</b>. C'est aussi l'information qui compte le plus, puisque
+        /// c'est le seul niveau auquel un systeme finance largement sa part d'administration.
+        /// </para>
+        /// </summary>
+        public const int FullyDevelopedLevel = 5;
+
+        /// <summary>Nombre maximal d'anneaux : un seul, voir <see cref="FullyDevelopedLevel"/>.</summary>
+        public const int MaximumDevelopmentRings = 1;
 
         /// <summary>
         /// Nombre maximal de pastilles de garnison affichees.
@@ -76,11 +94,8 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Echelle de l'anneau decoratif de la Phase 12, quand le systeme en porte un.</summary>
         public const float DecorativeRingScale = 1.9f;
 
-        /// <summary>Echelle du premier anneau de developpement. Au-dela de l'anneau decoratif, deliberement.</summary>
-        public const float FirstDevelopmentRingScale = 2.5f;
-
-        /// <summary>Ecart d'echelle entre deux anneaux de developpement consecutifs.</summary>
-        public const float DevelopmentRingSpacing = 0.6f;
+        /// <summary>Echelle de l'anneau de developpement. Au-dela de l'anneau decoratif, deliberement.</summary>
+        public const float DevelopmentRingScale = 2.5f;
 
         /// <summary>Echelle du halo de stabilite.</summary>
         public const float HaloScale = 5.8f;
@@ -94,21 +109,9 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Arc, en degres, sur lequel les pastilles se repartissent sous le systeme.</summary>
         public const float GarrisonPipArc = 74f;
 
-        /// <summary>Echelle de l'anneau de developpement d'indice <paramref name="index"/> (0 pour le premier).</summary>
-        public static float DevelopmentRingScaleAt(int index)
-        {
-            return FirstDevelopmentRingScale + index * DevelopmentRingSpacing;
-        }
-
-        /// <summary>Echelle du dernier anneau possible : la borne que le halo doit depasser.</summary>
-        public static float OutermostDevelopmentRingScale()
-        {
-            return DevelopmentRingScaleAt(MaximumDevelopmentRings - 1);
-        }
-
         // --- Etat encode -----------------------------------------------------
 
-        /// <summary>Anneaux de developpement, de 0 a <see cref="MaximumDevelopmentRings"/>.</summary>
+        /// <summary>Anneau de developpement : 1 si le monde est au maximum, 0 sinon.</summary>
         public readonly int DevelopmentRings;
 
         /// <summary>Vrai si l'observateur possede ce systeme, donc en connait l'interieur.</summary>
@@ -139,13 +142,13 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>
         /// Encodage d'un systeme tel que le voit <paramref name="ownedByViewer"/>.
         /// </summary>
-        /// <param name="developmentLevel">Niveau de developpement, 0 a 5. Visible de tous.</param>
+        /// <param name="developmentLevel">Niveau de developpement, 0 a 5. Visible de tous, mais seul le maximum se voit.</param>
         /// <param name="stability">Stabilite, 0 a 1. Ignoree si le systeme n'appartient pas a l'observateur.</param>
         /// <param name="garrisonCount">Unites en garnison. Ignorees si le systeme n'appartient pas a l'observateur.</param>
         /// <param name="ownedByViewer">Vrai si l'observateur possede ce systeme.</param>
         public static SystemGlyph For(int developmentLevel, float stability, int garrisonCount, bool ownedByViewer)
         {
-            int rings = Mathf.Clamp(developmentLevel, 0, MaximumDevelopmentRings);
+            int rings = developmentLevel >= FullyDevelopedLevel ? 1 : 0;
 
             if (!ownedByViewer)
             {

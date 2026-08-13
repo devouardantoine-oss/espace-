@@ -65,8 +65,8 @@ namespace Espace.Gameplay.Galaxy
         private CircleCollider2D _collider;
         private Transform _ringTransform;
 
-        /// <summary>Anneaux de developpement, crees a la demande et conserves (voir <see cref="ApplyGlyph"/>).</summary>
-        private readonly List<SpriteRenderer> _developmentRings = new List<SpriteRenderer>(SystemGlyph.MaximumDevelopmentRings);
+        /// <summary>Anneau de developpement, cree a la demande et conserve (voir <see cref="ApplyGlyph"/>).</summary>
+        private SpriteRenderer _developmentRing;
 
         /// <summary>Pastilles de garnison, creees a la demande et conservees.</summary>
         private readonly List<SpriteRenderer> _garrisonPips = new List<SpriteRenderer>(SystemGlyph.MaximumGarrisonPips);
@@ -138,40 +138,50 @@ namespace Espace.Gameplay.Galaxy
         /// mois produirait des centaines d'allocations sur une carte de cent systemes.
         /// </para>
         /// <para>
-        /// <b>Anneaux de developpement contre anneau decoratif.</b> Le marqueur peut deja porter
+        /// <b>Anneau de developpement contre anneau decoratif.</b> Le marqueur peut deja porter
         /// un anneau issu de <see cref="StarSystemVisualProfile"/> depuis la Phase 12 — il reste,
         /// et les deux ne se confondent pas : le decoratif est une ellipse blanche inclinee qui
-        /// tourne, les anneaux de developpement sont des cercles laiton concentriques et fixes.
+        /// tourne, celui du developpement est un cercle laiton fixe, plus large.
         /// </para>
         /// </summary>
         public void ApplyGlyph(SystemGlyph glyph)
         {
-            ApplyDevelopmentRings(glyph.DevelopmentRings);
+            ApplyDevelopmentRing(glyph.DevelopmentRings);
             ApplyHalo(glyph);
             ApplyGarrisonPips(glyph);
         }
 
-        private void ApplyDevelopmentRings(int count)
+        /// <summary>
+        /// L'anneau n'apparait qu'au developpement maximal — voir
+        /// <see cref="SystemGlyph.FullyDevelopedLevel"/> pour la raison.
+        /// </summary>
+        private void ApplyDevelopmentRing(int count)
         {
-            for (int i = _developmentRings.Count; i < count; i++)
+            if (count <= 0)
             {
-                _developmentRings.Add(BuildDevelopmentRing(i));
+                if (_developmentRing != null)
+                {
+                    _developmentRing.enabled = false;
+                }
+
+                return;
             }
 
-            for (int i = 0; i < _developmentRings.Count; i++)
+            if (_developmentRing == null)
             {
-                _developmentRings[i].enabled = i < count;
+                _developmentRing = BuildDevelopmentRing();
             }
+
+            _developmentRing.enabled = true;
         }
 
-        private SpriteRenderer BuildDevelopmentRing(int index)
+        private SpriteRenderer BuildDevelopmentRing()
         {
-            var ringObject = new GameObject($"DevelopmentRing{index}");
+            var ringObject = new GameObject("DevelopmentRing");
             ringObject.transform.SetParent(transform, worldPositionStays: false);
             ringObject.transform.localPosition = new Vector3(0f, 0f, 0.02f);
-
-            float scale = SystemGlyph.FirstDevelopmentRingScale + index * SystemGlyph.DevelopmentRingSpacing;
-            ringObject.transform.localScale = new Vector3(scale, scale, 1f);
+            ringObject.transform.localScale =
+                new Vector3(SystemGlyph.DevelopmentRingScale, SystemGlyph.DevelopmentRingScale, 1f);
 
             var renderer = ringObject.AddComponent<SpriteRenderer>();
             renderer.sprite = RuntimeSpriteFactory.GetThinRingSprite();

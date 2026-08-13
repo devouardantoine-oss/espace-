@@ -975,7 +975,7 @@ en silence** :
 | Brique | Rôle |
 |---|---|
 | `SystemGlyph` | Fonction pure : quel encodage visuel pour quel état, et **ce qui a le droit d'être vu** |
-| `StarSystemMarker.ApplyGlyph` | Applicateur : anneaux, halo, pastilles. Ne décide de rien |
+| `StarSystemMarker.ApplyGlyph` | Applicateur : anneau, halo, pastilles. Ne décide de rien |
 | `SystemGlyphController` | Un seul abonnement à l'horloge pour les cent marqueurs |
 
 Lire l'état d'un système demandait d'ouvrir un panneau qui recouvrait la carte : le jeu avait
@@ -1010,13 +1010,28 @@ garnison — donc un panneau n'a plus besoin de les répéter et redevient une l
   du rayon. D'où `GetThinRingSprite` (8 %), et un écart calibré pour que les anneaux restent
   *dénombrables*.
 - Les pastilles de garnison **tombaient sur les anneaux**. Elles sont passées en orbite basse,
-  entre le corps et le premier anneau.
+  entre le corps et l'anneau.
 
 > **La vraie leçon était ailleurs.** Le rendu ASCII qui servait à vérifier la géométrie détenait
 > sa *propre copie* des constantes : les deux ont divergé et j'ai validé une disposition qui
 > n'était pas celle du jeu. La géométrie vit maintenant dans `SystemGlyph`, source unique, et les
 > règles de non-chevauchement sont écrites en tests — un déplacement d'anneau qui écraserait les
 > pastilles échoue désormais avant d'atteindre l'éditeur.
+
+**Puis un troisième défaut, que seul le jeu réel pouvait montrer (Phase 24).** Les corrections
+ci-dessus rendaient les cinq anneaux dénombrables *sur un système isolé* — c'est tout ce qu'un
+test de géométrie ou un rendu ASCII d'un marqueur peut établir. Vue dans l'éditeur, la carte des
+cent systèmes racontait autre chose : à distance de vue d'ensemble, trois à cinq cercles
+concentriques se rejoignent en pâté lumineux et plus personne ne les compte.
+
+> **Un seul anneau désormais, et seulement au niveau 5.** Il ne dit plus « où en est ce monde »
+> mais « ce monde est terminé » — une information binaire, qui reste lisible à n'importe quelle
+> distance. C'est aussi celle qui compte le plus : le niveau 5 est le seul auquel un système
+> finance largement sa part d'administration.
+>
+> **Ce que ça apprend sur les tests :** un invariant vrai à l'échelle d'un objet ne dit rien de
+> la scène complète. Les tests de non-chevauchement restent utiles et sont conservés, mais la
+> densité d'une carte de cent marqueurs ne se vérifie qu'en la regardant.
 
 ---
 
@@ -1064,6 +1079,34 @@ vérifiées sur **sept formats d'écran de 420 à 1600 unités** — y compris s
 minimum *garanti* que sur un écran dense, pas un plancher absolu. Trois débordements d'interface
 avaient déjà échappé aux tests dans ce projet (panneau du menu, colonne de doctrine, dossier de
 monde) : `OnGUI` déborde en silence, rien ne plante, un bouton sort simplement de l'écran.
+
+**La vitesse passe en liste déroulante (Phase 24).** Les cinq boutons alignés réservaient
+**146 unités en permanence** pour une commande qu'on utilise par à-coups. Le sélecteur en demande
+**54** : les 92 unités rendues à la carte suffisent à ce que la date survive désormais jusqu'à
+**330 unités** de large, au lieu de 422.
+
+| | Cinq boutons | Liste déroulante |
+|---|---|---|
+| Largeur réservée | 146 u | **54 u** |
+| Appuis pour changer de vitesse | 1 | 2 |
+| Grappe droite, avec la date | 326 u | **234 u** |
+| Largeur sous laquelle la date se replie | 422 u | **330 u** |
+| Largeur sous laquelle les crédits partent | 342 u | **250 u** |
+
+> **Le compromis est assumé** : un appui de plus pour une commande occasionnelle, contre 92
+> unités rendues à une carte qu'on regarde en continu.
+>
+> **La liste dépliée est déclarée occupée** (`UiScreenRegions`), sinon un appui destiné à choisir
+> une vitesse traverserait jusqu'à la carte et désélectionnerait le système en cours — exactement
+> le défaut corrigé pour les onglets en Phase 13.
+>
+> **Deux tests remplacent deux largeurs codées en dur.** Les anciens affirmaient « à 420 unités
+> la date est sacrifiée » : vrai des cinq boutons, faux dès que la liste a rendu ses 92 unités.
+> Ils balaient maintenant les largeurs et vérifient l'**ordre** des replis — la date part avant
+> les crédits — une propriété qui ne se périme pas quand une constante bouge. Un troisième test
+> lie `SpeedOptionCount` au nombre de valeurs de `GameSpeed` : une vitesse ajoutée sans toucher à
+> la constante donnerait une dernière ligne dessinée hors du cadre, invisible et pourtant
+> cliquable.
 
 ---
 

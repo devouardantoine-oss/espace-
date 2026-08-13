@@ -38,8 +38,18 @@ namespace Espace.UI
         /// <summary>Largeur du bloc date.</summary>
         public const int DateWidth = 76;
 
-        /// <summary>Largeur d'un bouton de vitesse.</summary>
-        public const int SpeedButtonWidth = 26;
+        /// <summary>
+        /// Largeur du selecteur de vitesse.
+        /// <para>
+        /// <b>Une liste deroulante depuis la Phase 24</b>, a la place des cinq boutons alignes
+        /// qui coutaient 146 unites en permanence. Le selecteur en demande 54 : les 92 unites
+        /// recuperees reviennent a la carte, et le repli de la date devient beaucoup plus rare.
+        /// </para>
+        /// </summary>
+        public const int SpeedSelectorWidth = 54;
+
+        /// <summary>Hauteur d'une ligne de la liste deroulante ouverte.</summary>
+        public const int SpeedOptionHeight = 22;
 
         /// <summary>
         /// Largeur du bouton « Menu ».
@@ -72,7 +82,7 @@ namespace Espace.UI
         public const int CreditsWidth = 76;
 
         /// <summary>Pause plus quatre vitesses.</summary>
-        public const int SpeedButtonCount = 5;
+        public const int SpeedOptionCount = 5;
 
         /// <summary>Vrai si le bloc date tient.</summary>
         public readonly bool ShowsDate;
@@ -94,16 +104,10 @@ namespace Espace.UI
             RightCluster = rightCluster;
         }
 
-        /// <summary>Largeur du groupe des cinq boutons de vitesse, séparateurs compris.</summary>
-        public static int SpeedGroupWidth()
-        {
-            return SpeedButtonCount * SpeedButtonWidth + (SpeedButtonCount - 1) * Gap;
-        }
-
         /// <summary>Largeur de la grappe droite, avec ou sans le bloc date.</summary>
         public static float RightClusterWidth(bool hasClock, bool withDate)
         {
-            float speeds = hasClock ? SpeedGroupWidth() : 0f;
+            float speeds = hasClock ? SpeedSelectorWidth : 0f;
             float date = hasClock && withDate ? DateWidth + Gap : 0f;
             float windows = AlertBadgeWidth + Gap + MenuButtonWidth;
 

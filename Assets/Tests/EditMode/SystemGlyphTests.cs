@@ -38,9 +38,9 @@ namespace Espace.Tests.EditMode
             // Le developpement est de l'infrastructure visible depuis l'orbite, et la carte le
             // montrait deja par la teinte du marqueur depuis la Phase 2. Le masquer serait une
             // regression, pas une precaution.
-            SystemGlyph glyph = SystemGlyph.For(4, 0.9f, 7, ownedByViewer: false);
+            SystemGlyph glyph = SystemGlyph.For(SystemGlyph.FullyDevelopedLevel, 0.9f, 7, ownedByViewer: false);
 
-            Assert.AreEqual(4, glyph.DevelopmentRings);
+            Assert.AreEqual(1, glyph.DevelopmentRings);
         }
 
         [Test]
@@ -56,19 +56,28 @@ namespace Espace.Tests.EditMode
         // --- Anneaux de developpement ------------------------------------------
 
         [Test]
-        public void DevelopmentRings_CountTheDevelopmentLevel()
+        public void DevelopmentRing_AppearsOnlyOnAFullyDevelopedWorld()
         {
-            for (int level = 0; level <= SystemGlyph.MaximumDevelopmentRings; level++)
+            // La regle tient en une phrase : l'anneau ne dit pas « ou en est ce monde », il dit
+            // « ce monde est fini ». Un anneau par niveau rendait cent systemes illisibles a
+            // distance de vue d'ensemble ; celui-ci reste denombrable parce qu'il est binaire.
+            for (int level = 0; level < SystemGlyph.FullyDevelopedLevel; level++)
             {
-                Assert.AreEqual(level, SystemGlyph.For(level, 1f, 0, true).DevelopmentRings);
+                Assert.AreEqual(0, SystemGlyph.For(level, 1f, 0, true).DevelopmentRings,
+                    "Un monde encore en chantier ne porte pas d'anneau.");
             }
+
+            Assert.AreEqual(1, SystemGlyph.For(SystemGlyph.FullyDevelopedLevel, 1f, 0, true).DevelopmentRings);
         }
 
         [Test]
-        public void DevelopmentRings_AreClampedBothWays()
+        public void DevelopmentRing_ToleratesLevelsOutsideTheExpectedRange()
         {
             Assert.AreEqual(0, SystemGlyph.For(-2, 1f, 0, true).DevelopmentRings);
-            Assert.AreEqual(SystemGlyph.MaximumDevelopmentRings, SystemGlyph.For(99, 1f, 0, true).DevelopmentRings);
+            Assert.AreEqual(
+                SystemGlyph.MaximumDevelopmentRings,
+                SystemGlyph.For(99, 1f, 0, true).DevelopmentRings,
+                "Un niveau aberrant ne doit pas faire apparaitre un second anneau.");
         }
 
         // --- Pastilles de garnison ---------------------------------------------
@@ -168,56 +177,47 @@ namespace Espace.Tests.EditMode
         // ecrites ici, une bonne fois.
 
         [Test]
-        public void Layout_DevelopmentRingsNeverCrossTheDecorativeRing()
+        public void Layout_TheDevelopmentRingNeverCrossesTheDecorativeRing()
         {
             // Les deux familles d'anneaux ne doivent jamais se croiser, sinon on ne sait plus
-            // laquelle compter. Le decoratif (Phase 12) reste a l'interieur.
-            Assert.Greater(SystemGlyph.FirstDevelopmentRingScale, SystemGlyph.DecorativeRingScale);
+            // laquelle lire. Le decoratif (Phase 12) reste a l'interieur.
+            Assert.Greater(SystemGlyph.DevelopmentRingScale, SystemGlyph.DecorativeRingScale);
         }
 
         [Test]
-        public void Layout_DevelopmentRingsStayCountable()
+        public void Layout_TheDevelopmentRingClearsTheDecorativeRing()
         {
-            // Le trait fin fait 8 % du rayon, soit 0,08 d'echelle de part et d'autre. Un ecart
-            // qui laisse moins du double de cette epaisseur entre deux anneaux les ferait
-            // fusionner en une bande unique — c'etait le defaut de la premiere version, qui
-            // utilisait le trait epais de 40 %.
+            // Le trait fin fait 8 % du rayon, soit 0,08 d'echelle de part et d'autre. Deux
+            // anneaux plus proches que le double de cette epaisseur fusionneraient en une bande
+            // unique — c'etait le defaut de la premiere version, qui empilait cinq anneaux avec
+            // un trait epais de 40 %.
             const float ThinStrokeScale = 0.16f;
 
             Assert.Greater(
-                SystemGlyph.DevelopmentRingSpacing, ThinStrokeScale * 2f,
-                "Deux anneaux consecutifs doivent laisser un vide plus large que leur propre trait.");
+                SystemGlyph.DevelopmentRingScale - SystemGlyph.DecorativeRingScale, ThinStrokeScale * 2f,
+                "L'anneau de developpement doit rester distinct de l'anneau decoratif.");
         }
 
         [Test]
-        public void Layout_RingScalesIncreaseStrictly()
-        {
-            for (int i = 1; i < SystemGlyph.MaximumDevelopmentRings; i++)
-            {
-                Assert.Greater(SystemGlyph.DevelopmentRingScaleAt(i), SystemGlyph.DevelopmentRingScaleAt(i - 1));
-            }
-        }
-
-        [Test]
-        public void Layout_HaloEnclosesEveryRing()
+        public void Layout_HaloEnclosesTheDevelopmentRing()
         {
             // Le halo est le fond du glyphe : un anneau qui en depasserait flotterait dans le
             // vide, detache du systeme.
-            Assert.Greater(SystemGlyph.HaloScale, SystemGlyph.OutermostDevelopmentRingScale());
+            Assert.Greater(SystemGlyph.HaloScale, SystemGlyph.DevelopmentRingScale);
         }
 
         [Test]
         public void Layout_GarrisonPipsStayInLowOrbit()
         {
-            // Les pastilles doivent tenir entre le corps et le premier anneau. Les echelles sont
-            // en diametres, les orbites en rayons : d'ou la division.
+            // Les pastilles doivent tenir entre le corps et l'anneau. Les echelles sont en
+            // diametres, les orbites en rayons : d'ou la division.
             float bodyRadius = 0.5f;
             float pipInner = SystemGlyph.GarrisonPipOrbit - SystemGlyph.GarrisonPipScale * 0.5f;
             float pipOuter = SystemGlyph.GarrisonPipOrbit + SystemGlyph.GarrisonPipScale * 0.5f;
-            float firstRingRadius = SystemGlyph.FirstDevelopmentRingScale * 0.5f;
+            float ringRadius = SystemGlyph.DevelopmentRingScale * 0.5f;
 
             Assert.Greater(pipInner, bodyRadius, "Une pastille ne doit pas mordre sur le corps.");
-            Assert.Less(pipOuter, firstRingRadius, "Une pastille ne doit pas toucher le premier anneau de developpement.");
+            Assert.Less(pipOuter, ringRadius, "Une pastille ne doit pas toucher l'anneau de developpement.");
         }
 
         [Test]
