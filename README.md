@@ -1428,6 +1428,61 @@ stabilité, et un monde à reprendre en main.
 
 ---
 
+### Les réponses à la courbe (Phase 24, étape 7)
+
+| Brique | Rôle |
+|---|---|
+| `Voie` / `VoieCatalogue` | Contenu : ce que chaque voie fait, coûte, et ce que l'Empire en a fait |
+| `VoieService` | Applique les voies, et refuse celles qui ne sont pas praticables |
+| `AdministrationModel` (étendu) | Le basculement de coût de la Coercition |
+
+La courbe d'administration existe depuis la Phase 22 : au-delà d'une certaine taille, tenir coûte
+plus que ce qu'on produit. Le joueur pouvait la **subir**, jamais y **répondre**.
+
+| Voie | Effet | Ce qu'elle coûte |
+|---|---|---|
+| **Déconcentration** | Le monde passe en autonomie, cesse de compter et de verser | Il reste **développé** : n'importe qui peut s'y installer |
+| **Compression** | Le monde est évacué puis abandonné | Population et installations perdues, **tous les empires vous en veulent** |
+| **Coercition** | Le coût bascule de l'Influence vers la trésorerie | **1,5 Crédit par point d'Influence soulagé**, et la stabilité chute partout |
+| **Transformation** | Retracer le réseau d'hyperroutes | *Pas encore jouable — voir plus bas* |
+
+> **Elles ne s'ouvrent qu'avec le fragment IV du codex** — celui où l'auteur écrit « j'ai essayé
+> les quatre ». C'est le **seul endroit du jeu où le récit débloque une mécanique** : la lettre ne
+> raconte pas seulement, elle donne quelque chose.
+>
+> **Aucune voie n'est gratuite**, même règle absolue qu'aux décisions de l'étape 5, et un test la
+> tient. La Coercition en particulier coûte **plus** que ce qu'elle remplace : si tenir par la
+> force revenait moins cher qu'administrer, elle serait la bonne réponse en toute circonstance et
+> la courbe cesserait d'être un problème. C'est un échange de ruine, pas une économie.
+>
+> **Déconcentration et Compression ne devaient surtout pas se ressembler.** Elles rendent toutes
+> deux un monde à personne, et il aurait été facile de les coder de la même façon — deux voies
+> identiques n'en font qu'une. Un test vérifie que le monde laissé derrière n'est pas le même :
+> l'une laisse une **prise développée**, l'autre ne laisse **rien mais une réputation**.
+>
+> **Et il existe une cinquième, qui n'est pas dans le journal : ne rien faire.** Le jeu ne la
+> punit pas plus que les autres. Elle doit simplement *durer*, et devenir de plus en plus
+> inconfortable.
+
+**La Transformation est annoncée mais refusée proprement**, et c'est la seule dette assumée de
+cette phase. La bible prescrivait de la traiter « en dernier, **seule** » ; l'inspection du code a
+montré pourquoi. `GalaxyMap._links` est un **tableau construit une fois**, et la carte est détenue
+par le routage, la partition de territoires, les marqueurs et le rendu des liens. Retracer le
+réseau en cours de partie demande donc :
+
+1. rendre le jeu de liens mutable, ou reconstruire la carte et re-câbler tout ce qui la détient ;
+2. **revalider l'itinéraire de chaque flotte en vol** — une route disparue laisse un trajet qui
+   pointe vers rien ;
+3. reconstruire la partition de territoires et le rendu des liens ;
+4. **garantir la connexité** du nouveau réseau. `GalaxyGenerator` la garantit déjà par un arbre
+   couvrant de Kruskal, donc la machinerie existe et serait réutilisée plutôt que réécrite.
+
+Une route fermée au mauvais endroit coupe la galaxie en deux et rend la partie injouable. La voie
+est donc présentée au joueur — la connaître fait partie du récit — et refusée avec un motif, plutôt
+que traitée à moitié.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus

@@ -48,8 +48,9 @@ namespace Espace.Gameplay.Save
         /// 5 depuis la Phase 24 : les fragments du codex obtenus (<see cref="UnlockedFragments"/>). Une sauvegarde anterieure n'en contient aucun et se charge sans rien de special — <c>CodexService</c> relisant l'etat du monde chaque jour, elle retrouve des le lendemain tous les fragments que sa situation justifie. C'est la seule raison pour laquelle aucune migration n'est necessaire ici.
         /// 6 depuis la Phase 24, etape 5 : les decisions en attente (<see cref="Decisions"/>) et les ardoises pas encore echues (<see cref="Consequences"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : les listes restent vides et le systeme repart d'une ardoise nette.
         /// 7 depuis la Phase 24, etape 6 : la memoire des gouverneurs (<see cref="GovernorMemory"/>). Une sauvegarde anterieure n'en contient aucune, et c'est sans consequence : les gouverneurs se recalculent par hachage, ils reapparaissent identiques et simplement sans souvenirs.
+        /// 8 depuis la Phase 24, etape 7 : la Coercition, si elle est en vigueur (<see cref="CoercionActive"/>). Une sauvegarde anterieure vaut faux, ce qui est exactement l'etat d'une partie qui n'a jamais emprunte cette voie.
         /// </remarks>
-        public int Version = 7;
+        public int Version = 8;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -89,6 +90,16 @@ namespace Espace.Gameplay.Save
         /// </para>
         /// </summary>
         public List<GovernorFactSaveData> GovernorMemory = new List<GovernorFactSaveData>();
+
+        /// <summary>
+        /// Vrai si la Coercition est en vigueur (Phase 24, etape 7).
+        /// <para>
+        /// Les trois autres voies n'ont rien a sauvegarder : elles agissent une fois sur un monde,
+        /// et leur effet est deja dans l'etat des systemes. Seule la Coercition est un <i>regime</i>
+        /// qui dure.
+        /// </para>
+        /// </summary>
+        public bool CoercionActive;
     }
 
     [Serializable]

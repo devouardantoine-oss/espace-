@@ -11,6 +11,7 @@ using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.People;
+using Espace.Gameplay.Voies;
 using Espace.Gameplay.Research;
 using UnityEngine;
 
@@ -47,6 +48,7 @@ namespace Espace.Gameplay.Save
         private readonly ICodexService _codex;
         private readonly IDecisionService _decisions;
         private readonly IGovernorService _governors;
+        private readonly IVoieService _voies;
         private readonly EmpireRegistry _empireRegistry;
         private readonly string _filePath;
 
@@ -65,11 +67,13 @@ namespace Espace.Gameplay.Save
         public SaveService(
             GalaxyMap map, IGameClock clock, IEconomyService economy, IMilitaryService military,
             IDiplomacyService diplomacy, IResearchService research, EmpireRegistry empireRegistry, string filePath,
-            ICodexService codex = null, IDecisionService decisions = null, IGovernorService governors = null)
+            ICodexService codex = null, IDecisionService decisions = null, IGovernorService governors = null,
+            IVoieService voies = null)
         {
             _codex = codex;
             _decisions = decisions;
             _governors = governors;
+            _voies = voies;
 
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
@@ -287,6 +291,11 @@ namespace Espace.Gameplay.Save
             CaptureDecisions(data);
             CaptureGovernors(data);
 
+            if (_voies != null)
+            {
+                data.CoercionActive = _voies.IsCoercionActive;
+            }
+
             for (int i = 0; i < empires.Count; i++)
             {
                 for (int j = i + 1; j < empires.Count; j++)
@@ -448,6 +457,8 @@ namespace Espace.Gameplay.Save
 
             RestoreDecisions(data);
             RestoreGovernors(data);
+
+            _voies?.RestoreCoercion(data.CoercionActive);
 
             if (data.Date != null)
             {

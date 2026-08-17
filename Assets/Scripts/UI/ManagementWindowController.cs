@@ -10,6 +10,7 @@ using Espace.Gameplay.Espionage;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.Research;
+using Espace.Gameplay.Voies;
 using UnityEngine;
 
 namespace Espace.UI
@@ -71,6 +72,7 @@ namespace Espace.UI
         /// </summary>
         private IChronicleService _chronicle;
         private ICodexService _codex;
+        private IVoieService _voies;
 
         /// <summary>Denouements recents rappeles en bas de l'entree Flottes.</summary>
         private const int OperationReportCount = 6;
@@ -493,6 +495,77 @@ namespace Espace.UI
             DrawPlayerEconomy();
             DrawPosture();
             DrawAttentionList();
+            DrawVoies();
+        }
+
+        /// <summary>
+        /// Les reponses a la courbe (Phase 24, etape 7).
+        /// <para>
+        /// <b>Elles vivent dans le panneau Empire, et nulle part ailleurs.</b> C'est le seul ecran
+        /// qui pose la question « est-ce que je vais bien ? » ; les voies en sont la reponse, et
+        /// les ranger sous un onglet distinct aurait separe le diagnostic du remede.
+        /// </para>
+        /// <para>
+        /// <b>Rien ne s'affiche tant que le fragment IV n'est pas obtenu.</b> Le joueur ne doit
+        /// pas savoir que ces reponses existent avant de lire l'aveu de celui qui les a toutes
+        /// essayees — c'est le seul endroit du jeu ou le recit debloque une mecanique.
+        /// </para>
+        /// </summary>
+        private void DrawVoies()
+        {
+            if (_voies == null)
+            {
+                ServiceLocator.TryGet(out _voies);
+            }
+
+            if (_voies == null || !_voies.AreUnlocked)
+            {
+                return;
+            }
+
+            GUILayout.Space(10f);
+            GUILayout.Label("Reponses a la courbe", UITheme.Title);
+
+            foreach (VoieDefinition definition in VoieCatalogue.All)
+            {
+                DrawVoie(definition);
+            }
+        }
+
+        private void DrawVoie(VoieDefinition definition)
+        {
+            GUILayout.Space(6f);
+            GUILayout.Label(definition.Name, UITheme.Value);
+            GUILayout.Label(definition.Effect, UITheme.Label);
+            GUILayout.Label($"Coute : {definition.Cost}", UITheme.MutedLabel);
+            GUILayout.Label(definition.History, UITheme.MutedLabel);
+
+            if (!definition.IsPlayable)
+            {
+                GUILayout.Label(VoieCatalogue.TransformationPending, UITheme.MutedLabel);
+                return;
+            }
+
+            if (definition.NeedsASystem)
+            {
+                // Ces voies s'appliquent a un monde precis : la fiche du systeme est le seul
+                // endroit ou l'on sait lequel. Dupliquer ici un selecteur de systeme aurait
+                // donne deux chemins vers la meme action, et deux occasions de se tromper.
+                GUILayout.Label("A appliquer depuis la fiche d'un de vos mondes.", UITheme.MutedLabel);
+                return;
+            }
+
+            if (_voies.IsCoercionActive)
+            {
+                GUILayout.Label("En vigueur.", UITheme.Value);
+                return;
+            }
+
+            if (GUILayout.Button($"Emprunter : {definition.Name}", UITheme.Button, GUILayout.Height(26)))
+            {
+                _voies.TryTake(definition.Voie, default(StarSystemId), out string error);
+                LogIfFailed(error);
+            }
         }
 
         private void DrawPosture()

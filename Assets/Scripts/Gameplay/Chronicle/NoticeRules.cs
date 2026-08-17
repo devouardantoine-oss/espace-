@@ -55,7 +55,10 @@ namespace Espace.Gameplay.Chronicle
         DecisionSettled,
 
         /// <summary>Un gouverneur a quitte son poste (Phase 24, etape 6).</summary>
-        GovernorDefected
+        GovernorDefected,
+
+        /// <summary>Le joueur a emprunte l'une des voies (Phase 24, etape 7).</summary>
+        VoieTaken
     }
 
     /// <summary>
@@ -118,6 +121,11 @@ namespace Espace.Gameplay.Chronicle
                 // Un depart se voit sur la fiche du monde, et il ne se rattrape pas : il merite
                 // le compteur, jamais l'interruption.
                 case NoticeKind.GovernorDefected:
+
+                // Emprunter une voie est le geste le plus lourd que le joueur puisse faire de son
+                // propre chef. Il vient de le decider, donc rien ne l'interrompt — mais la trace
+                // doit rester visible.
+                case NoticeKind.VoieTaken:
                     return NoticeTier.Important;
 
                 // Le reste vit dans le journal et nulle part ailleurs.

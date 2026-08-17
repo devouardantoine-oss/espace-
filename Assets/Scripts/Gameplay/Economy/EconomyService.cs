@@ -73,6 +73,9 @@ namespace Espace.Gameplay.Economy
 
             public float EnergySatisfaction;
             public float AdministrativePressure;
+
+            /// <summary>Credits exiges par la Coercition ce mois-ci (Phase 24, etape 7). Zero tant qu'elle n'est pas en vigueur.</summary>
+            public float CoercionCredits;
         }
 
         /// <inheritdoc />
@@ -122,6 +125,27 @@ namespace Espace.Gameplay.Economy
         {
             return _taxRatesByEmpire.TryGetValue(empireId, out float rate) ? rate : DefaultTaxRate;
         }
+
+        /// <summary>
+        /// Vrai si la Coercition est en vigueur (Phase 24, etape 7).
+        /// <para>
+        /// <b>Lu par le service locator plutot que recu au constructeur</b>, comme les autres
+        /// dependances tardives de ce projet : les voies n'existent que dans la scene de la carte
+        /// et n'apparaissent qu'une fois le fragment IV obtenu. Les exiger a la construction
+        /// imposerait un ordre d'initialisation a un service dont personne ne depend encore.
+        /// </para>
+        /// </summary>
+        private bool CoercionIsActive()
+        {
+            if (_voies == null)
+            {
+                ServiceLocator.TryGet(out _voies);
+            }
+
+            return _voies != null && _voies.IsCoercionActive;
+        }
+
+        private Voies.IVoieService _voies;
 
         /// <inheritdoc />
         public float GetAdministrativePressure(int empireId)
@@ -321,7 +345,11 @@ namespace Espace.Gameplay.Economy
                 float energyPaid = Mathf.Min(treasury.Energy, balance.EnergyDemand);
                 float influencePaid = Mathf.Min(treasury.Influence, balance.InfluenceUpkeep);
 
+                // La Coercition se paie sans plafond : contrairement aux autres depenses, ne pas
+                // pouvoir la payer n'allege rien. Entretenir une garnison a decouvert est
+                // exactement ce que le Bastion a fait pendant huit cents ans.
                 _treasuriesByEmpire[entry.Key] = treasury - new ResourceBundle(
+                    credits: balance.CoercionCredits,
                     energy: energyPaid, food: foodPaid, influence: influencePaid);
 
                 balance.FoodSatisfaction = SubsistenceModel.Satisfaction(foodPaid, balance.FoodDemand);
@@ -363,6 +391,19 @@ namespace Espace.Gameplay.Economy
             {
                 EmpireMonthlyBalance balance = balances[empireId];
                 balance.InfluenceUpkeep = AdministrationModel.InfluenceUpkeep(balance.SystemCount);
+
+                // Coercition (Phase 24, etape 7) : la garnison remplace l'administration, donc
+                // une part du cout quitte l'Influence pour la tresorerie — et coute plus cher.
+                // Reserve au joueur : aucune IA ne connait les voies, et lui en donner l'usage
+                // reviendrait a lui accorder un levier que le joueur a du meriter par le codex.
+                if (empireId == PlayerOwnerId && CoercionIsActive())
+                {
+                    float relieved = balance.InfluenceUpkeep * AdministrationModel.CoercionInfluenceRelief;
+
+                    balance.InfluenceUpkeep -= relieved;
+                    balance.CoercionCredits = relieved * AdministrationModel.CoercionCreditsPerInfluence;
+                }
+
                 balances[empireId] = balance;
             }
 

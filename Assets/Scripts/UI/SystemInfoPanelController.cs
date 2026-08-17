@@ -7,6 +7,7 @@ using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
 using Espace.Gameplay.People;
+using Espace.Gameplay.Voies;
 using Espace.Gameplay.Research;
 using UnityEngine;
 
@@ -75,6 +76,7 @@ namespace Espace.UI
         private IEconomyService _economy;
         private IMilitaryService _military;
         private IGovernorService _governors;
+        private IVoieService _voies;
         private IDiplomacyService _diplomacy;
         private IResearchService _research;
 
@@ -501,6 +503,7 @@ namespace Espace.UI
             // deborder l'Apercu de treize unites des qu'un message de retour s'affichait.
 
             DrawGovernor(new Rect(left.x, left.y + 72, left.width, 56), system);
+            DrawSystemVoies(new Rect(left.x, left.y + 132, left.width, left.yMax - left.y - 132), system);
 
             GUI.Label(new Rect(right.x, right.y, right.width, UITheme.CaptionHeight), "FORCES EN PRESENCE", UITheme.Caption);
 
@@ -578,6 +581,62 @@ namespace Espace.UI
             {
                 GovernorFact latest = governor.Memory[governor.Memory.Count - 1];
                 GUI.Label(new Rect(rect.x, rect.y + 48, rect.width, 18), latest.Describe(), UITheme.Caption);
+            }
+        }
+
+        /// <summary>
+        /// Les deux voies qui s'appliquent a un monde precis (Phase 24, etape 7).
+        /// <para>
+        /// <b>Ici et nulle part ailleurs.</b> Rendre un monde ou l'abandonner suppose de savoir
+        /// <i>lequel</i> : la fiche du systeme est le seul ecran ou la question ne se pose pas.
+        /// Dupliquer un selecteur de monde dans le panneau Empire aurait donne deux chemins vers
+        /// le meme geste irreversible, donc deux occasions de se tromper.
+        /// </para>
+        /// <para>
+        /// <b>Elles ne s'affichent qu'une fois le fragment IV obtenu</b>, comme dans le panneau
+        /// Empire : le joueur ne doit pas savoir que ces reponses existent avant de lire l'aveu.
+        /// </para>
+        /// </summary>
+        private void DrawSystemVoies(Rect rect, StarSystemState system)
+        {
+            if (rect.height < 40f || system.OwnerId != EconomyService.PlayerOwnerId)
+            {
+                return;
+            }
+
+            if (_voies == null)
+            {
+                ServiceLocator.TryGet(out _voies);
+            }
+
+            if (_voies == null || !_voies.AreUnlocked)
+            {
+                return;
+            }
+
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "REPONSES A LA COURBE", UITheme.Caption);
+
+            float buttonHeight = Mathf.Min(24f, (rect.height - 16f) * 0.5f);
+            float y = rect.y + 16f;
+
+            foreach (VoieDefinition definition in VoieCatalogue.All)
+            {
+                if (!definition.NeedsASystem || !definition.IsPlayable)
+                {
+                    continue;
+                }
+
+                if (y + buttonHeight > rect.yMax)
+                {
+                    break;
+                }
+
+                if (GUI.Button(new Rect(rect.x, y, rect.width, buttonHeight), definition.Name, UITheme.Button))
+                {
+                    _feedback = _voies.TryTake(definition.Voie, system.Id, out string error) ? null : error;
+                }
+
+                y += buttonHeight + 4f;
             }
         }
 

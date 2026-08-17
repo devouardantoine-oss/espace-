@@ -68,9 +68,10 @@ namespace Espace.Gameplay.Save
             ServiceLocator.TryGet(out Espace.Gameplay.Chronicle.ICodexService codex);
             ServiceLocator.TryGet(out Espace.Gameplay.Decisions.IDecisionService decisions);
             ServiceLocator.TryGet(out Espace.Gameplay.People.IGovernorService governors);
+            ServiceLocator.TryGet(out Espace.Gameplay.Voies.IVoieService voies);
 
             _saveService = new SaveService(
-                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex, decisions, governors);
+                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex, decisions, governors, voies);
 
             if (!ServiceLocator.IsRegistered<ISaveService>())
             {

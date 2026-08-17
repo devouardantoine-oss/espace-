@@ -67,6 +67,27 @@ namespace Espace.Gameplay.Economy
         /// </summary>
         private const float FullPressureDeficitRatio = 0.5f;
 
+        /// <summary>
+        /// Part du cout d'administration que la Coercition retire a l'Influence (Phase 24, etape 7).
+        /// <para>
+        /// La garnison remplace l'administration : ce qui n'est plus paye en Influence l'est en
+        /// Credits, et <b>plus cher</b> — voir <see cref="CoercionCreditsPerInfluence"/>. Tenir
+        /// par la force n'est pas une economie, c'est un echange de ruine.
+        /// </para>
+        /// </summary>
+        public const float CoercionInfluenceRelief = 0.60f;
+
+        /// <summary>
+        /// Credits exiges pour chaque point d'Influence ainsi soulage.
+        /// <para>
+        /// <b>Superieur a 1 deliberement.</b> Si la Coercition coutait moins que ce qu'elle
+        /// remplace, elle serait la bonne reponse en toute circonstance et la courbe cesserait
+        /// d'etre un probleme — la meme regle que « aucune option gratuite » a l'etape 5. Un test
+        /// verifie que ce facteur reste au-dessus de 1.
+        /// </para>
+        /// </summary>
+        public const float CoercionCreditsPerInfluence = 1.5f;
+
         /// <summary>Influence exigee chaque mois pour tenir <paramref name="systemCount"/> systemes.</summary>
         public static float InfluenceUpkeep(int systemCount)
         {

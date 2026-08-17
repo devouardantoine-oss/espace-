@@ -49,6 +49,7 @@ namespace Espace.Gameplay.Galaxy
         private Espace.Gameplay.Chronicle.CodexService _codex;
         private Espace.Gameplay.Decisions.DecisionService _decisions;
         private Espace.Gameplay.People.GovernorService _governors;
+        private Espace.Gameplay.Voies.VoieService _voies;
 
         private void Awake()
         {
@@ -121,6 +122,13 @@ namespace Espace.Gameplay.Galaxy
         /// </summary>
         private void OnDestroy()
         {
+            if (_voies != null)
+            {
+                _voies.Shutdown();
+                ServiceLocator.Unregister<Espace.Gameplay.Voies.IVoieService>();
+                _voies = null;
+            }
+
             if (_governors != null)
             {
                 _governors.Shutdown();
@@ -243,6 +251,14 @@ namespace Espace.Gameplay.Galaxy
             if (!ServiceLocator.IsRegistered<Espace.Gameplay.People.IGovernorService>())
             {
                 ServiceLocator.Register<Espace.Gameplay.People.IGovernorService>(_governors);
+            }
+
+            _voies = new Espace.Gameplay.Voies.VoieService(map);
+            _voies.Initialize();
+
+            if (!ServiceLocator.IsRegistered<Espace.Gameplay.Voies.IVoieService>())
+            {
+                ServiceLocator.Register<Espace.Gameplay.Voies.IVoieService>(_voies);
             }
         }
 
