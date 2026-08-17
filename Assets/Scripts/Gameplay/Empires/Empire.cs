@@ -34,7 +34,19 @@ namespace Espace.Gameplay.Empires
         /// <summary>Vrai pour l'unique empire du joueur ; faux pour tous les empires IA.</summary>
         public bool IsPlayerControlled { get; }
 
-        public Empire(int id, string name, Color color, EmpirePersonality personality, bool isPlayerControlled)
+        /// <summary>
+        /// Filiation vis-a-vis de l'Empire disparu, recopiee de <c>EmpireDefinition</c> comme
+        /// <see cref="Personality"/> (Phase 24, etape 3). Voir <see cref="FactionLineage"/>.
+        /// </summary>
+        public FactionLineage Lineage { get; }
+
+        /// <param name="lineage">
+        /// Optionnel : les empires construits avant la Phase 24 — et les fixtures de test qui
+        /// n'ont rien a faire du codex — restent valides sans filiation declaree.
+        /// </param>
+        public Empire(
+            int id, string name, Color color, EmpirePersonality personality, bool isPlayerControlled,
+            FactionLineage lineage = FactionLineage.Unknown)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -46,6 +58,7 @@ namespace Espace.Gameplay.Empires
             Color = color;
             Personality = personality;
             IsPlayerControlled = isPlayerControlled;
+            Lineage = lineage;
         }
 
         public override string ToString() => Name;

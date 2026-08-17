@@ -87,6 +87,19 @@ namespace Espace.Tests.EditMode
         }
 
         [Test]
+        public void Rail_ReservesExactlyOneRowPerTab()
+        {
+            // La hauteur du rail vient de RailItemCount, mais les entrees sont dessinees en
+            // parcourant ManagementTab. Les deux doivent s'accorder : un onglet ajoute sans
+            // toucher a la constante — c'est exactement ce qui a failli arriver en ajoutant le
+            // Codex — donnerait une entree tracee hors du rail, invisible et pourtant cliquable.
+            Assert.AreEqual(
+                System.Enum.GetValues(typeof(ManagementTab)).Length,
+                ManagementLayout.RailItemCount,
+                "Une entree de rail par onglet, ni plus ni moins.");
+        }
+
+        [Test]
         public void Rail_StartsBelowTheHudClusters()
         {
             // Le rail ne doit jamais chevaucher la grappe des credits, qui vit dans le meme coin.

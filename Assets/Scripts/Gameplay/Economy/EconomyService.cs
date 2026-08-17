@@ -124,6 +124,14 @@ namespace Espace.Gameplay.Economy
         }
 
         /// <inheritdoc />
+        public float GetAdministrativePressure(int empireId)
+        {
+            return _balancesByEmpire.TryGetValue(empireId, out EmpireMonthlyBalance balance)
+                ? balance.AdministrativePressure
+                : 0f;
+        }
+
+        /// <inheritdoc />
         public void SetTaxRate(float rate)
         {
             SetTaxRate(PlayerOwnerId, rate);

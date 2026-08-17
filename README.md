@@ -1189,6 +1189,68 @@ sauvegarder n'est pas une décision de jeu, c'est une opération sur la partie.
 
 ---
 
+### Le codex : les onze fragments (Phase 24, étape 3)
+
+| Brique | Rôle |
+|---|---|
+| `CodexFragment` | Fonction pure : un fragment sait dire si l'état du monde le délivre, rien d'autre |
+| `CodexLibrary` | Contenu : les onze textes, leurs seuils, leurs déclencheurs |
+| `CodexService` | La mémoire : ce qui a été obtenu l'est pour toujours |
+| `FactionLineage` | L'identité d'une faction vis-à-vis de l'Empire disparu |
+
+Le jeu avait une bible d'univers et **rien dans le jeu pour la raconter**. Les onze fragments
+sont une **lettre**, pas un journal intime : leur auteur occupait la place du joueur, savait
+qu'il y aurait un successeur, et lui écrit directement. La ressemblance devient totale non par
+un tour de magie, mais parce que **la position fabrique la même personne** — n'importe qui
+atteignant cette taille écrit la même chose et se trompe pareil.
+
+| Fragments | Déclencheur | Pourquoi celui-là |
+|---|---|---|
+| I à IV | `AdministrationModel.Pressure` franchit 0 · 0,12 · 0,25 · plafond | Le récit suit ce que le joueur **ressent**, pas son score |
+| V à IX | Une faction perd son dernier système | Les faits ne s'obtiennent qu'en détruisant celui qui les portait |
+| X et XI | Dernier palier de Logistique / Économie | Comprendre le monde, c'est comprendre qui l'a fait |
+
+> **La progression du ton est dans les textes, pas dans le code.** Le fragment I n'a ni
+> signature ni « je » et passe pour un débris administratif. Le II dit « je ». Le III tutoie. Le
+> joueur comprend qu'on s'adresse à lui avant qu'on le lui dise — et le III est le seul à
+> afficher **les chiffres réels de son propre empire** sous le texte.
+>
+> **Le service lit l'état, il n'écoute pas les mutations.** Le propriétaire d'un système change
+> aujourd'hui à trois endroits du code, et rien ne garantit qu'il n'y en aura pas un quatrième.
+> S'abonner à ces trois-là, c'est s'engager à n'en jamais oublier un ; un oubli ne planterait
+> pas, il rendrait un fragment **indélivrable en silence**. Relire l'état chaque jour coûte un
+> balayage de cent systèmes et reste vrai par construction — c'est le raisonnement déjà retenu
+> pour `SystemGlyphController` en Phase 23.
+>
+> **Aucune migration de sauvegarde.** La version 5 ajoute les fragments obtenus, mais une partie
+> antérieure se charge sans rien de spécial : comme les règles relisent l'état, elle retrouve dès
+> le lendemain tous les fragments que sa situation justifie. C'est une conséquence du choix
+> ci-dessus, pas une précaution supplémentaire.
+
+**Une clé d'identité qu'il a fallu créer, et pourquoi.** La tentation était d'utiliser
+`EmpirePersonality`, déjà porté par chaque définition. Elle ne compte que **cinq valeurs pour six
+factions**, et la Fédération de l'Aube porte déjà `Expansionist`, exactement comme l'Essaim de
+Kethra : anéantir l'Aube aurait délivré les archives de l'Essaim. Le nom affiché ne convenait pas
+davantage — c'est du contenu, qu'un game designer doit pouvoir changer et qu'une traduction ne
+doit pas transformer en règle de jeu. D'où `FactionLineage`, dont la valeur par défaut
+`Unknown` rend l'ajout inoffensif sur toute définition existante.
+
+**Ce que les tests protègent ici, ce n'est pas le comportement, c'est l'atteignabilité.** Un
+fragment mal câblé ne plante pas et ne se voit pas : il devient indélivrable, et le joueur ne
+saura jamais qu'il lui manque quelque chose — le pire mode de défaillance possible pour du
+contenu narratif, invisible même en jouant. Le piège le plus net a été attrapé par un test :
+`Pressure` sature à `MaximumPressure` et la comparaison est stricte, donc un seuil posé *à* cette
+valeur n'aurait jamais été franchi et le fragment IV ne serait **jamais arrivé**.
+
+> **Le Codex est une septième entrée de rail, pas une section du Journal.** Les deux sont des
+> historiques, mais pas de la même chose ni de la même durée : le journal est le récit de *cette*
+> partie et vit dans un tampon circulaire de soixante avis, où une ligne finit par disparaître —
+> ce qu'on veut d'un fil d'actualité. Un fragment est acquis pour toujours. Les mélanger ferait
+> défiler hors de portée la seule chose du jeu qu'on ne peut pas retrouver autrement. Le rail
+> coûte de la hauteur, jamais de la largeur, et c'est la largeur qui est disputée avec la carte.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus

@@ -45,8 +45,9 @@ namespace Espace.Gameplay.Save
         /// 2 depuis la Phase 14 : <see cref="GarrisonSaveData"/> remplace le champ <c>SpaceFleet</c> par les quatre nouveaux types de vaisseaux et gagne <c>FleetName</c>.
         /// 3 depuis la Phase 15 : <see cref="GarrisonSaveData"/> gagne les quatre champs Amiral. Une sauvegarde d'une version anterieure ne les contient pas : <c>SaveService.Apply</c> ne doit alors surtout pas restaurer un Amiral « tout a zero » a partir des defauts <c>JsonUtility</c> — un nouvel Amiral est genere a la place, comme pour une toute nouvelle flotte.
         /// 4 depuis la Phase 17 : les flottes en voyage sont sauvegardees (<see cref="FleetsInTransit"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : la liste reste simplement vide.
+        /// 5 depuis la Phase 24 : les fragments du codex obtenus (<see cref="UnlockedFragments"/>). Une sauvegarde anterieure n'en contient aucun et se charge sans rien de special — <c>CodexService</c> relisant l'etat du monde chaque jour, elle retrouve des le lendemain tous les fragments que sa situation justifie. C'est la seule raison pour laquelle aucune migration n'est necessaire ici.
         /// </remarks>
-        public int Version = 4;
+        public int Version = 5;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -63,6 +64,12 @@ namespace Espace.Gameplay.Save
         public List<FleetInTransitSaveData> FleetsInTransit = new List<FleetInTransitSaveData>();
         public DiplomacySaveData Diplomacy = new DiplomacySaveData();
         public List<ResearchProgressSaveData> Research = new List<ResearchProgressSaveData>();
+
+        /// <summary>
+        /// Numeros des fragments du codex obtenus (Phase 24, etape 3). Vide sur une sauvegarde
+        /// anterieure a la version 5 — voir <see cref="Version"/> pour pourquoi cela suffit.
+        /// </summary>
+        public List<int> UnlockedFragments = new List<int>();
     }
 
     [Serializable]

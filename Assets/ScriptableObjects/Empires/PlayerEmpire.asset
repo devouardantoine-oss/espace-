@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.8
   strengthLine: 'Aucune faiblesse marquee · diplomatie facilitee'
   weaknessLine: 'Ne domine aucun domaine'
+  lineage: 1

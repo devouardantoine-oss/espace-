@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.35
   strengthLine: 'Espionnage et sabotage superieurs · adaptation rapide'
   weaknessLine: 'Aucune alliance durable · reputation mediocre'
+  lineage: 4

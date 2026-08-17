@@ -29,13 +29,19 @@ namespace Espace.UI
 
         /// <summary>
         /// Hauteur d'une entrée du rail. Environ 9 mm au doigt à l'échelle 1 — au-dessus du
-        /// minimum tactile confortable, et assez serré pour que six entrées tiennent dans les
-        /// deux tiers de la hauteur.
+        /// minimum tactile confortable, et assez serré pour que les sept entrées tiennent dans
+        /// les trois quarts de la hauteur, même sur l'écran le plus court.
+        /// <para>
+        /// Le Codex est arrivé en septième (Phase 24, étape 3) sans que rien d'autre ne bouge :
+        /// le rail coûte de la hauteur, jamais de la largeur, et c'est la largeur qui est
+        /// disputée avec la carte. Une huitième entrée, en revanche, dépasserait — d'où le test
+        /// qui vérifie que le rail tient dans l'écran le plus court.
+        /// </para>
         /// </summary>
         public const int RailItemHeight = 30;
 
-        /// <summary>Empire, Flottes, Diplomatie, Recherche, Espionnage, Journal.</summary>
-        public const int RailItemCount = 6;
+        /// <summary>Empire, Flottes, Diplomatie, Recherche, Espionnage, Journal, Codex.</summary>
+        public const int RailItemCount = 7;
 
         /// <summary>Largeur souhaitée du panneau. Réduite si l'écran ne la donne pas.</summary>
         public const int PreferredPanelWidth = 322;

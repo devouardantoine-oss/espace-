@@ -47,7 +47,7 @@ namespace Espace.Gameplay.Empires
             var empires = new Empire[definitions.Count];
             empires[0] = new Empire(
                 EconomyService.PlayerOwnerId, playerDefinition.DisplayName, playerDefinition.Color,
-                playerDefinition.Personality, isPlayerControlled: true);
+                playerDefinition.Personality, isPlayerControlled: true, playerDefinition.Lineage);
 
             int nextAiId = EconomyService.PlayerOwnerId + 1;
             int nextSlot = 1;
@@ -59,7 +59,9 @@ namespace Espace.Gameplay.Empires
                     continue;
                 }
 
-                empires[nextSlot] = new Empire(nextAiId, definition.DisplayName, definition.Color, definition.Personality, isPlayerControlled: false);
+                empires[nextSlot] = new Empire(
+                    nextAiId, definition.DisplayName, definition.Color, definition.Personality,
+                    isPlayerControlled: false, definition.Lineage);
                 nextAiId++;
                 nextSlot++;
             }

@@ -35,6 +35,21 @@ namespace Espace.Gameplay.Economy
         /// <summary>Taux d'imposition courant de <paramref name="empireId"/> (0 a 1).</summary>
         float GetTaxRate(int empireId);
 
+        /// <summary>
+        /// Pression administrative subie par <paramref name="empireId"/>, de 0 a
+        /// <see cref="AdministrationModel.MaximumPressure"/> (Phase 24, etape 3).
+        /// <para>
+        /// La valeur etait deja calculee chaque mois et appliquee a la stabilite ; elle n'etait
+        /// simplement lisible de nulle part. C'est pourtant <b>la seule mesure de « je tiens plus
+        /// que je ne peux administrer »</b>, et le codex en fait son declencheur principal.
+        /// </para>
+        /// <para>
+        /// Vaut zero tant qu'aucun mois n'est ecoule : la pression se recalcule au bilan mensuel,
+        /// pas en continu.
+        /// </para>
+        /// </summary>
+        float GetAdministrativePressure(int empireId);
+
         /// <summary>Definit le taux d'imposition du joueur, borne automatiquement entre 0 et 1.</summary>
         void SetTaxRate(float rate);
 

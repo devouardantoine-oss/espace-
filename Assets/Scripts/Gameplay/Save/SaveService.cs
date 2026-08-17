@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Espace.Core;
 using Espace.Data;
+using Espace.Gameplay.Chronicle;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
@@ -41,13 +42,23 @@ namespace Espace.Gameplay.Save
         private readonly IMilitaryService _military;
         private readonly IDiplomacyService _diplomacy;
         private readonly IResearchService _research;
+        private readonly ICodexService _codex;
         private readonly EmpireRegistry _empireRegistry;
         private readonly string _filePath;
 
+        /// <param name="codex">
+        /// Optionnel (Phase 24, etape 3). Absent, la sauvegarde ne contient aucun fragment et se
+        /// recharge sans en restaurer — ce qui reste correct, <c>CodexService</c> relisant l'etat
+        /// du monde chaque jour. Le rendre facultatif evite d'imposer une dependance de plus aux
+        /// scenes et aux tests qui n'ont rien a faire du codex.
+        /// </param>
         public SaveService(
             GalaxyMap map, IGameClock clock, IEconomyService economy, IMilitaryService military,
-            IDiplomacyService diplomacy, IResearchService research, EmpireRegistry empireRegistry, string filePath)
+            IDiplomacyService diplomacy, IResearchService research, EmpireRegistry empireRegistry, string filePath,
+            ICodexService codex = null)
         {
+            _codex = codex;
+
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _economy = economy ?? throw new ArgumentNullException(nameof(economy));
@@ -256,6 +267,11 @@ namespace Espace.Gameplay.Save
                 }
             }
 
+            if (_codex != null)
+            {
+                data.UnlockedFragments.AddRange(_codex.UnlockedNumbers);
+            }
+
             for (int i = 0; i < empires.Count; i++)
             {
                 for (int j = i + 1; j < empires.Count; j++)
@@ -405,6 +421,14 @@ namespace Espace.Gameplay.Save
                 {
                     _research.RestoreActiveDomain(researchData.EmpireId, domain);
                 }
+            }
+
+            // Sur une sauvegarde anterieure a la version 5, la liste est vide et le codex repart
+            // a zero — puis se recompose des le lendemain, puisque ses regles relisent l'etat du
+            // monde plutot qu'un historique. Rien a migrer, donc rien a tester de plus.
+            if (_codex != null)
+            {
+                _codex.Restore(data.UnlockedFragments);
             }
 
             if (data.Date != null)

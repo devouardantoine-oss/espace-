@@ -22,7 +22,8 @@ namespace Espace.UI
         Diplomatie,
         Recherche,
         Espionnage,
-        Journal
+        Journal,
+        Codex
     }
 
     /// <summary>
@@ -69,6 +70,7 @@ namespace Espace.UI
         /// </para>
         /// </summary>
         private IChronicleService _chronicle;
+        private ICodexService _codex;
 
         /// <summary>Denouements recents rappeles en bas de l'entree Flottes.</summary>
         private const int OperationReportCount = 6;
@@ -204,6 +206,7 @@ namespace Espace.UI
             if (_espionage == null) ServiceLocator.TryGet(out _espionage);
             if (_military == null) ServiceLocator.TryGet(out _military);
             if (_chronicle == null) ServiceLocator.TryGet(out _chronicle);
+            if (_codex == null) ServiceLocator.TryGet(out _codex);
         }
 
         /// <summary>Ouvre la fenetre directement sur le journal. Appele par le compteur d'alertes.</summary>
@@ -289,7 +292,108 @@ namespace Espace.UI
                 case ManagementTab.Journal:
                     DrawJournalTab();
                     break;
+                case ManagementTab.Codex:
+                    DrawCodexTab();
+                    break;
             }
+        }
+
+        /// <summary>
+        /// Le codex : les fragments du journal de l'Empire disparu (Phase 24, etape 3).
+        /// <para>
+        /// <b>Pourquoi une entree separee du Journal.</b> Les deux sont des historiques, mais pas
+        /// de la meme chose et pas de la meme duree. Le journal est le recit de <i>cette</i>
+        /// partie et vit dans un tampon circulaire de soixante avis : une ligne y disparait au
+        /// bout d'un moment, ce qui est exactement ce qu'on veut d'un fil d'actualite. Un
+        /// fragment, lui, est acquis pour toujours. Les melanger ferait defiler hors de portee la
+        /// seule chose du jeu qu'on ne peut pas retrouver autrement.
+        /// </para>
+        /// <para>
+        /// <b>Les fragments manquants sont montres, jamais decrits.</b> On affiche leur numero et
+        /// rien d'autre. Voir qu'il en manque sept est une invitation ; savoir ce qu'ils
+        /// contiennent supprimerait la raison d'aller les chercher.
+        /// </para>
+        /// </summary>
+        private void DrawCodexTab()
+        {
+            GUILayout.Label("Codex", UITheme.Title);
+
+            if (_codex == null)
+            {
+                GUILayout.Label("Codex indisponible.", UITheme.MutedLabel);
+                return;
+            }
+
+            GUILayout.Label(
+                $"{_codex.UnlockedCount} fragment(s) sur {CodexLibrary.Count}.",
+                UITheme.MutedLabel);
+
+            if (_codex.UnlockedCount == 0)
+            {
+                GUILayout.Space(4f);
+                GUILayout.Label(
+                    "Des debris de registres circulent encore entre les mondes. Aucun ne vous est"
+                    + " parvenu.",
+                    UITheme.MutedLabel);
+                return;
+            }
+
+            foreach (CodexFragment fragment in CodexLibrary.All)
+            {
+                GUILayout.Space(6f);
+
+                if (!_codex.IsUnlocked(fragment.Number))
+                {
+                    GUILayout.Label($"{fragment.Numeral} — ?", UITheme.MutedLabel);
+                    continue;
+                }
+
+                GUILayout.Label($"{fragment.Numeral} · {fragment.Title}", UITheme.Value);
+                GUILayout.Label(fragment.Text, UITheme.Label);
+                GUILayout.Label(fragment.Reveal, UITheme.MutedLabel);
+
+                if (fragment.ShowsPlayerLedger)
+                {
+                    DrawPlayerLedger();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Les colonnes que le fragment III demande de comparer — celles du joueur, reelles.
+        /// <para>
+        /// C'est le moment ou la lettre cesse de parler d'un autre. Les chiffres ne sont pas
+        /// illustratifs : ils viennent de l'empire en cours, et le rapprochement que le texte
+        /// suggere est verifiable.
+        /// </para>
+        /// </summary>
+        private void DrawPlayerLedger()
+        {
+            if (_economy == null || _map == null)
+            {
+                return;
+            }
+
+            int systems = 0;
+            foreach (StarSystemState system in _map.Systems)
+            {
+                if (system.OwnerId == EconomyService.PlayerOwnerId)
+                {
+                    systems++;
+                }
+            }
+
+            // La pression est absolue (0 a MaximumPressure). L'afficher telle quelle donnerait
+            // « 35 % » a l'instant ou elle est en realite au plafond : on la rapporte donc a son
+            // maximum, qui est ce que la phrase annonce.
+            float pressure = _economy.GetAdministrativePressure(EconomyService.PlayerOwnerId);
+            float shareOfCeiling = pressure / AdministrationModel.MaximumPressure;
+
+            GUILayout.Space(2f);
+            GUILayout.Label(
+                $"Vos colonnes : {systems} systeme(s) tenu(s), pression administrative a "
+                + $"{shareOfCeiling:P0} du plafond.",
+                UITheme.Value);
         }
 
         private void DrawEmpiresTab()

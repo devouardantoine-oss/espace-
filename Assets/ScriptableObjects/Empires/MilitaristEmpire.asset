@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.22
   strengthLine: 'Defense et blindage superieurs · memoire longue des offenses'
   weaknessLine: 'Expansion lente · economie rigide'
+  lineage: 3

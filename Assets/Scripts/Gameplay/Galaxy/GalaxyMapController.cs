@@ -46,6 +46,7 @@ namespace Espace.Gameplay.Galaxy
 
         /// <summary>Journal de la partie (Phase 24). Arrete en meme temps que la scene.</summary>
         private Espace.Gameplay.Chronicle.ChronicleService _chronicle;
+        private Espace.Gameplay.Chronicle.CodexService _codex;
 
         private void Awake()
         {
@@ -118,6 +119,13 @@ namespace Espace.Gameplay.Galaxy
         /// </summary>
         private void OnDestroy()
         {
+            if (_codex != null)
+            {
+                _codex.Shutdown();
+                ServiceLocator.Unregister<Espace.Gameplay.Chronicle.ICodexService>();
+                _codex = null;
+            }
+
             if (_chronicle != null)
             {
                 _chronicle.Shutdown();
@@ -191,6 +199,16 @@ namespace Espace.Gameplay.Galaxy
             if (!ServiceLocator.IsRegistered<Espace.Gameplay.Chronicle.IChronicleService>())
             {
                 ServiceLocator.Register<Espace.Gameplay.Chronicle.IChronicleService>(_chronicle);
+            }
+
+            // Le codex apres le journal, et jamais avant : c'est dans le journal qu'il inscrit
+            // l'arrivee d'un fragment.
+            _codex = new Espace.Gameplay.Chronicle.CodexService(eventBus, map);
+            _codex.Initialize();
+
+            if (!ServiceLocator.IsRegistered<Espace.Gameplay.Chronicle.ICodexService>())
+            {
+                ServiceLocator.Register<Espace.Gameplay.Chronicle.ICodexService>(_codex);
             }
         }
 

@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.75
   strengthLine: 'Revenus commerciaux superieurs · reseau d''information etendu'
   weaknessLine: 'Flottes de guerre reduites'
+  lineage: 5

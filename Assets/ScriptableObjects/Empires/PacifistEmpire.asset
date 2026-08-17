@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.88
   strengthLine: 'Recherche acceleree · stabilite interieure exemplaire'
   weaknessLine: 'Armee reduite · reaction lente aux crises'
+  lineage: 2

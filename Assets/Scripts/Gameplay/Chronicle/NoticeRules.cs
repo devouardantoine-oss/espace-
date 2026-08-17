@@ -40,7 +40,10 @@ namespace Espace.Gameplay.Chronicle
         ResearchDomainChanged,
         EspionageFailed,
         SystemSabotaged,
-        RevoltIncited
+        RevoltIncited,
+
+        /// <summary>Un fragment du journal de l'Empire disparu vient d'etre obtenu (Phase 24, etape 3).</summary>
+        FragmentFound
     }
 
     /// <summary>
@@ -86,6 +89,10 @@ namespace Espace.Gameplay.Chronicle
                 case NoticeKind.SystemTaken:
                 case NoticeKind.SystemSabotaged:
                 case NoticeKind.RevoltIncited:
+
+                // Un fragment merite d'etre vu — c'est le fil narratif du jeu — mais jamais
+                // d'interrompre : il n'y a rien a decider, seulement quelque chose a lire.
+                case NoticeKind.FragmentFound:
                     return NoticeTier.Important;
 
                 // Le reste vit dans le journal et nulle part ailleurs.

@@ -26,3 +26,4 @@ MonoBehaviour:
   diplomacy: 0.18
   strengthLine: 'Colonisation rapide · croissance de population elevee'
   weaknessLine: 'Traites refuses par defaut'
+  lineage: 6

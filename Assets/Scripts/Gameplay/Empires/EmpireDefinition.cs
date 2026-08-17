@@ -73,10 +73,22 @@ namespace Espace.Gameplay.Empires
         [SerializeField]
         private string weaknessLine;
 
+        [Header("Filiation (Phase 24, etape 3)")]
+        [Tooltip("Identite de la faction pour le codex. Laissee a Unknown, elle ne delivre aucune archive.")]
+        [SerializeField]
+        private FactionLineage lineage = FactionLineage.Unknown;
+
         public string DisplayName => displayName;
         public Color Color => color;
         public EmpirePersonality Personality => personality;
         public bool IsPlayerControlled => isPlayerControlled;
+
+        /// <summary>
+        /// Filiation de cette faction vis-a-vis de l'Empire disparu. Voir
+        /// <see cref="FactionLineage"/> pour la raison d'etre de cette cle, distincte de
+        /// <see cref="Personality"/>.
+        /// </summary>
+        public FactionLineage Lineage => lineage;
 
         /// <summary>Espece et forme politique, en une ligne.</summary>
         public string SpeciesLine => speciesLine;
