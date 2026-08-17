@@ -1,3 +1,5 @@
+using Espace.Gameplay.People;
+
 namespace Espace.Gameplay.Decisions
 {
     /// <summary>
@@ -64,10 +66,22 @@ namespace Espace.Gameplay.Decisions
         /// <summary>Variation de stabilite a l'echeance.</summary>
         public readonly float DeferredStability;
 
+        /// <summary>
+        /// Ce que le gouverneur du monde retient de ce choix (Phase 24, etape 6).
+        /// <para>
+        /// La correspondance vit ici, avec le contenu, et non dans le service : c'est le
+        /// catalogue qui decide que reprimer se retient comme une repression. Un choix qui ne
+        /// laisserait aucun souvenir vaudrait <c>null</c> — mais aucun n'est dans ce cas, et un
+        /// test le verifie : une decision dont personne ne se souvient n'aurait pas de suite.
+        /// </para>
+        /// </summary>
+        public readonly GovernorFactKind? RememberedAs;
+
         public DecisionOption(
             string label, string immediateText, string deferredText,
             float immediateCredits, float immediateGarrisonFraction, float immediateStability,
-            int deferredDelayDays, float deferredCredits, float deferredGarrisonFraction, float deferredStability)
+            int deferredDelayDays, float deferredCredits, float deferredGarrisonFraction, float deferredStability,
+            GovernorFactKind? rememberedAs = null)
         {
             Label = label;
             ImmediateText = immediateText;
@@ -79,6 +93,7 @@ namespace Espace.Gameplay.Decisions
             DeferredCredits = deferredCredits;
             DeferredGarrisonFraction = deferredGarrisonFraction;
             DeferredStability = deferredStability;
+            RememberedAs = rememberedAs;
         }
 
         /// <summary>

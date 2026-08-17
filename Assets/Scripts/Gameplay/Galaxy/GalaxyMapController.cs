@@ -48,6 +48,7 @@ namespace Espace.Gameplay.Galaxy
         private Espace.Gameplay.Chronicle.ChronicleService _chronicle;
         private Espace.Gameplay.Chronicle.CodexService _codex;
         private Espace.Gameplay.Decisions.DecisionService _decisions;
+        private Espace.Gameplay.People.GovernorService _governors;
 
         private void Awake()
         {
@@ -120,6 +121,13 @@ namespace Espace.Gameplay.Galaxy
         /// </summary>
         private void OnDestroy()
         {
+            if (_governors != null)
+            {
+                _governors.Shutdown();
+                ServiceLocator.Unregister<Espace.Gameplay.People.IGovernorService>();
+                _governors = null;
+            }
+
             if (_decisions != null)
             {
                 _decisions.Shutdown();
@@ -226,6 +234,15 @@ namespace Espace.Gameplay.Galaxy
             if (!ServiceLocator.IsRegistered<Espace.Gameplay.Decisions.IDecisionService>())
             {
                 ServiceLocator.Register<Espace.Gameplay.Decisions.IDecisionService>(_decisions);
+            }
+
+            // Les gouverneurs apres les decisions : ils ecoutent ce que celles-ci publient.
+            _governors = new Espace.Gameplay.People.GovernorService(eventBus, map);
+            _governors.Initialize();
+
+            if (!ServiceLocator.IsRegistered<Espace.Gameplay.People.IGovernorService>())
+            {
+                ServiceLocator.Register<Espace.Gameplay.People.IGovernorService>(_governors);
             }
         }
 

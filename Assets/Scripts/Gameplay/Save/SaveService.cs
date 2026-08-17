@@ -10,6 +10,7 @@ using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
+using Espace.Gameplay.People;
 using Espace.Gameplay.Research;
 using UnityEngine;
 
@@ -45,6 +46,7 @@ namespace Espace.Gameplay.Save
         private readonly IResearchService _research;
         private readonly ICodexService _codex;
         private readonly IDecisionService _decisions;
+        private readonly IGovernorService _governors;
         private readonly EmpireRegistry _empireRegistry;
         private readonly string _filePath;
 
@@ -63,10 +65,11 @@ namespace Espace.Gameplay.Save
         public SaveService(
             GalaxyMap map, IGameClock clock, IEconomyService economy, IMilitaryService military,
             IDiplomacyService diplomacy, IResearchService research, EmpireRegistry empireRegistry, string filePath,
-            ICodexService codex = null, IDecisionService decisions = null)
+            ICodexService codex = null, IDecisionService decisions = null, IGovernorService governors = null)
         {
             _codex = codex;
             _decisions = decisions;
+            _governors = governors;
 
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
@@ -282,6 +285,7 @@ namespace Espace.Gameplay.Save
             }
 
             CaptureDecisions(data);
+            CaptureGovernors(data);
 
             for (int i = 0; i < empires.Count; i++)
             {
@@ -443,6 +447,7 @@ namespace Espace.Gameplay.Save
             }
 
             RestoreDecisions(data);
+            RestoreGovernors(data);
 
             if (data.Date != null)
             {
@@ -563,6 +568,68 @@ namespace Espace.Gameplay.Save
             }
 
             _decisions.Restore(pending, scheduled, data.NextDecisionId);
+        }
+
+        // --- Gouverneurs (Phase 24, etape 6) ------------------------------------------------
+
+        private void CaptureGovernors(GameSaveData data)
+        {
+            if (_governors == null)
+            {
+                return;
+            }
+
+            foreach (StarSystemId systemId in _governors.RememberedSystems)
+            {
+                Governor governor = _governors.GetGovernor(systemId);
+                if (governor == null)
+                {
+                    continue;
+                }
+
+                foreach (GovernorFact fact in governor.Memory)
+                {
+                    data.GovernorMemory.Add(new GovernorFactSaveData
+                    {
+                        SystemId = systemId.Value,
+                        Kind = (int)fact.Kind,
+                        On = ToDateData(fact.On)
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Redonne a chaque gouverneur les faits qu'il avait retenus.
+        /// <para>
+        /// Les faits arrivent a plat : on les regroupe par systeme avant de les rendre, sinon
+        /// chaque appel a <c>RestoreMemory</c> ecraserait le precedent.
+        /// </para>
+        /// </summary>
+        private void RestoreGovernors(GameSaveData data)
+        {
+            if (_governors == null)
+            {
+                return;
+            }
+
+            var bySystem = new Dictionary<int, List<GovernorFact>>();
+
+            foreach (GovernorFactSaveData saved in data.GovernorMemory)
+            {
+                if (!bySystem.TryGetValue(saved.SystemId, out List<GovernorFact> facts))
+                {
+                    facts = new List<GovernorFact>();
+                    bySystem[saved.SystemId] = facts;
+                }
+
+                facts.Add(new GovernorFact((GovernorFactKind)saved.Kind, FromDateData(saved.On)));
+            }
+
+            foreach (KeyValuePair<int, List<GovernorFact>> entry in bySystem)
+            {
+                _governors.RestoreMemory(new StarSystemId(entry.Key), entry.Value);
+            }
         }
     }
 }

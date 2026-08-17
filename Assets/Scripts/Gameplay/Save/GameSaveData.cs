@@ -47,8 +47,9 @@ namespace Espace.Gameplay.Save
         /// 4 depuis la Phase 17 : les flottes en voyage sont sauvegardees (<see cref="FleetsInTransit"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : la liste reste simplement vide.
         /// 5 depuis la Phase 24 : les fragments du codex obtenus (<see cref="UnlockedFragments"/>). Une sauvegarde anterieure n'en contient aucun et se charge sans rien de special — <c>CodexService</c> relisant l'etat du monde chaque jour, elle retrouve des le lendemain tous les fragments que sa situation justifie. C'est la seule raison pour laquelle aucune migration n'est necessaire ici.
         /// 6 depuis la Phase 24, etape 5 : les decisions en attente (<see cref="Decisions"/>) et les ardoises pas encore echues (<see cref="Consequences"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : les listes restent vides et le systeme repart d'une ardoise nette.
+        /// 7 depuis la Phase 24, etape 6 : la memoire des gouverneurs (<see cref="GovernorMemory"/>). Une sauvegarde anterieure n'en contient aucune, et c'est sans consequence : les gouverneurs se recalculent par hachage, ils reapparaissent identiques et simplement sans souvenirs.
         /// </remarks>
-        public int Version = 6;
+        public int Version = 7;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -80,6 +81,14 @@ namespace Espace.Gameplay.Save
 
         /// <summary>Prochain identifiant de decision, pour qu'un rechargement n'en reattribue pas un deja utilise.</summary>
         public int NextDecisionId = 1;
+
+        /// <summary>
+        /// Faits retenus par les gouverneurs (Phase 24, etape 6), a plat et repartis par systeme.
+        /// <para>
+        /// Seule la memoire est ecrite : le nom et le temperament se recalculent par hachage.
+        /// </para>
+        /// </summary>
+        public List<GovernorFactSaveData> GovernorMemory = new List<GovernorFactSaveData>();
     }
 
     [Serializable]
@@ -269,5 +278,14 @@ namespace Espace.Gameplay.Save
         public float GarrisonFraction;
         public float Stability;
         public string Text;
+    }
+
+    /// <summary>Un fait retenu par le gouverneur d'un systeme (Phase 24, etape 6).</summary>
+    [Serializable]
+    public sealed class GovernorFactSaveData
+    {
+        public int SystemId;
+        public int Kind;
+        public GameDateData On;
     }
 }

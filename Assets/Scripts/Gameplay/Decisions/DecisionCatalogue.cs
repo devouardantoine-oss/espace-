@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Espace.Core;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
+using Espace.Gameplay.People;
 
 namespace Espace.Gameplay.Decisions
 {
@@ -57,7 +58,8 @@ namespace Espace.Gameplay.Decisions
                     deferredDelayDays: DeferredDelayDays,
                     deferredCredits: 0f,
                     deferredGarrisonFraction: 0f,
-                    deferredStability: -0.15f),
+                    deferredStability: -0.15f,
+                    rememberedAs: GovernorFactKind.Repressed),
 
                 new DecisionOption(
                     "Ceder",
@@ -69,7 +71,8 @@ namespace Espace.Gameplay.Decisions
                     deferredDelayDays: DeferredDelayDays,
                     deferredCredits: 900f,
                     deferredGarrisonFraction: 0f,
-                    deferredStability: 0f),
+                    deferredStability: 0f,
+                    rememberedAs: GovernorFactKind.Conceded),
 
                 new DecisionOption(
                     "Temporiser",
@@ -81,7 +84,8 @@ namespace Espace.Gameplay.Decisions
                     deferredDelayDays: DeferredDelayDays,
                     deferredCredits: 0f,
                     deferredGarrisonFraction: 0.20f,
-                    deferredStability: -0.05f)
+                    deferredStability: -0.05f,
+                    rememberedAs: GovernorFactKind.Ignored)
             };
 
             string name = system != null ? system.Name : "un systeme";

@@ -6,6 +6,7 @@ using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
 using Espace.Gameplay.Galaxy;
 using Espace.Gameplay.Military;
+using Espace.Gameplay.People;
 using Espace.Gameplay.Research;
 using UnityEngine;
 
@@ -73,6 +74,7 @@ namespace Espace.UI
         private EmpireRegistry _empireRegistry;
         private IEconomyService _economy;
         private IMilitaryService _military;
+        private IGovernorService _governors;
         private IDiplomacyService _diplomacy;
         private IResearchService _research;
 
@@ -498,6 +500,8 @@ namespace Espace.UI
             // ou il est accompagne des flottes capables de s'en charger. Le dupliquer faisait
             // deborder l'Apercu de treize unites des qu'un message de retour s'affichait.
 
+            DrawGovernor(new Rect(left.x, left.y + 72, left.width, 56), system);
+
             GUI.Label(new Rect(right.x, right.y, right.width, UITheme.CaptionHeight), "FORCES EN PRESENCE", UITheme.Caption);
 
             if (_military == null)
@@ -524,6 +528,56 @@ namespace Espace.UI
                 GUI.Label(new Rect(right.x, lineY, right.width - 74, UITheme.ValueHeight), OwnerLabel(fleet.OwnerId), UITheme.Value);
                 GUI.Label(new Rect(right.xMax - 74, lineY, 74, UITheme.ValueHeight), $"{fleet.Composition.TotalCount} u.", UITheme.Caption);
                 lineY += 20;
+            }
+        }
+
+        /// <summary>
+        /// Le gouverneur du monde, son etat d'esprit et ce qu'il retient (Phase 24, etape 6).
+        /// <para>
+        /// <b>Uniquement sur ses propres systemes.</b> Savoir que le gouverneur adverse vacille
+        /// serait un renseignement de premier ordre, et l'espionnage doit le faire meriter — meme
+        /// regle de confidentialite que la garnison et la stabilite depuis la Phase 23.
+        /// </para>
+        /// <para>
+        /// <b>Les mots avant le nombre, et les souvenirs sous les mots.</b> « Loyaute 0,31 »
+        /// n'apprend rien a qui ignore ou se trouve le seuil ; « vacille » se lit d'un coup
+        /// d'oeil, et les faits retenus expliquent <i>pourquoi</i>. Sans eux, un depart passerait
+        /// pour arbitraire.
+        /// </para>
+        /// </summary>
+        private void DrawGovernor(Rect rect, StarSystemState system)
+        {
+            if (system.OwnerId != EconomyService.PlayerOwnerId)
+            {
+                return;
+            }
+
+            if (_governors == null)
+            {
+                ServiceLocator.TryGet(out _governors);
+            }
+
+            Governor governor = _governors?.GetGovernor(system.Id);
+            if (governor == null)
+            {
+                return;
+            }
+
+            float loyalty = _governors.GetLoyalty(system.Id);
+
+            GUI.Label(new Rect(rect.x, rect.y, rect.width, UITheme.CaptionHeight), "GOUVERNEUR", UITheme.Caption);
+            GUI.Label(new Rect(rect.x, rect.y + 14, rect.width, 18), governor.Name, UITheme.Value);
+            GUI.Label(
+                new Rect(rect.x, rect.y + 32, rect.width, 18),
+                $"{LoyaltyModel.Describe(loyalty)} ({loyalty:0.00})",
+                UITheme.Caption);
+
+            // Le fait le plus recent suffit : les trois tiennent dans la fiche complete, pas
+            // dans l'apercu, et c'est le dernier qui explique le mieux l'etat present.
+            if (governor.Memory.Count > 0)
+            {
+                GovernorFact latest = governor.Memory[governor.Memory.Count - 1];
+                GUI.Label(new Rect(rect.x, rect.y + 48, rect.width, 18), latest.Describe(), UITheme.Caption);
             }
         }
 

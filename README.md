@@ -1385,6 +1385,49 @@ attende une réponse. Le plafond reste serré : un cinquième demandera la même
 
 ---
 
+### Les personnes (Phase 24, étape 6)
+
+| Brique | Rôle |
+|---|---|
+| `Governor` | La personne qui tient un monde, et les trois faits qu'elle retient |
+| `LoyaltyModel` | Fonction pure : tempérament + faits retenus + stabilité → loyauté |
+| `GovernorService` | Ce qu'un gouverneur observe, et le jour où il s'en va |
+
+L'étape 5 a donné au joueur des choix coûteux ; ils ne laissaient de trace que dans une facture
+chiffrée. Un gouverneur **retient** ce qu'on a fait sur son monde et finit par partir si c'est
+trop. C'est ce qui transforme une facture en relation.
+
+> **Il ne se souvient que de trois faits, et c'est une règle de jeu, pas une économie de
+> mémoire.** Une rancune finit par s'effacer : trois bonnes décisions effacent trois mauvaises.
+> Sans ce plafond, une seule répression rendrait un gouverneur définitivement perdu, et le système
+> cesserait d'être une relation pour devenir une punition. C'est la propriété que le test le plus
+> important de cette étape protège.
+>
+> **La stabilité seule ne fait jamais partir personne.** Elle tire la loyauté vers elle plutôt que
+> de s'y ajouter, donc même un monde à l'agonie ne suffit pas : un départ doit toujours avoir une
+> part de responsabilité du joueur, sinon il est arbitraire. Un test le verrouille.
+>
+> **Le joueur voit venir le départ.** « Loyauté 0,31 » n'apprend rien à qui ignore où se trouve le
+> seuil — la fiche du monde affiche donc « loyal », « vacille » ou « sur le départ », le nombre à
+> côté, et le dernier fait retenu qui explique *pourquoi*. Même raison que pour la vigilance de
+> l'espionnage à l'étape 4.
+
+**Aucun gouverneur n'est sauvegardé, seule sa mémoire l'est.** Le nom et le tempérament se
+recalculent par hachage de `(système, suzerain)`, exactement comme un `Admiral` depuis la
+Phase 15 — aucun `System.Random`. La **version 7** du format ne porte donc que les faits retenus,
+et une partie antérieure se charge sans rien de spécial : les gouverneurs réapparaissent
+identiques, simplement sans souvenirs. Le suzerain entre dans le hachage, si bien que prendre un
+monde à l'adversaire y installe **quelqu'un d'autre**, à la mémoire vierge.
+
+**Ce que je n'ai pas fait, et pourquoi.** La bible prévoit qu'un gouverneur qui défecte livre le
+système à l'adversaire — « cet adversaire connaît désormais le système : offensive probable ».
+C'est le comportement juste, mais **aucune IA de ce jeu ne possède de modèle de renseignement** :
+lui « apprendre » un système n'aurait aucun effet observable, et coder un effet imaginaire vaut
+moins que de noter le manque. Le départ coûte donc ce qu'il peut réellement coûter — de la
+stabilité, et un monde à reprendre en main.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus

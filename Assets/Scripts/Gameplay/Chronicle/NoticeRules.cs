@@ -52,7 +52,10 @@ namespace Espace.Gameplay.Chronicle
         DecisionAnswered,
 
         /// <summary>L'ardoise contractee par une decision vient de tomber.</summary>
-        DecisionSettled
+        DecisionSettled,
+
+        /// <summary>Un gouverneur a quitte son poste (Phase 24, etape 6).</summary>
+        GovernorDefected
     }
 
     /// <summary>
@@ -111,6 +114,10 @@ namespace Espace.Gameplay.Chronicle
                 // L'ardoise qui tombe deux mois apres un choix : le joueur doit faire le lien
                 // entre ce qu'il subit et ce qu'il a decide, sinon le differe n'apprend rien.
                 case NoticeKind.DecisionSettled:
+
+                // Un depart se voit sur la fiche du monde, et il ne se rattrape pas : il merite
+                // le compteur, jamais l'interruption.
+                case NoticeKind.GovernorDefected:
                     return NoticeTier.Important;
 
                 // Le reste vit dans le journal et nulle part ailleurs.

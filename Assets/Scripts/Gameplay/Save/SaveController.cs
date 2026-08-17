@@ -67,9 +67,10 @@ namespace Espace.Gameplay.Save
             // sauvegarde sans lui reste valide (voir SaveService).
             ServiceLocator.TryGet(out Espace.Gameplay.Chronicle.ICodexService codex);
             ServiceLocator.TryGet(out Espace.Gameplay.Decisions.IDecisionService decisions);
+            ServiceLocator.TryGet(out Espace.Gameplay.People.IGovernorService governors);
 
             _saveService = new SaveService(
-                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex, decisions);
+                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex, decisions, governors);
 
             if (!ServiceLocator.IsRegistered<ISaveService>())
             {

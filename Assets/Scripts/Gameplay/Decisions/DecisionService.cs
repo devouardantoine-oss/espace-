@@ -249,6 +249,10 @@ namespace Espace.Gameplay.Decisions
                 $"{decision.Title} — {option.DeferredText}."));
 
             Record(NoticeKind.DecisionAnswered, $"{decision.Title} : {option.Label}.", decision.SystemId);
+
+            // Le gouverneur du monde apprend ce qu'on a decide pour lui.
+            _eventBus.Publish(new DecisionAnsweredEvent(decision.SystemId, option.RememberedAs));
+
             return true;
         }
 
