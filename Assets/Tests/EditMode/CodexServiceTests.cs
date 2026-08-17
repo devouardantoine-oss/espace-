@@ -207,6 +207,51 @@ namespace Espace.Tests.EditMode
             }
         }
 
+        [Test]
+        public void PlayingAnotherFaction_MakesTheAubeArchivesReachable()
+        {
+            // La raison d'etre du fragment XII. Tant que l'Aube n'avait pas d'archives, un joueur
+            // qui ne la jouait pas plafonnait une unite plus bas que les autres, sans que rien ne
+            // le lui dise. Ici le joueur est Vharin : l'Aube devient une cible comme une autre.
+            CodexFragment aube = CodexLibrary.ByNumber(12);
+            Assert.AreEqual(FactionLineage.Aube, aube.Lineage);
+
+            ServiceLocator.Unregister<EmpireRegistry>();
+            ServiceLocator.Register(new EmpireRegistry(new List<Empire>
+            {
+                new Empire(PlayerId, "Joueur", Color.blue, EmpirePersonality.Pacifist, true, FactionLineage.Vharin),
+                new Empire(KethraId, "Aube", Color.white, EmpirePersonality.Expansionist, false, FactionLineage.Aube),
+                new Empire(OskarId, "Oskar", Color.green, EmpirePersonality.Mercantile, false, FactionLineage.Oskar)
+            }));
+
+            AdvanceOneDay();
+            Assert.IsFalse(_codex.IsUnlocked(aube.Number), "L'Aube tient encore un systeme.");
+
+            _map.Systems[1].OwnerId = PlayerId;
+            AdvanceOneDay();
+
+            Assert.IsTrue(_codex.IsUnlocked(aube.Number));
+        }
+
+        [Test]
+        public void OnesOwnArchives_StayBeyondReachWhicheverFactionIsPlayed()
+        {
+            // Meme situation, mais c'est Vharin — la faction du joueur — qui disparaitrait. Le
+            // service exclut le joueur du balayage, donc rien ne doit se debloquer.
+            ServiceLocator.Unregister<EmpireRegistry>();
+            ServiceLocator.Register(new EmpireRegistry(new List<Empire>
+            {
+                new Empire(PlayerId, "Joueur", Color.blue, EmpirePersonality.Pacifist, true, FactionLineage.Vharin),
+                new Empire(KethraId, "Aube", Color.white, EmpirePersonality.Expansionist, false, FactionLineage.Aube),
+                new Empire(OskarId, "Oskar", Color.green, EmpirePersonality.Mercantile, false, FactionLineage.Oskar)
+            }));
+
+            _map.Systems[0].OwnerId = KethraId;
+            AdvanceOneDay();
+
+            Assert.IsFalse(_codex.IsUnlocked(8), "Vharin est la faction du joueur : ses archives restent hors d'atteinte.");
+        }
+
         // --- Restauration --------------------------------------------------------
 
         [Test]

@@ -6,14 +6,14 @@ using Espace.Gameplay.Research;
 namespace Espace.Gameplay.Chronicle
 {
     /// <summary>
-    /// Les onze fragments du journal de l'Empire disparu (Phase 24, etape 3).
+    /// Les douze fragments du journal de l'Empire disparu (Phase 24, etape 3).
     /// <para>
     /// <b>Contenu, pas comportement</b> — meme separation que <c>EmpireDefinition</c> face a
     /// <c>EmpirePersonalityProfile</c>. Les textes vivent ici, la mecanique dans
     /// <see cref="CodexFragment"/>, la memoire dans <see cref="CodexService"/>.
     /// </para>
     /// <para>
-    /// <b>Pourquoi une table en dur plutot que des ScriptableObjects.</b> Ces onze textes sont
+    /// <b>Pourquoi une table en dur plutot que des ScriptableObjects.</b> Ces douze textes sont
     /// une trame, pas des reglages : leur ordre, leurs seuils et leur progression de ton sont
     /// solidaires, et un fragment modifie isolement dans l'inspecteur casserait le recit sans
     /// que rien ne le signale. Une table compilee les rend verifiables par des tests — c'est
@@ -41,8 +41,11 @@ namespace Espace.Gameplay.Chronicle
         /// </summary>
         public const float CeilingThreshold = AdministrationModel.MaximumPressure - 0.01f;
 
-        /// <summary>Nombre de fragments delivrables en cours de partie. Le douzieme est vierge et arrive en fin de partie.</summary>
-        public const int Count = 11;
+        /// <summary>
+        /// Nombre de fragments delivrables en cours de partie. Le treizieme est vierge et arrive
+        /// en fin de partie : c'est le joueur qui l'ecrit.
+        /// </summary>
+        public const int Count = 12;
 
         private static readonly CodexFragment[] Fragments =
         {
@@ -126,10 +129,25 @@ namespace Espace.Gameplay.Chronicle
                 "« Certains mondes ont ete debranches pour que d'autres tiennent. Tu as sans "
                 + "doute pris l'un des deux pour une chance. »",
                 "L'inegalite des six mondes d'origine n'en est pas une : elle a ete decidee.",
-                ResearchDomain.Economy)
+                ResearchDomain.Economy),
+
+            // Place en dernier, et non parmi les archives V a IX, pour deux raisons qui vont
+            // dans le meme sens. La premiere est technique : les numeros sont la cle de
+            // sauvegarde, et inserer ce fragment au milieu aurait decale les suivants — un
+            // joueur ayant obtenu « Les routes » se serait retrouve avec les archives de l'Aube
+            // a la place. La seconde est narrative, et c'est la vraie : le registre de l'Aube a
+            // ete detruit. Ce n'est pas une archive, c'est une absence — et une page presque
+            // effacee est exactement ce qui doit preceder la page entierement vierge.
+            CodexFragment.FromArchives(
+                12, "XII", "Le registre arrache",
+                "« Registre de bord. Origine : efface. Cap : efface. Motif du depart : efface. "
+                + "Les pages n'ont pas ete perdues — elles ont ete arrachees, dans l'ordre, par "
+                + "quelqu'un qui prenait son temps. »",
+                "L'Aube n'a pas egare sa carte. Son commandant l'a detruite pour que ses descendants ne cherchent jamais a rentrer.",
+                FactionLineage.Aube)
         };
 
-        /// <summary>Les onze fragments, dans l'ordre de leur numero.</summary>
+        /// <summary>Les douze fragments, dans l'ordre de leur numero.</summary>
         public static IReadOnlyList<CodexFragment> All
         {
             get { return Fragments; }

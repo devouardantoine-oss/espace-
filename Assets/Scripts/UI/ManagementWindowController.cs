@@ -324,6 +324,8 @@ namespace Espace.UI
                 return;
             }
 
+            FactionLineage playerLineage = PlayerLineage();
+
             GUILayout.Label(
                 $"{_codex.UnlockedCount} fragment(s) sur {CodexLibrary.Count}.",
                 UITheme.MutedLabel);
@@ -344,7 +346,13 @@ namespace Espace.UI
 
                 if (!_codex.IsUnlocked(fragment.Number))
                 {
-                    GUILayout.Label($"{fragment.Numeral} — ?", UITheme.MutedLabel);
+                    // « Jamais » et « pas encore » ne se disent pas pareil. Un joueur bloque a
+                    // 11 sur 12 sans explication croit avoir manque quelque chose.
+                    GUILayout.Label(
+                        fragment.IsBeyondReachFor(playerLineage)
+                            ? $"{fragment.Numeral} — vos propres registres. Detruits avec ceux de l'Empire."
+                            : $"{fragment.Numeral} — ?",
+                        UITheme.MutedLabel);
                     continue;
                 }
 
@@ -357,6 +365,13 @@ namespace Espace.UI
                     DrawPlayerLedger();
                 }
             }
+        }
+
+        /// <summary>Filiation de la faction jouee, ou <c>Unknown</c> si le registre n'est pas encore la.</summary>
+        private FactionLineage PlayerLineage()
+        {
+            Empire player = _empireRegistry?.PlayerEmpire;
+            return player != null ? player.Lineage : FactionLineage.Unknown;
         }
 
         /// <summary>

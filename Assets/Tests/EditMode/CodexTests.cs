@@ -21,6 +21,9 @@ namespace Espace.Tests.EditMode
     [TestFixture]
     public sealed class CodexTests
     {
+        private static readonly FactionLineage[] AllLineages =
+            (FactionLineage[])Enum.GetValues(typeof(FactionLineage));
+
         private static CodexWorldState World(
             float pressure = 0f,
             FactionLineage[] annihilated = null,
@@ -122,8 +125,11 @@ namespace Espace.Tests.EditMode
         }
 
         [Test]
-        public void ArchiveFragments_TargetFiveDistinctAndDeclaredFactions()
+        public void ArchiveFragments_CoverEverySingleFaction()
         {
+            // Une faction sans fragment creerait une asymetrie invisible : le joueur qui la
+            // choisit plafonnerait plus bas que les autres sans jamais savoir pourquoi. C'est
+            // exactement le defaut qu'a corrige l'ajout du fragment XII.
             var seen = new List<FactionLineage>();
 
             foreach (CodexFragment fragment in CodexLibrary.All)
@@ -144,7 +150,80 @@ namespace Espace.Tests.EditMode
                 seen.Add(fragment.Lineage);
             }
 
-            Assert.AreEqual(5, seen.Count, "Cinq factions delivrent leurs archives.");
+            foreach (FactionLineage lineage in AllLineages)
+            {
+                if (lineage == FactionLineage.Unknown)
+                {
+                    continue;
+                }
+
+                CollectionAssert.Contains(
+                    seen, lineage,
+                    $"{lineage} ne delivre aucune archive : un joueur de cette filiation plafonnerait plus bas que les autres.");
+            }
+
+            Assert.AreEqual(6, seen.Count, "Les six factions delivrent leurs archives.");
+        }
+
+        [Test]
+        public void EveryFaction_LeavesExactlyOneFragmentBeyondReach()
+        {
+            // La propriete qui rend la partie symetrique, et la seule qui compte pour le joueur :
+            // d'ou qu'on parte, on termine a onze sur douze — et jamais aux onze memes. Le
+            // document manquant est toujours celui de son propre peuple.
+            foreach (FactionLineage played in AllLineages)
+            {
+                if (played == FactionLineage.Unknown)
+                {
+                    continue;
+                }
+
+                int unreachable = 0;
+                foreach (CodexFragment fragment in CodexLibrary.All)
+                {
+                    if (fragment.IsBeyondReachFor(played))
+                    {
+                        unreachable++;
+                        Assert.AreEqual(played, fragment.Lineage);
+                    }
+                }
+
+                Assert.AreEqual(
+                    1, unreachable,
+                    $"En jouant {played}, exactement un fragment doit rester hors d'atteinte.");
+            }
+        }
+
+        [Test]
+        public void AnUndeclaredLineage_PutsNothingBeyondReach()
+        {
+            // Une definition sans filiation declaree ne doit pas faire disparaitre les six
+            // fragments d'archives d'un coup.
+            foreach (CodexFragment fragment in CodexLibrary.All)
+            {
+                Assert.IsFalse(fragment.IsBeyondReachFor(FactionLineage.Unknown));
+            }
+        }
+
+        [Test]
+        public void OnlyArchives_CanBeBeyondReach()
+        {
+            // Un fragment de pression ou de recherche depend du joueur seul : rien ne doit
+            // jamais le rendre inaccessible.
+            foreach (CodexFragment fragment in CodexLibrary.All)
+            {
+                if (fragment.TriggerKind == FragmentTriggerKind.FactionAnnihilated)
+                {
+                    continue;
+                }
+
+                foreach (FactionLineage played in AllLineages)
+                {
+                    Assert.IsFalse(
+                        fragment.IsBeyondReachFor(played),
+                        $"Fragment {fragment.Numeral} rendu inaccessible en jouant {played}.");
+                }
+            }
         }
 
         [Test]

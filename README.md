@@ -1189,16 +1189,16 @@ sauvegarder n'est pas une décision de jeu, c'est une opération sur la partie.
 
 ---
 
-### Le codex : les onze fragments (Phase 24, étape 3)
+### Le codex : les douze fragments (Phase 24, étape 3)
 
 | Brique | Rôle |
 |---|---|
 | `CodexFragment` | Fonction pure : un fragment sait dire si l'état du monde le délivre, rien d'autre |
-| `CodexLibrary` | Contenu : les onze textes, leurs seuils, leurs déclencheurs |
+| `CodexLibrary` | Contenu : les douze textes, leurs seuils, leurs déclencheurs |
 | `CodexService` | La mémoire : ce qui a été obtenu l'est pour toujours |
 | `FactionLineage` | L'identité d'une faction vis-à-vis de l'Empire disparu |
 
-Le jeu avait une bible d'univers et **rien dans le jeu pour la raconter**. Les onze fragments
+Le jeu avait une bible d'univers et **rien dans le jeu pour la raconter**. Les douze fragments
 sont une **lettre**, pas un journal intime : leur auteur occupait la place du joueur, savait
 qu'il y aurait un successeur, et lui écrit directement. La ressemblance devient totale non par
 un tour de magie, mais parce que **la position fabrique la même personne** — n'importe qui
@@ -1207,8 +1207,28 @@ atteignant cette taille écrit la même chose et se trompe pareil.
 | Fragments | Déclencheur | Pourquoi celui-là |
 |---|---|---|
 | I à IV | `AdministrationModel.Pressure` franchit 0 · 0,12 · 0,25 · plafond | Le récit suit ce que le joueur **ressent**, pas son score |
-| V à IX | Une faction perd son dernier système | Les faits ne s'obtiennent qu'en détruisant celui qui les portait |
+| V à IX, XII | Une faction perd son dernier système | Les faits ne s'obtiennent qu'en détruisant celui qui les portait |
 | X et XI | Dernier palier de Logistique / Économie | Comprendre le monde, c'est comprendre qui l'a fait |
+
+**Le douzième fragment existe pour une raison de conception, pas de contenu.** Les cinq premières
+archives couvraient cinq factions sur six : la Fédération de l'Aube n'en avait aucune. Comme on
+ne s'anéantit pas soi-même, un joueur de l'Aube atteignait 11 sur 11 pendant que tous les autres
+plafonnaient à 10 sur 11 — **une asymétrie qu'aucun message n'expliquait**. Avec six archives
+pour six factions, tout joueur termine à **11 sur 12**, et jamais aux onze mêmes.
+
+> **Ce qui manque devient une déclaration.** Le seul document hors d'atteinte est celui de son
+> propre peuple, parce qu'on *est* ce peuple. Le codex ne l'affiche donc pas en « ? » comme les
+> autres, mais en clair — « vos propres registres, détruits avec ceux de l'Empire ». Un joueur
+> bloqué à 11 sur 12 sans explication croit avoir manqué quelque chose ; c'est l'inverse qu'on
+> veut lui dire, et `CodexFragment.IsBeyondReachFor` est la règle qui fait la différence entre
+> « pas encore » et « jamais ».
+>
+> **Il est placé en douzième, pas inséré parmi les archives, pour deux raisons convergentes.**
+> Technique : le numéro est la clé de sauvegarde, et une insertion au milieu aurait décalé les
+> suivants — un joueur ayant obtenu *Les routes* aurait retrouvé les archives de l'Aube à la
+> place. Narrative, et c'est la vraie : le registre de l'Aube a été **détruit**. Ce n'est pas une
+> archive, c'est une absence — et une page presque effacée est exactement ce qui doit précéder la
+> page entièrement vierge que le joueur écrira en fin de partie (fragment XIII).
 
 > **La progression du ton est dans les textes, pas dans le code.** Le fragment I n'a ni
 > signature ni « je » et passe pour un débris administratif. Le II dit « je ». Le III tutoie. Le

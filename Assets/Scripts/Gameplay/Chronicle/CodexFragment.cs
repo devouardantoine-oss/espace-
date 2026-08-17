@@ -56,7 +56,7 @@ namespace Espace.Gameplay.Chronicle
             return _mastered != null && Contains(_mastered, domain);
         }
 
-        // Boucle explicite plutot que Linq.Contains : ce test tourne pour onze fragments a
+        // Boucle explicite plutot que Linq.Contains : ce test tourne pour douze fragments a
         // chaque jour de jeu, et le projet proscrit les allocations par frame.
         private static bool Contains<T>(IReadOnlyCollection<T> values, T sought)
         {
@@ -94,10 +94,13 @@ namespace Espace.Gameplay.Chronicle
     /// </summary>
     public readonly struct CodexFragment
     {
-        /// <summary>Rang du fragment, de 1 a 11.</summary>
+        /// <summary>
+        /// Rang du fragment, de 1 a <see cref="CodexLibrary.Count"/>. C'est aussi la <b>cle de
+        /// sauvegarde</b> : un numero deja publie ne se reattribue jamais a un autre texte.
+        /// </summary>
         public readonly int Number;
 
-        /// <summary>Chiffre romain affiche, « I » a « XI ».</summary>
+        /// <summary>Chiffre romain affiche, « I » a « XII ».</summary>
         public readonly string Numeral;
 
         /// <summary>Titre court.</summary>
@@ -184,6 +187,29 @@ namespace Espace.Gameplay.Chronicle
         /// <see cref="CodexService"/>, pas ici : une fonction pure ne se souvient de rien.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// Vrai si ce fragment est <b>hors d'atteinte par nature</b> pour un joueur de cette
+        /// filiation.
+        /// <para>
+        /// Il n'existe qu'un cas : les archives de sa propre faction. On ne s'aneantit pas
+        /// soi-meme, donc le seul document qu'un joueur ne recuperera jamais est celui de son
+        /// propre peuple — parce qu'il <i>est</i> ce peuple. Chaque faction en ayant desormais
+        /// un, la partie est symetrique : d'ou qu'on parte, on termine a onze fragments sur
+        /// douze, et jamais les onze memes.
+        /// </para>
+        /// <para>
+        /// L'interface s'en sert pour distinguer « pas encore trouve » de « ne sera jamais
+        /// trouve ». Un joueur qui reste bloque a 11/12 sans explication croit avoir manque
+        /// quelque chose ; c'est le contraire qu'on veut lui dire.
+        /// </para>
+        /// </summary>
+        public bool IsBeyondReachFor(FactionLineage playerLineage)
+        {
+            return TriggerKind == FragmentTriggerKind.FactionAnnihilated
+                   && playerLineage != FactionLineage.Unknown
+                   && Lineage == playerLineage;
+        }
+
         public bool IsDeliveredBy(CodexWorldState state)
         {
             switch (TriggerKind)
