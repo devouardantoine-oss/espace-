@@ -48,8 +48,20 @@ namespace Espace.Tests.EditMode
         [Test]
         public void CriticalNotices_StayVeryFew()
         {
-            // Trois au maximum. Un quatrieme type critique devrait etre une decision
-            // deliberee, pas un ajout de plus.
+            // Quatre au maximum depuis la Phase 24, etape 5.
+            //
+            // Ce plafond etait a trois, et le commentaire disait qu'un quatrieme type devrait
+            // etre « une decision deliberee, pas un ajout de plus ». Le test a fait exactement
+            // son travail : DecisionRequired l'a fait echouer, et voici la deliberation.
+            //
+            // Il est accepte parce qu'il correspond mot pour mot a la definition du niveau —
+            // « demande une decision immediate ». Les trois autres critiques sont des faits que
+            // le joueur subit ; celui-ci est le seul qui l'attende, et une question qui
+            // patienterait sagement dans le journal cesserait d'etre une question.
+            //
+            // Le plafond reste, et il reste serre : un cinquieme demandera la meme justification.
+            const int MaximumCriticalKinds = 4;
+
             int critical = 0;
             foreach (NoticeKind kind in AllKinds)
             {
@@ -59,7 +71,7 @@ namespace Espace.Tests.EditMode
                 }
             }
 
-            Assert.LessOrEqual(critical, 3, "Trop d'avis critiques : plus rien n'est critique.");
+            Assert.LessOrEqual(critical, MaximumCriticalKinds, "Trop d'avis critiques : plus rien n'est critique.");
         }
 
         [Test]

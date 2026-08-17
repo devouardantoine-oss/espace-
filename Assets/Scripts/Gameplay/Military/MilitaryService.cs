@@ -204,6 +204,29 @@ namespace Espace.Gameplay.Military
         }
 
         /// <inheritdoc />
+        public int ReduceGarrison(StarSystemId systemId, int empireId, float lostFraction)
+        {
+            if (lostFraction <= 0f || !TryGetStationedFleet(systemId, empireId, out Fleet garrison))
+            {
+                return 0;
+            }
+
+            int before = garrison.Composition.TotalCount;
+            UnitBundle remaining = garrison.Composition.Scale(1f - Mathf.Clamp01(lostFraction));
+
+            garrison.SetComposition(remaining);
+
+            // Une flotte vide se dissout, comme apres une desertion : la laisser en place
+            // occuperait une place de deploiement pour zero unite.
+            if (remaining.TotalCount == 0)
+            {
+                _fleets.Remove(garrison);
+            }
+
+            return before - remaining.TotalCount;
+        }
+
+        /// <inheritdoc />
         public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error)
         {
             if (unitType == null)

@@ -43,7 +43,16 @@ namespace Espace.Gameplay.Chronicle
         RevoltIncited,
 
         /// <summary>Un fragment du journal de l'Empire disparu vient d'etre obtenu (Phase 24, etape 3).</summary>
-        FragmentFound
+        FragmentFound,
+
+        /// <summary>Une question attend une reponse du joueur (Phase 24, etape 5).</summary>
+        DecisionRequired,
+
+        /// <summary>Le joueur a tranche.</summary>
+        DecisionAnswered,
+
+        /// <summary>L'ardoise contractee par une decision vient de tomber.</summary>
+        DecisionSettled
     }
 
     /// <summary>
@@ -78,6 +87,11 @@ namespace Espace.Gameplay.Chronicle
                 case NoticeKind.EncounterStarted:
                 case NoticeKind.SystemLost:
                 case NoticeKind.BattleLost:
+
+                // Le quatrieme type critique, et il est ajoute deliberement : « demande une
+                // decision immediate » est la definition meme de ce niveau, et une decision qui
+                // attendrait sagement dans le journal cesserait d'etre une decision.
+                case NoticeKind.DecisionRequired:
                     return NoticeTier.Critical;
 
                 // Merite d'etre vu, jamais d'interrompre.
@@ -93,6 +107,10 @@ namespace Espace.Gameplay.Chronicle
                 // Un fragment merite d'etre vu — c'est le fil narratif du jeu — mais jamais
                 // d'interrompre : il n'y a rien a decider, seulement quelque chose a lire.
                 case NoticeKind.FragmentFound:
+
+                // L'ardoise qui tombe deux mois apres un choix : le joueur doit faire le lien
+                // entre ce qu'il subit et ce qu'il a decide, sinon le differe n'apprend rien.
+                case NoticeKind.DecisionSettled:
                     return NoticeTier.Important;
 
                 // Le reste vit dans le journal et nulle part ailleurs.
@@ -119,6 +137,10 @@ namespace Espace.Gameplay.Chronicle
                 case NoticeKind.ResearchDomainChanged:
                 case NoticeKind.FleetDeparted:
                 case NoticeKind.RecruitmentCompleted:
+
+                // La question a deja ete tranchee : il n'y a plus rien a ouvrir. C'est une trace
+                // pour le journal, pas un rappel.
+                case NoticeKind.DecisionAnswered:
                     return false;
 
                 default:

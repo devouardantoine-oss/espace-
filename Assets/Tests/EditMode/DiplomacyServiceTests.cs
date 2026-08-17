@@ -55,6 +55,9 @@ namespace Espace.Tests.EditMode
             public IReadOnlyList<Fleet> GetFleetsForEmpire(int empireId) => Array.Empty<Fleet>();
             public UnitBundle GetGarrison(StarSystemId systemId, int empireId) => _garrisonsByEmpire.TryGetValue(empireId, out UnitBundle bundle) ? bundle : UnitBundle.Zero;
             public float EstimatePower(UnitBundle composition) => composition.TotalCount;
+
+            // Sans objet ici : aucun de ces tests ne fait perdre de garnison.
+            public int ReduceGarrison(StarSystemId systemId, int empireId, float lostFraction) => 0;
             public bool TryRecruitUnits(StarSystemId systemId, UnitTypeDefinition unitType, int count, out string error) { error = "n/a"; return false; }
             public bool TryMoveFleet(Fleet fleet, StarSystemId destinationSystemId, out string error) { error = "n/a"; return false; }
             public bool TryDetachFleet(StarSystemId systemId, int empireId, UnitBundle unitsToDetach, out Fleet detachedFleet, out string error) { detachedFleet = null; error = "n/a"; return false; }

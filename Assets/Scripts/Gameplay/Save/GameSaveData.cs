@@ -46,8 +46,9 @@ namespace Espace.Gameplay.Save
         /// 3 depuis la Phase 15 : <see cref="GarrisonSaveData"/> gagne les quatre champs Amiral. Une sauvegarde d'une version anterieure ne les contient pas : <c>SaveService.Apply</c> ne doit alors surtout pas restaurer un Amiral « tout a zero » a partir des defauts <c>JsonUtility</c> — un nouvel Amiral est genere a la place, comme pour une toute nouvelle flotte.
         /// 4 depuis la Phase 17 : les flottes en voyage sont sauvegardees (<see cref="FleetsInTransit"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : la liste reste simplement vide.
         /// 5 depuis la Phase 24 : les fragments du codex obtenus (<see cref="UnlockedFragments"/>). Une sauvegarde anterieure n'en contient aucun et se charge sans rien de special — <c>CodexService</c> relisant l'etat du monde chaque jour, elle retrouve des le lendemain tous les fragments que sa situation justifie. C'est la seule raison pour laquelle aucune migration n'est necessaire ici.
+        /// 6 depuis la Phase 24, etape 5 : les decisions en attente (<see cref="Decisions"/>) et les ardoises pas encore echues (<see cref="Consequences"/>). Une sauvegarde anterieure n'en contient aucune, ce qui est exactement le comportement d'avant : les listes restent vides et le systeme repart d'une ardoise nette.
         /// </remarks>
-        public int Version = 5;
+        public int Version = 6;
 
         /// <summary>
         /// Vaut <c>(int)GameSpeed.Paused</c> si le temps etait en pause : <see cref="Espace.Core.IGameClock.IsPaused"/>
@@ -70,6 +71,15 @@ namespace Espace.Gameplay.Save
         /// anterieure a la version 5 — voir <see cref="Version"/> pour pourquoi cela suffit.
         /// </summary>
         public List<int> UnlockedFragments = new List<int>();
+
+        /// <summary>Decisions posees et pas encore tranchees (Phase 24, etape 5).</summary>
+        public List<PendingDecisionSaveData> Decisions = new List<PendingDecisionSaveData>();
+
+        /// <summary>Ardoises contractees par une decision et pas encore echues.</summary>
+        public List<ScheduledConsequenceSaveData> Consequences = new List<ScheduledConsequenceSaveData>();
+
+        /// <summary>Prochain identifiant de decision, pour qu'un rechargement n'en reattribue pas un deja utilise.</summary>
+        public int NextDecisionId = 1;
     }
 
     [Serializable]
@@ -221,5 +231,43 @@ namespace Espace.Gameplay.Save
         public int CompletedTiers;
         public float Progress;
         public bool IsActiveDomain;
+    }
+
+    /// <summary>
+    /// Une decision en attente (Phase 24, etape 5).
+    /// <para>
+    /// <b>Seulement de quoi la reconstruire</b> — identifiant, genre, systeme, date. Les
+    /// libelles et les couts viennent de <c>DecisionCatalogue</c>, qui est deterministe a partir
+    /// de ces valeurs. Les ecrire ici aurait fige les textes d'une version dans les parties en
+    /// cours.
+    /// </para>
+    /// </summary>
+    [Serializable]
+    public sealed class PendingDecisionSaveData
+    {
+        public int Id;
+        public int Kind;
+        public int SystemId;
+        public GameDateData RaisedOn;
+    }
+
+    /// <summary>
+    /// Une ardoise datee.
+    /// <para>
+    /// <b>Ses effets sont ecrits en toutes lettres</b>, contrairement a la decision qui les a
+    /// produits : une ardoise est le resultat d'un choix deja fait, a des couts deja annonces au
+    /// joueur. Les recalculer depuis le catalogue reviendrait a changer retroactivement le prix
+    /// d'une decision prise sous d'autres conditions.
+    /// </para>
+    /// </summary>
+    [Serializable]
+    public sealed class ScheduledConsequenceSaveData
+    {
+        public int SystemId;
+        public GameDateData DueOn;
+        public float Credits;
+        public float GarrisonFraction;
+        public float Stability;
+        public string Text;
     }
 }

@@ -1319,6 +1319,72 @@ aucune capacité et attendra une passe visuelle.
 
 ---
 
+### Les décisions (Phase 24, étape 5)
+
+| Brique | Rôle |
+|---|---|
+| `DecisionOption` | Fonction pure : une option sait dire si elle coûte vraiment quelque chose |
+| `DecisionCatalogue` | Contenu : les questions, leurs options, leurs prix |
+| `DecisionService` | La mémoire et l'échéancier |
+| `DecisionWindowController` | La fenêtre qui vient chercher le joueur |
+
+Le jeu publiait trente et un événements et n'en **demandait aucun**. Tout se décidait par des
+boutons toujours disponibles ; rien ne venait jamais imposer un choix qu'on aurait préféré ne pas
+avoir à faire.
+
+> **La règle absolue : aucune option gratuite.** Une option sans coût est la bonne réponse, et il
+> n'y a plus de dilemme — seulement un bouton à appuyer. Chaque option porte donc **un effet
+> immédiat chiffré et un effet différé**, et c'est un test qui le garantit, pas la relecture. Il
+> échouera le jour où quelqu'un voudra « adoucir » une décision jugée trop dure.
+>
+> **Le différé est ce qui rend le choix difficile.** Sans lui, on compare trois prix et on prend
+> le moins cher. Avec lui, l'option la moins chère aujourd'hui peut être la plus chère dans deux
+> mois. Un second test vérifie qu'aucune option n'est la moins chère sur *toutes* les monnaies à
+> la fois : réprimer coûte des hommes, céder coûte des Crédits, temporiser coûte de la stabilité.
+
+**Les coûts ne sont jamais payés en stabilité seule, et c'est une contrainte du jeu réel, pas un
+choix de style.** La stabilité ne produit aujourd'hui **aucun effet économique** : elle ne sert
+qu'à la défense contre l'espionnage, au halo de la carte et à la liste d'attention. Une option qui
+ne coûterait que d'elle ne coûterait rien, et la règle ci-dessus serait respectée sur le papier
+seulement. Les prix se paient donc en **Crédits et en parts de garnison** — la fraction reprenant
+`UnitBundle.Scale`, déjà la mécanique de désertion pour entretien impayé, plutôt qu'un décompte
+d'unités qui aurait exigé d'inventer quel type part en premier.
+
+> **La question arrive après l'avertissement, jamais avant.** Le panneau Empire signale un système
+> dès 0,55 ; la décision n'arrive qu'à 0,30. Une décision qui tombe est toujours la conséquence
+> d'un avertissement ignoré — un test verrouille l'ordre des deux seuils.
+>
+> **L'échéance en cours tient lieu de délai de repos.** Un système ne repose pas sa question tant
+> que son ardoise n'est pas soldée. Comme toute option en contracte une — c'est la règle absolue —
+> aucun minuteur n'est nécessaire : rien de plus à stocker, rien de plus à sauvegarder, et aucun
+> risque qu'un compteur et une échéance se désynchronisent.
+>
+> **Une fenêtre, pas une huitième entrée de rail.** Le rail est de la navigation : on y va quand
+> on veut. Une décision fait l'inverse — c'est elle qui vient chercher le joueur. La ranger dans
+> un onglet en ferait un courrier administratif.
+
+**Version 6 du format de sauvegarde**, et cette fois la migration compte. Les questions en attente
+sont **reconstruites** depuis le catalogue à partir de quatre valeurs (identifiant, genre, système,
+date) ; les ardoises, elles, sont **relues telles quelles**. La différence est voulue : une
+question n'a pas encore été tranchée et doit afficher les coûts de la version en cours, tandis
+qu'une ardoise résulte d'un choix déjà fait, à des prix déjà annoncés — les recalculer reviendrait
+à changer le prix après coup. Sans cette persistance, enregistrer après avoir choisi et recharger
+avant l'échéance ferait échapper au coût, et l'option la plus chère à terme deviendrait la moins
+chère : exactement l'inverse de ce que le système cherche à produire.
+
+**Un défaut trouvé par les tests, invisible autrement.** `Apply` lisait `_economy` avant que la
+résolution paresseuse ne l'ait renseigné — elle n'avait lieu que dans `Record`, plus bas. La toute
+première ardoise à tomber se réglait donc **gratuitement**, sans que rien ne plante ni ne
+s'affiche. Une dette silencieusement non prélevée ne se voit pas à l'écran.
+
+**Le plafond d'avis critiques passe de trois à quatre.** Son test disait qu'un quatrième devrait
+être « une décision délibérée, pas un ajout de plus » ; il a échoué, et voici la délibération :
+`DecisionRequired` correspond mot pour mot à la définition du niveau — « demande une décision
+immédiate ». Les trois autres critiques sont des faits qu'on subit ; celui-ci est le seul qui
+attende une réponse. Le plafond reste serré : un cinquième demandera la même justification.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus

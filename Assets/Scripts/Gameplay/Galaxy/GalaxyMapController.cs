@@ -47,6 +47,7 @@ namespace Espace.Gameplay.Galaxy
         /// <summary>Journal de la partie (Phase 24). Arrete en meme temps que la scene.</summary>
         private Espace.Gameplay.Chronicle.ChronicleService _chronicle;
         private Espace.Gameplay.Chronicle.CodexService _codex;
+        private Espace.Gameplay.Decisions.DecisionService _decisions;
 
         private void Awake()
         {
@@ -119,6 +120,13 @@ namespace Espace.Gameplay.Galaxy
         /// </summary>
         private void OnDestroy()
         {
+            if (_decisions != null)
+            {
+                _decisions.Shutdown();
+                ServiceLocator.Unregister<Espace.Gameplay.Decisions.IDecisionService>();
+                _decisions = null;
+            }
+
             if (_codex != null)
             {
                 _codex.Shutdown();
@@ -209,6 +217,15 @@ namespace Espace.Gameplay.Galaxy
             if (!ServiceLocator.IsRegistered<Espace.Gameplay.Chronicle.ICodexService>())
             {
                 ServiceLocator.Register<Espace.Gameplay.Chronicle.ICodexService>(_codex);
+            }
+
+            // Les decisions en dernier : elles inscrivent leurs questions dans le journal.
+            _decisions = new Espace.Gameplay.Decisions.DecisionService(eventBus, map);
+            _decisions.Initialize();
+
+            if (!ServiceLocator.IsRegistered<Espace.Gameplay.Decisions.IDecisionService>())
+            {
+                ServiceLocator.Register<Espace.Gameplay.Decisions.IDecisionService>(_decisions);
             }
         }
 

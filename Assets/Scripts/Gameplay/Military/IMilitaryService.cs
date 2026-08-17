@@ -32,6 +32,19 @@ namespace Espace.Gameplay.Military
         float EstimatePower(UnitBundle composition);
 
         /// <summary>
+        /// Retire une part de la garnison de <paramref name="systemId"/> (Phase 24, etape 5).
+        /// <para>
+        /// Meme mecanique que la desertion pour entretien impaye — <c>UnitBundle.Scale</c>, puis
+        /// dissolution si plus personne ne reste — mais portee a un seul systeme. Les decisions
+        /// s'en servent pour les couts payes en hommes : reprimer engage des unites, et une
+        /// garnison laissee sans instructions finit par partir.
+        /// </para>
+        /// </summary>
+        /// <param name="lostFraction">Part perdue, de 0 a 1. Hors de cet intervalle, elle est bornee.</param>
+        /// <returns>Nombre d'unites effectivement perdues.</returns>
+        int ReduceGarrison(StarSystemId systemId, int empireId, float lostFraction);
+
+        /// <summary>
         /// Lance le recrutement de <paramref name="count"/> unites de <paramref name="unitType"/>
         /// sur <paramref name="systemId"/>, si le systeme a un proprietaire, respecte le
         /// developpement minimal requis, et si son tresor peut en couvrir le cout.

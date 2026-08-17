@@ -66,9 +66,10 @@ namespace Espace.Gameplay.Save
             // Le codex n'est pas exige : il n'existe que dans la scene de la carte, et une
             // sauvegarde sans lui reste valide (voir SaveService).
             ServiceLocator.TryGet(out Espace.Gameplay.Chronicle.ICodexService codex);
+            ServiceLocator.TryGet(out Espace.Gameplay.Decisions.IDecisionService decisions);
 
             _saveService = new SaveService(
-                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex);
+                map, clock, economy, military, diplomacy, research, empireRegistry, filePath, codex, decisions);
 
             if (!ServiceLocator.IsRegistered<ISaveService>())
             {

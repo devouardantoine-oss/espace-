@@ -4,6 +4,7 @@ using System.IO;
 using Espace.Core;
 using Espace.Data;
 using Espace.Gameplay.Chronicle;
+using Espace.Gameplay.Decisions;
 using Espace.Gameplay.Diplomacy;
 using Espace.Gameplay.Economy;
 using Espace.Gameplay.Empires;
@@ -43,9 +44,16 @@ namespace Espace.Gameplay.Save
         private readonly IDiplomacyService _diplomacy;
         private readonly IResearchService _research;
         private readonly ICodexService _codex;
+        private readonly IDecisionService _decisions;
         private readonly EmpireRegistry _empireRegistry;
         private readonly string _filePath;
 
+        /// <param name="decisions">
+        /// Optionnel, meme raison que <paramref name="codex"/>. Absent, les questions en attente
+        /// et les ardoises ne sont ni ecrites ni relues — ce qui reste correct, mais fait
+        /// disparaitre une ardoise en cours au rechargement. C'est pourquoi la scene de la carte,
+        /// elle, le fournit toujours.
+        /// </param>
         /// <param name="codex">
         /// Optionnel (Phase 24, etape 3). Absent, la sauvegarde ne contient aucun fragment et se
         /// recharge sans en restaurer — ce qui reste correct, <c>CodexService</c> relisant l'etat
@@ -55,9 +63,10 @@ namespace Espace.Gameplay.Save
         public SaveService(
             GalaxyMap map, IGameClock clock, IEconomyService economy, IMilitaryService military,
             IDiplomacyService diplomacy, IResearchService research, EmpireRegistry empireRegistry, string filePath,
-            ICodexService codex = null)
+            ICodexService codex = null, IDecisionService decisions = null)
         {
             _codex = codex;
+            _decisions = decisions;
 
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
@@ -272,6 +281,8 @@ namespace Espace.Gameplay.Save
                 data.UnlockedFragments.AddRange(_codex.UnlockedNumbers);
             }
 
+            CaptureDecisions(data);
+
             for (int i = 0; i < empires.Count; i++)
             {
                 for (int j = i + 1; j < empires.Count; j++)
@@ -431,6 +442,8 @@ namespace Espace.Gameplay.Save
                 _codex.Restore(data.UnlockedFragments);
             }
 
+            RestoreDecisions(data);
+
             if (data.Date != null)
             {
                 _clock.SetDate(new GameDate(data.Date.Year, data.Date.Month, data.Date.Day));
@@ -472,6 +485,84 @@ namespace Espace.Gameplay.Save
             }
 
             return null;
+        }
+
+        // --- Decisions (Phase 24, etape 5) --------------------------------------------------
+
+        private void CaptureDecisions(GameSaveData data)
+        {
+            if (_decisions == null)
+            {
+                return;
+            }
+
+            data.NextDecisionId = _decisions.NextId;
+
+            foreach (PendingDecision decision in _decisions.Pending)
+            {
+                data.Decisions.Add(new PendingDecisionSaveData
+                {
+                    Id = decision.Id,
+                    Kind = (int)decision.Kind,
+                    SystemId = decision.SystemId.Value,
+                    RaisedOn = ToDateData(decision.RaisedOn)
+                });
+            }
+
+            foreach (ScheduledConsequence consequence in _decisions.Scheduled)
+            {
+                data.Consequences.Add(new ScheduledConsequenceSaveData
+                {
+                    SystemId = consequence.SystemId.Value,
+                    DueOn = ToDateData(consequence.DueOn),
+                    Credits = consequence.Credits,
+                    GarrisonFraction = consequence.GarrisonFraction,
+                    Stability = consequence.Stability,
+                    Text = consequence.Text
+                });
+            }
+        }
+
+        /// <summary>
+        /// Reconstruit les questions en attente et les ardoises.
+        /// <para>
+        /// <b>Les questions sont rejouees depuis le catalogue</b>, a partir des quatre valeurs
+        /// sauvegardees ; les <b>ardoises, elles, sont relues telles quelles</b>. La difference
+        /// est voulue : une question n'a pas encore ete tranchee, elle doit donc afficher les
+        /// couts de la version en cours ; une ardoise est le resultat d'un choix deja fait, a des
+        /// couts deja annonces au joueur, et les recalculer reviendrait a changer le prix apres
+        /// coup.
+        /// </para>
+        /// </summary>
+        private void RestoreDecisions(GameSaveData data)
+        {
+            if (_decisions == null)
+            {
+                return;
+            }
+
+            var pending = new List<PendingDecision>();
+            foreach (PendingDecisionSaveData saved in data.Decisions)
+            {
+                var systemId = new StarSystemId(saved.SystemId);
+                _map.TryGetSystem(systemId, out StarSystemState system);
+
+                pending.Add(DecisionCatalogue.Unrest(saved.Id, system, FromDateData(saved.RaisedOn)));
+            }
+
+            var scheduled = new List<ScheduledConsequence>();
+            foreach (ScheduledConsequenceSaveData saved in data.Consequences)
+            {
+                scheduled.Add(new ScheduledConsequence(
+                    new StarSystemId(saved.SystemId),
+                    FromDateData(saved.DueOn),
+                    saved.Credits,
+                    saved.GarrisonFraction,
+                    saved.Stability,
+                    saved.Text));
+            }
+
+            _decisions.Restore(pending, scheduled, data.NextDecisionId);
         }
     }
 }

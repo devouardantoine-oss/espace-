@@ -38,6 +38,9 @@ namespace Espace.Tests.EditMode
 
             public float EstimatePower(UnitBundle composition) => composition.TotalCount;
 
+            // Sans objet ici : aucun de ces tests ne fait perdre de garnison.
+            public int ReduceGarrison(StarSystemId systemId, int empireId, float lostFraction) => 0;
+
             public IReadOnlyList<UnitTypeDefinition> UnitCatalog => Array.Empty<UnitTypeDefinition>();
             public bool TryGetStationedFleet(StarSystemId systemId, int empireId, out Fleet fleet) { fleet = null; return false; }
             public IReadOnlyList<Fleet> GetFleetsAt(StarSystemId systemId) => Array.Empty<Fleet>();
