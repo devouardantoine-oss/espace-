@@ -39,6 +39,10 @@ namespace Espace.Tests.EditMode
             public float GetEspionagePower(int empireId) => _powers.TryGetValue(empireId, out float power) ? power : 10f;
             public float GetCounterEspionagePower(int empireId, StarSystemId referenceSystemId) => _counterPowers.TryGetValue(empireId, out float power) ? power : 10f;
 
+            // La vigilance n'entre pas dans les decisions testees ici : elle sert a l'affichage.
+            public float GetVigilance(int targetEmpireId) => 0f;
+            public float MaximumVigilance => 2f;
+
             public bool TryStealTechnology(int proposerId, int targetEmpireId, out string error)
             {
                 Attempts.Add((proposerId, targetEmpireId, EspionageMissionType.StealTechnology));

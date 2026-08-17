@@ -138,6 +138,18 @@ namespace Espace.Gameplay.Espionage
         }
 
         /// <inheritdoc />
+        public float GetVigilance(int targetEmpireId)
+        {
+            return VigilanceOf(targetEmpireId);
+        }
+
+        /// <inheritdoc />
+        float IEspionageService.MaximumVigilance
+        {
+            get { return MaximumVigilance; }
+        }
+
+        /// <inheritdoc />
         public bool TryStealTechnology(int proposerId, int targetEmpireId, out string error)
         {
             if (!ServiceLocator.TryGet(out IResearchService research))

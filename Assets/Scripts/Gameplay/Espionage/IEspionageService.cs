@@ -21,6 +21,21 @@ namespace Espace.Gameplay.Espionage
         float GetCounterEspionagePower(int empireId, StarSystemId referenceSystemId);
 
         /// <summary>
+        /// Vigilance acquise par <paramref name="targetEmpireId"/>, de 0 au plafond
+        /// (Phase 24, etape 4).
+        /// <para>
+        /// Elle monte a chaque tentative subie, reussie ou non, et retombe lentement chaque mois.
+        /// La valeur etait deja calculee et deja appliquee a la defense ; elle n'etait lisible de
+        /// nulle part, alors que <b>c'est le vrai sujet du panneau Espionnage</b> : savoir sur
+        /// quelle cible on peut encore frapper.
+        /// </para>
+        /// </summary>
+        float GetVigilance(int targetEmpireId);
+
+        /// <summary>Plafond de <see cref="GetVigilance"/> : une cible sur ses gardes ne devient jamais imprenable.</summary>
+        float MaximumVigilance { get; }
+
+        /// <summary>
         /// Copie instantanement, pour <paramref name="proposerId"/>, le palier de recherche le
         /// plus avantageux que <paramref name="targetEmpireId"/> possede et que le proposeur
         /// n'a pas encore. Echoue si la cible n'a aucune avance technologique exploitable, ou

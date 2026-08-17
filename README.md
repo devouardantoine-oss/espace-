@@ -1271,6 +1271,54 @@ valeur n'aurait jamais été franchi et le fragment IV ne serait **jamais arriv�
 
 ---
 
+### Le contenu des panneaux (Phase 24, étape 4)
+
+| Brique | Rôle |
+|---|---|
+| `SystemAttentionList` | Fonction pure : quels systèmes demandent quelque chose, et dans quel ordre |
+| `FleetRoster` | Fonction pure : puissance **relative**, libellé de mission |
+| `VigilanceReading` | Fonction pure : une vigilance chiffrée devient une phrase |
+| `UITheme.DrawMeter` | Jauge partagée par les trois panneaux qui en dessinent une |
+
+L'étape 2 avait posé le rail et les panneaux ; leur **contenu** était resté celui des anciennes
+fenêtres. Trois d'entre eux ne répondaient pas à la question qu'ils posaient.
+
+| Panneau | Avant | Après |
+|---|---|---|
+| **Empire** | Liste plate des six empires, trésor et nombre de systèmes | Posture, quatre indicateurs, et **les systèmes qui demandent quelque chose** |
+| **Flottes** | « puissance ~418 » par flotte | Barre relative, mission en un mot, destination en retrait |
+| **Espionnage** | Contre-espionnage seul | Colonne de vigilance **et** son état en clair |
+
+> **Le panneau Empire répondait à « qui existe ? »**, une question que personne ne se pose. Il
+> répond maintenant à « est-ce que je vais bien ? », puis à sa suite immédiate — *et où faut-il
+> aller ?* Sans cette liste, un empire de quarante systèmes oblige à ouvrir quarante fiches pour
+> trouver les trois qui posent problème.
+>
+> **Des états, jamais des événements.** La maquette proposait aussi « chantier achevé ». C'est un
+> fait ponctuel, pas une demande : il appartient au journal, qui le rapporte déjà. Un système
+> figure dans la liste tant que la situation dure et en sort dès qu'elle cesse, sans que personne
+> ait à penser à l'en retirer — même raisonnement qu'aux étapes 3 et Phase 23.
+>
+> **Aucun chiffre absolu dans les Flottes.** « Puissance ~418 » ne veut rien dire tant qu'on
+> ignore ce que vaut le reste, et l'action la plus fréquente sur cet écran est de *comparer* deux
+> flottes. La barre est relative à la plus forte flotte du joueur, pas à une constante : une
+> échelle fixe se serait tassée en fin de partie, exactement quand on compare le plus.
+>
+> **La vigilance est le vrai sujet de l'Espionnage.** Elle était calculée depuis la Phase 6,
+> appliquée à la défense, et lisible nulle part. « Réseau grillé » se lit d'un coup d'œil quand
+> « vigilance 1,8 » n'apprend rien à qui ignore le plafond — donc les deux sont là.
+
+**Deux accesseurs ajoutés, aucun élargissement gratuit.** `IEconomyService.GetAdministrativePressure`
+(étape 3) et `IEspionageService.GetVigilance` exposent des valeurs **déjà calculées** que rien ne
+permettait de lire. Le reste s'est fait sans toucher aux interfaces : « domaine maîtrisé » se
+déduit de `GetNextTechnology` renvoyant `null`, et le catalogue connaît déjà son dernier palier.
+
+**Recherche, Diplomatie et Journal n'ont pas été retouchés** : ils portaient déjà leurs fonctions.
+Il leur reste de la mise en forme — pastilles de domaine, emblèmes de faction — qui ne change
+aucune capacité et attendra une passe visuelle.
+
+---
+
 ### Briques des trois freins (Phase 22, P3 à P5)
 
 L'audit relevait que le jeu n'avait **que des moteurs** — population, production, conquête, plus

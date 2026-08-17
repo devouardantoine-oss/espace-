@@ -295,6 +295,34 @@ namespace Espace.UI
             GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), SolidTexture(color), ScaleMode.StretchToFill, alphaBlend: true);
         }
 
+        /// <summary>
+        /// Jauge horizontale : un fond creux, une part remplie (Phase 24, étape 4).
+        /// <para>
+        /// <b>Mise en commun dès le premier usage plutôt qu'au troisième.</b> Le panneau Flottes
+        /// compare des puissances, celui de l'Espionnage des vigilances, et le liseré d'état
+        /// dessine déjà quatre segments à la main. Une jauge tracée sur place dans chacun aurait
+        /// donné trois épaisseurs et trois teintes différentes pour la même idée.
+        /// </para>
+        /// </summary>
+        /// <param name="share">Part remplie, bornée entre 0 et 1.</param>
+        public static void DrawMeter(Rect rect, float share, Color fill)
+        {
+            GUI.DrawTexture(rect, SolidTexture(MeterTrack), ScaleMode.StretchToFill, alphaBlend: true);
+
+            float filled = rect.width * Mathf.Clamp01(share);
+            if (filled <= 0f)
+            {
+                return;
+            }
+
+            GUI.DrawTexture(
+                new Rect(rect.x, rect.y, filled, rect.height),
+                SolidTexture(fill), ScaleMode.StretchToFill, alphaBlend: true);
+        }
+
+        /// <summary>Fond creux d'une jauge : visible sans attirer l'oeil.</summary>
+        public static readonly Color MeterTrack = new Color(1f, 1f, 1f, 0.12f);
+
         private static readonly Dictionary<Color, Texture2D> SolidTextures = new Dictionary<Color, Texture2D>();
 
         private static GUIStyle _panelStyle;

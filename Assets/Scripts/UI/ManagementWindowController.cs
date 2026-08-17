@@ -76,6 +76,15 @@ namespace Espace.UI
         private const int OperationReportCount = 6;
 
         /// <summary>
+        /// Au-dela de cet effectif, une flotte stationnee est une force de defense plutot qu'une
+        /// simple garnison. Distinction d'affichage seulement : aucune regle ne s'y attache.
+        /// </summary>
+        private const int GarrisonSizedFleet = 3;
+
+        /// <summary>Largeur de la jauge de puissance des flottes.</summary>
+        private const float PowerBarWidth = 76f;
+
+        /// <summary>
         /// Entree ouverte, ou <c>null</c> si seul le rail est visible.
         /// <para>
         /// Le rail, lui, est <b>toujours</b> affiche : c'est la navigation, pas une fenetre.
@@ -94,6 +103,56 @@ namespace Espace.UI
         private IMilitaryService _military;
 
         private readonly Dictionary<int, UnitBundle> _lastDiscoveredArmies = new Dictionary<int, UnitBundle>();
+
+        private IEventBus _eventBus;
+
+        /// <summary>
+        /// Bilan du joueur et systemes qui demandent quelque chose, recalcules une fois par jour
+        /// de jeu (Phase 24, etape 4).
+        /// <para>
+        /// <b>Jamais dans <c>OnGUI</c>, pour la meme raison que le lisere d'etat :</b> Unity
+        /// appelle <c>OnGUI</c> plusieurs fois par image, et
+        /// <see cref="EmpireAssessmentFactory.Assess"/> parcourt tous les systemes possedes et
+        /// leurs voisins — en allouant une liste au passage. Le calculer la reviendrait a le
+        /// refaire des centaines de fois par seconde et a produire des ordures a chaque image.
+        /// </para>
+        /// </summary>
+        private EmpireAssessment _assessment;
+
+        private readonly List<SystemAttention> _attention = new List<SystemAttention>(SystemAttentionList.MaximumEntries);
+
+        private void Start()
+        {
+            if (ServiceLocator.TryGet(out _eventBus))
+            {
+                _eventBus.Subscribe<DayAdvancedEvent>(OnDayAdvanced);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            _eventBus?.Unsubscribe<DayAdvancedEvent>(OnDayAdvanced);
+        }
+
+        private void OnDayAdvanced(DayAdvancedEvent dayAdvancedEvent)
+        {
+            RefreshEmpireDigest();
+        }
+
+        /// <summary>Recalcule le bilan et la liste d'attention. Sans effet si les services manquent encore.</summary>
+        private void RefreshEmpireDigest()
+        {
+            ResolveServices();
+
+            Empire player = _empireRegistry?.PlayerEmpire;
+            if (player == null || _map == null)
+            {
+                return;
+            }
+
+            _assessment = EmpireAssessmentFactory.Assess(player, _map, _economy, _military);
+            SystemAttentionList.Fill(_attention, player.Id, _map, _military, _diplomacy);
+        }
 
         private void OnGUI()
         {
@@ -411,25 +470,84 @@ namespace Espace.UI
                 UITheme.Value);
         }
 
+        /// <summary>
+        /// Le panneau Empire repond a une seule question : <b>« est-ce que je vais bien ? »</b>
+        /// (Phase 24, etape 4).
+        /// <para>
+        /// <b>Ce qu'il remplacait.</b> Une liste plate des six empires avec leur trésor et leur
+        /// nombre de systemes. Elle repondait a « qui existe ? », question que personne ne se
+        /// pose, et laissait sans reponse la seule qui compte vraiment.
+        /// </para>
+        /// <para>
+        /// <b>La posture et les quatre indicateurs ne sont pas nouveaux</b> : ce sont ceux du
+        /// lisere d'etat, en detail, et ceux-la memes sur lesquels chaque IA decide de sa posture
+        /// depuis la Phase 22. Le joueur regarde le tableau de bord de ses adversaires.
+        /// </para>
+        /// <para>
+        /// <b>Puis vient la suite immediate : ou faut-il aller ?</b> C'est la liste d'attention,
+        /// et c'est la seule vraie nouveaute de ce panneau.
+        /// </para>
+        /// </summary>
         private void DrawEmpiresTab()
         {
             DrawPlayerEconomy();
+            DrawPosture();
+            DrawAttentionList();
+        }
 
-            GUILayout.Label("Empires", UITheme.Title);
-
-            if (_empireRegistry == null)
+        private void DrawPosture()
+        {
+            Empire player = _empireRegistry?.PlayerEmpire;
+            if (player == null)
             {
                 GUILayout.Label("Registre des empires indisponible.", UITheme.MutedLabel);
                 return;
             }
 
-            foreach (Empire empire in _empireRegistry.Empires)
-            {
-                int systemCount = CountOwnedSystems(empire.Id);
-                float credits = _economy?.GetTreasury(empire.Id).Credits ?? 0f;
-                string role = empire.IsPlayerControlled ? "Vous" : empire.Personality.ToString();
+            GUILayout.Space(6f);
+            GUILayout.Label("Posture", UITheme.Title);
+            GUILayout.Label(_assessment.Posture.ToString().ToUpperInvariant(), UITheme.Value);
+            GUILayout.Label(_assessment.Explain(), UITheme.MutedLabel);
 
-                GUILayout.Label($"{empire.Name}  —  {role}  —  {systemCount} systeme(s)  —  {HudFormatter.FormatResource(credits)} Cr", UITheme.Label);
+            GUILayout.Space(4f);
+            DrawIndicator("Tresorerie", $"{_assessment.FinancialRunwayMonths:F1} mois");
+            DrawIndicator("Stabilite", $"{_assessment.AverageStability:P0}");
+            DrawIndicator("Forces", $"{_assessment.MilitaryRatio:F1} x");
+            DrawIndicator("Place a prendre", $"{_assessment.GrowthHeadroom:P0}");
+        }
+
+        private static void DrawIndicator(string label, string value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, UITheme.MutedLabel, GUILayout.Width(110));
+            GUILayout.Label(value, UITheme.Value);
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Les systemes qui demandent quelque chose.
+        /// <para>
+        /// <b>Une liste vide est une bonne nouvelle, et doit se lire comme telle</b> — d'ou une
+        /// phrase, et non un cadre vide qui laisse croire que l'affichage est casse.
+        /// </para>
+        /// </summary>
+        private void DrawAttentionList()
+        {
+            GUILayout.Space(8f);
+            GUILayout.Label("Demandent quelque chose", UITheme.Title);
+
+            if (_attention.Count == 0)
+            {
+                GUILayout.Label("Aucun systeme ne reclame d'attention.", UITheme.MutedLabel);
+                return;
+            }
+
+            foreach (SystemAttention entry in _attention)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(entry.Name, UITheme.Label, GUILayout.Width(120));
+                GUILayout.Label(entry.Describe(), UITheme.MutedLabel);
+                GUILayout.EndHorizontal();
             }
         }
 
@@ -539,9 +657,21 @@ namespace Espace.UI
 
             GUILayout.Space(6);
 
+            // La barre est relative a la plus forte flotte du joueur : c'est cette reference,
+            // et non une constante, qui garde l'echelle utile en fin de partie.
+            float strongest = 0f;
             foreach (Fleet fleet in fleets)
             {
-                DrawFleetRow(fleet);
+                float power = _military.EstimatePower(fleet.Composition);
+                if (power > strongest)
+                {
+                    strongest = power;
+                }
+            }
+
+            foreach (Fleet fleet in fleets)
+            {
+                DrawFleetRow(fleet, strongest);
             }
 
             DrawRecentOutcomes();
@@ -572,7 +702,16 @@ namespace Espace.UI
             }
         }
 
-        private void DrawFleetRow(Fleet fleet)
+        /// <summary>
+        /// Une ligne de la liste des flottes (Phase 24, etape 4).
+        /// <para>
+        /// <b>La barre donne la puissance relative, le libelle donne la mission, la ligne en
+        /// retrait donne la destination.</b> Aucun chiffre absolu : « puissance ~418 » ne veut
+        /// rien dire tant qu'on ignore ce que vaut le reste, et l'action la plus frequente sur
+        /// cet ecran est de comparer deux flottes, pas d'en lire une.
+        /// </para>
+        /// </summary>
+        private void DrawFleetRow(Fleet fleet, float strongestPower)
         {
             string location;
             switch (fleet.Status)
@@ -593,13 +732,37 @@ namespace Espace.UI
                     break;
             }
 
-            GUILayout.Label($"{fleet.Name}  —  {location}  —  puissance ~{_military.EstimatePower(fleet.Composition):0}", UITheme.Label);
-            GUILayout.Label(fleet.Composition.ToString(), UITheme.MutedLabel);
+            float power = _military.EstimatePower(fleet.Composition);
+            string mission = FleetRoster.MissionLabel(fleet.Status, fleet.Composition.TotalCount <= GarrisonSizedFleet);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(fleet.Name, UITheme.Value, GUILayout.Width(96));
+            DrawPowerBar(FleetRoster.PowerShare(power, strongestPower));
+            GUILayout.Label(
+                FleetRoster.IsCrippled(power, strongestPower) ? "decimee" : mission,
+                UITheme.MutedLabel,
+                GUILayout.Width(84));
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label($"    {location}", UITheme.MutedLabel);
+            GUILayout.Label($"    {fleet.Composition}", UITheme.MutedLabel);
             GUILayout.Label(
                 $"Amiral {fleet.Admiral.Name} — Attaque {HudFormatter.FormatSigned(fleet.Admiral.AttackBonus * 100f)}% "
                 + $"/ Vitesse {HudFormatter.FormatSigned(fleet.Admiral.SpeedBonus * 100f)}% "
                 + $"/ Defense {HudFormatter.FormatSigned(fleet.Admiral.DefenseBonus * 100f)}%",
                 UITheme.MutedLabel);
+        }
+
+        /// <summary>
+        /// Jauge de puissance d'une flotte. La teinte suit l'etat : une flotte decimee doit se
+        /// distinguer d'une flotte simplement plus petite.
+        /// </summary>
+        private static void DrawPowerBar(float share)
+        {
+            Rect rect = GUILayoutUtility.GetRect(PowerBarWidth, UITheme.LabelHeight, GUILayout.Width(PowerBarWidth));
+            rect = new Rect(rect.x, rect.y + rect.height * 0.3f, rect.width, rect.height * 0.4f);
+
+            UITheme.DrawMeter(rect, share, EmpireStateBand.HealthColor(share, 0.2f, 0.6f));
         }
 
         private string LocationLabel(StarSystemId systemId)
@@ -794,7 +957,20 @@ namespace Espace.UI
             }
 
             float counterPower = _espionage.GetCounterEspionagePower(target.Id, targetSystemId.Value);
-            GUILayout.Label($"{target.Name} (contre-espionnage {counterPower:0})", UITheme.Label);
+            float vigilance = _espionage.GetVigilance(target.Id);
+            float ceiling = _espionage.MaximumVigilance;
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(target.Name, UITheme.Label, GUILayout.Width(150));
+            GUILayout.Label($"vigilance {vigilance:0.0}", UITheme.MutedLabel, GUILayout.Width(90));
+            GUILayout.Label($"contre-espionnage {counterPower:0}", UITheme.MutedLabel);
+            GUILayout.EndHorizontal();
+
+            // Les mots avant le nombre : « vigilance 1,8 » n'apprend rien a qui ignore le
+            // plafond. La phrase se lit d'un coup d'oeil, le nombre reste pour comparer.
+            GUILayout.Label(
+                VigilanceReading.Describe(vigilance, ceiling),
+                VigilanceReading.ShouldLetItCoolDown(vigilance, ceiling) ? UITheme.Value : UITheme.MutedLabel);
 
             GUILayout.BeginHorizontal();
 
